@@ -1,0 +1,10 @@
+{
+  "description": "Streamline parking management for schools with a centralized system that enables users to manage access, monitor occupancy, and facilitate visitor registration.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
