@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import {
   Check,
   ChevronLeft,
@@ -28,16 +28,11 @@ const USER_TYPES = [
   { value: 'other', label: 'Other Authorized' },
 ];
 
-const DEPARTMENTS = [
-  'College of Engineering',
-  'College of Science',
-  'College of Business',
-  'College of Arts',
-  'College of Nursing',
-  'Registrar Office',
-  'HR Department',
-  'IT Department',
-];
+interface Department {
+  department_id: number;
+  department_code: string;
+  department_name: string;
+}
 
 const VEHICLE_TYPES = [
   'Sedan',
@@ -62,23 +57,19 @@ interface FormState {
   password: string;
   confirmPwd: string;
   idFile: File | null;
-
   userType: string;
   dept: string;
   contact: string;
-
   hasVehicle: boolean | null;
   vehicleType: string;
   plate: string;
   make: string;
   model: string;
   color: string;
-
   licenseNo: string;
   licenseType: string;
   licenseExpiry: string;
   licenseFile: File | null;
-
   agree: boolean;
 }
 
@@ -89,25 +80,61 @@ const INITIAL: FormState = {
   password: '',
   confirmPwd: '',
   idFile: null,
-
   userType: 'student',
   dept: '',
   contact: '',
-
   hasVehicle: null,
   vehicleType: 'Sedan',
   plate: '',
   make: '',
   model: '',
   color: '',
-
   licenseNo: '',
   licenseType: 'non_professional',
   licenseExpiry: '',
   licenseFile: null,
-
   agree: false,
 };
+
+/**
+ * Reads and logs an API response before parsing it.
+ * This helps identify responses that contain PHP errors,
+ * HTML, Markdown, or other content instead of JSON.
+ */
+
+async function readJsonResponse(
+  response: Response,
+  endpoint: string,
+): Promise<any> {
+  const responseText = await response.text();
+
+  console.log(`[${endpoint}] STATUS:`, response.status);
+  console.log(
+    `[${endpoint}] CONTENT-TYPE:`,
+    response.headers.get('content-type'),
+  );
+
+  if (!responseText.trim()) {
+    throw new Error(`[${endpoint}] The server returned an empty response.`);
+  }
+
+  const cleanedText = responseText
+    .trim()
+    .replace(/^```(?:json|php)?[ \t]*\r?\n?/i, '')
+    .replace(/\r?\n?```[ \t]*$/, '')
+    .trim();
+
+  try {
+    return JSON.parse(cleanedText);
+  } catch {
+    console.error(`[${endpoint}] Failed to parse the server response as JSON.`);
+
+    throw new Error(
+      `[${endpoint}] The server returned invalid JSON. Check the backend response.`,
+    );
+  }
+}
+
 
 function validateStep(step: number, f: FormState): Record<string, string> {
   const e: Record<string, string> = {};
@@ -221,8 +248,74 @@ export default function RegistrationForm({
   const [showPwd, setShowPwd] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+
+  const [emailVerificationSent, setEmailVerificationSent] =
+    useState<boolean | null>(null);
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
+  const [resendError, setResendError] = useState('');
+
   const [form, setForm] = useState<FormState>(INITIAL);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(true);
+  const [departmentsError, setDepartmentsError] = useState('');
+
+  useEffect(() => {
+    const loadDepartments = async () => {
+      try {
+        setDepartmentsLoading(true);
+        setDepartmentsError('');
+
+        const response = await fetch('/api/departments', {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+          },
+        });
+
+        const result = await readJsonResponse(response, 'DEPARTMENTS');
+
+        if (!response.ok) {
+          throw new Error(
+            result?.message ||
+              `Unable to load departments. HTTP ${response.status}.`,
+          );
+        }
+
+        if (!result) {
+          throw new Error(
+            'The departments API returned invalid JSON. Check the browser Console.',
+          );
+        }
+
+        const departmentData = Array.isArray(result)
+          ? result
+          : result.data;
+
+        if (!Array.isArray(departmentData)) {
+          console.error('UNEXPECTED DEPARTMENT DATA:', result);
+
+          throw new Error('Invalid department data received.');
+        }
+
+        setDepartments(departmentData);
+      } catch (error) {
+        console.error('LOAD DEPARTMENTS ERROR:', error);
+
+        setDepartmentsError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to load departments. Please try again.',
+        );
+      } finally {
+        setDepartmentsLoading(false);
+      }
+    };
+
+    void loadDepartments();
+  }, []);
 
   const last = REGISTRATION_STEPS.length - 1;
 
@@ -320,7 +413,6 @@ export default function RegistrationForm({
       return;
     }
 
-    // Revalidate all steps before sending.
     const allErrors = {
       ...validateStep(0, form),
       ...validateStep(1, form),
@@ -339,7 +431,9 @@ export default function RegistrationForm({
         setStep(firstInvalidStep);
       }
 
-      setSubmitError('Please correct the highlighted information before submitting.');
+      setSubmitError(
+        'Please correct the highlighted information before submitting.',
+      );
       return;
     }
 
@@ -387,10 +481,10 @@ export default function RegistrationForm({
         body: data,
       });
 
-      const result = await response.json().catch(() => ({}));
+      const result = await readJsonResponse(response, 'REGISTRATION');
 
       if (!response.ok) {
-        if (result.errors) {
+        if (result?.errors) {
           const messages = Object.values(
             result.errors as Record<string, string[]>,
           ).flat();
@@ -403,12 +497,24 @@ export default function RegistrationForm({
         }
 
         throw new Error(
-          result.message || 'Registration failed. Please try again.',
+          result?.message ||
+            `Registration failed. HTTP ${response.status}. Check the Console for the server response.`,
         );
       }
 
+      if (!result) {
+        throw new Error(
+          'The registration API returned invalid JSON. Check the browser Console.',
+        );
+      }
+
+      setEmailVerificationSent(result.email_verification_sent === true);
+      setResendMessage('');
+      setResendError('');
       setSubmitted(true);
     } catch (error) {
+      console.error('REGISTRATION ERROR:', error);
+
       setSubmitError(
         error instanceof Error
           ? error.message
@@ -419,7 +525,62 @@ export default function RegistrationForm({
     }
   };
 
-  /* ---------- Success ---------- */
+  const resendVerificationEmail = async () => {
+    if (isResendingVerification) {
+      return;
+    }
+
+    setIsResendingVerification(true);
+    setResendMessage('');
+    setResendError('');
+
+    try {
+      const response = await fetch('/api/email/verification-notification', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: form.email.trim(),
+        }),
+      });
+
+      const result = await readJsonResponse(
+        response,
+        'RESEND VERIFICATION EMAIL',
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          result?.message ||
+            `Unable to resend the verification email. HTTP ${response.status}.`,
+        );
+      }
+
+      if (!result) {
+        throw new Error(
+          'The email verification API returned invalid JSON. Check the browser Console.',
+        );
+      }
+
+      setResendMessage(
+        result.message ||
+          'If your account exists and is not yet verified, a verification email will be sent.',
+      );
+    } catch (error) {
+      console.error('RESEND VERIFICATION ERROR:', error);
+
+      setResendError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to connect to PASS. Please try again.',
+      );
+    } finally {
+      setIsResendingVerification(false);
+    }
+  };
+
   if (submitted) {
     return (
       <div
@@ -436,6 +597,43 @@ export default function RegistrationForm({
         <h2 className="text-2xl font-bold text-[#080677] mb-3">
           Registration Submitted!
         </h2>
+
+        {emailVerificationSent ? (
+          <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl p-3 mb-4">
+            A verification email was sent to {form.email.trim()}. Please check
+            your inbox and spam folder.
+          </p>
+        ) : (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+            Your registration was submitted, but we could not confirm that the
+            verification email was sent. You can request another email below.
+          </p>
+        )}
+
+        <div className="mb-5 w-full">
+          <button
+            type="button"
+            onClick={resendVerificationEmail}
+            disabled={isResendingVerification}
+            className="w-full py-3 border border-[#2563EB] text-[#2563EB] font-semibold rounded-xl hover:bg-blue-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          >
+            {isResendingVerification
+              ? 'Sending...'
+              : 'Resend Verification Email'}
+          </button>
+
+          {resendMessage && (
+            <p role="status" className="text-sm text-green-700 mt-3">
+              {resendMessage}
+            </p>
+          )}
+
+          {resendError && (
+            <p role="alert" className="text-sm text-red-600 mt-3">
+              {resendError}
+            </p>
+          )}
+        </div>
 
         <p className="text-slate-500 mb-2">
           Your account is pending review by the PASS administrator.
@@ -464,11 +662,10 @@ export default function RegistrationForm({
     );
   }
 
-  /* ---------- Progress ---------- */
   const progress = m ? (
     <div className="mb-6">
       <p className="text-slate-400 text-sm mb-2">
-        Step {step + 1} of {REGISTRATION_STEPS.length} ·{' '}
+        Step {step + 1} of {REGISTRATION_STEPS.length} Â·{' '}
         <span className="text-[#080677] font-medium">
           {REGISTRATION_STEPS[step]}
         </span>
@@ -536,7 +733,9 @@ export default function RegistrationForm({
     { label: 'School ID Upload', value: form.idFile?.name ?? '' },
     {
       label: 'User Type',
-      value: USER_TYPES.find(t => t.value === form.userType)?.label ?? form.userType,
+      value:
+        USER_TYPES.find(t => t.value === form.userType)?.label ??
+        form.userType,
     },
     { label: 'Department', value: form.dept },
     { label: 'Contact', value: form.contact },
@@ -544,7 +743,7 @@ export default function RegistrationForm({
       ? [
           {
             label: 'Vehicle',
-            value: `${form.vehicleType} — ${form.make} ${form.model}, ${form.color}`,
+            value: `${form.vehicleType} â€” ${form.make} ${form.model}, ${form.color}`,
           },
           { label: 'Plate Number', value: form.plate.toUpperCase() },
           { label: "Driver's License No.", value: form.licenseNo },
@@ -654,14 +853,31 @@ export default function RegistrationForm({
                 value={form.dept}
                 onChange={e => set('dept', e.target.value)}
                 className={inputCls('dept')}
+                disabled={departmentsLoading || departmentsError !== ''}
               >
-                <option value="">Select department</option>
-                {DEPARTMENTS.map(d => (
-                  <option key={d} value={d}>
-                    {d}
+                <option value="">
+                  {departmentsLoading
+                    ? 'Loading departments...'
+                    : departmentsError
+                      ? 'Departments unavailable'
+                      : 'Select department'}
+                </option>
+
+                {departments.map(department => (
+                  <option
+                    key={department.department_id}
+                    value={department.department_name}
+                  >
+                    {department.department_name}
                   </option>
                 ))}
               </select>
+
+              {departmentsError && (
+                <p role="alert" className="text-xs text-red-500 mt-1">
+                  {departmentsError}
+                </p>
+              )}
 
               {err('dept')}
             </div>
@@ -786,7 +1002,7 @@ export default function RegistrationForm({
                   </span>
 
                   <span className="text-slate-700 font-semibold text-right break-all">
-                    {r.value || '—'}
+                    {r.value || 'â€”'}
                   </span>
                 </div>
               ))}
@@ -802,7 +1018,8 @@ export default function RegistrationForm({
 
               <span>
                 I agree to the PASS{' '}
-                <span className="text-[#2563EB]">Terms and Conditions</span> and{' '}
+                <span className="text-[#2563EB]">Terms and Conditions</span>{' '}
+                and{' '}
                 <span className="text-[#2563EB]">Privacy Notice</span>. I
                 certify that all information and documents provided are
                 accurate.
