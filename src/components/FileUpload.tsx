@@ -10,7 +10,7 @@ export function validateFile(f: File): string | null {
   return null;
 }
 
-/** Shared document upload field (school ID, driver's license). Prototype: the file is kept in memory only. */
+/** Shared document upload field (school ID, driver's license). Validates type and size before upload. */
 export default function FileUpload({ label, file, error, onChange, onError }: {
   label: string;
   file: File | null;
