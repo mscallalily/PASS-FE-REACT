@@ -4,12 +4,11 @@ import { REGULAR_USER_ROLES, useAuth } from '../../context/AuthContext';
 import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input, Tabs, Toast, EmptyState } from '../../components/ui';
 import { MOCK_VEHICLES } from '../../data/mock';
 import { Car, Plus, AlertTriangle, RefreshCw } from 'lucide-react';
-import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input, Tabs, Toast } from '../../components/ui';
-import { Car, Plus, AlertTriangle } from 'lucide-react';
 import DriverLicenseVerification from '../../components/DriverLicenseVerification';
 import LicenseReviewQueue from '../../components/LicenseReviewQueue';
 import { useLicense, licenseOnFile as isLicenseOnFile } from '../../context/LicenseContext';
-import { ApiError } from '../../lib/apiClient';
+import { ApiError, apiBlob } from '../../lib/apiClient';
+import FileUpload from '../../components/FileUpload';
 
 type AuthorizationStatus = 'pending' | 'approved' | 'rejected' | 'revoked' | 'expired' | 'suspended';
 
@@ -41,7 +40,7 @@ interface VehicleAuthorizationRow extends VehicleRecord {
   owner_name: string | null;
 }
 
-type AuthAction = { kind: 'suspend' | 'lift'; row: VehicleAuthorizationRow };
+type AuthAction = { kind: 'suspend' | 'lift' | 'approve' | 'reject'; row: VehicleAuthorizationRow };
 
 const AUTH_STATUS_LABEL: Record<AuthorizationStatus, string> = {
   pending: 'Pending Review',
@@ -94,7 +93,7 @@ async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T>
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers as Record<string, string> | undefined),
     },
   });
@@ -143,12 +142,6 @@ interface VehiclesApiResponse {
   message?: string;
 }
 
-function getToken(): string | null {
-  return (
-    localStorage.getItem('pass_auth_token') ||
-    sessionStorage.getItem('pass_auth_token')
-  );
-}
 
 async function fetchVehicles(): Promise<VehicleRow[]> {
   const token = getToken();
@@ -157,7 +150,7 @@ async function fetchVehicles(): Promise<VehicleRow[]> {
     throw new Error('Session expired. Please log in again.');
   }
 
-  const response = await fetch('/api/admin/vehicles', {
+  const response = await fetch('/api/vehicles', {
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
@@ -171,6 +164,42 @@ async function fetchVehicles(): Promise<VehicleRow[]> {
   }
 
   return data.vehicles ?? [];
+}
+
+function VehiclePhotoPanel({ id, editable, onSaved }: { id: string | number; editable: boolean; onSaved: () => void }) {
+  const [url, setUrl] = useState('');
+  const [error, setError] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = '';
+    setUrl(''); setError('');
+    apiBlob(`/api/vehicles/${id}/photo`).then(blob => {
+      if (!cancelled) { objectUrl = URL.createObjectURL(blob); setUrl(objectUrl); }
+    }).catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : 'Unable to load photo.'); });
+    return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [id, version]);
+  async function save() {
+    if (!file || busy) return;
+    setBusy(true); setError('');
+    try {
+      const body = new FormData(); body.append('vehicle_photo', file);
+      await apiRequest(`/api/vehicles/${id}/photo`, { method: 'POST', body });
+      setFile(null); setVersion(v => v + 1); onSaved();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Upload failed.'); }
+    finally { setBusy(false); }
+  }
+  return <div className="space-y-3">
+    {url && <img src={url} alt="Submitted vehicle photo for plate comparison" className="max-h-80 w-full rounded-xl object-contain bg-slate-50" />}
+    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+    {editable && <>
+      <FileUpload label="Vehicle photo — show the plate clearly (JPG/PNG)" file={file} onChange={setFile} onError={setError} />
+      <Button onClick={save} disabled={!file || busy}>{busy ? 'Uploading…' : 'Save vehicle photo'}</Button>
+      <p className="text-xs text-slate-500">Saving a replacement photo returns this submission to pending review.</p>
+    </>}
+  </div>;
 }
 
 export default function VehicleManagement() {
@@ -187,6 +216,8 @@ export default function VehicleManagement() {
   const [filterStatus, setFilterStatus] = useState('');
   const [selected, setSelected] = useState<any>(null);
   const [showRegister, setShowRegister] = useState(false);
+  const [photoVehicleId, setPhotoVehicleId] = useState<number | null>(null);
+  const [vehiclePhoto, setVehiclePhoto] = useState<File | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const [authRows, setAuthRows] = useState<VehicleAuthorizationRow[]>([]);
@@ -246,10 +277,33 @@ export default function VehicleManagement() {
       clearTimeout(timer);
     };
   }, [isRegularUser, tab, authSearch, authStatus, authReloadKey]);
-  const [toast, setToast] = useState('');
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
   const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [vehicleError, setVehicleError] = useState('');
+  const [vehicleReloadKey, setVehicleReloadKey] = useState(0);
+  const [registerBusy, setRegisterBusy] = useState(false);
+  const [registerError, setRegisterError] = useState('');
+  const [vehicleForm, setVehicleForm] = useState({ plate_number: '', vehicle_type: 'Sedan', year_model: '', make: '', model: '', color: '' });
+
+  async function registerVehicle() {
+    if (registerBusy) return;
+    if (!vehiclePhoto) { setRegisterError('Upload a vehicle photo showing the plate.'); return; }
+    setRegisterBusy(true); setRegisterError('');
+    try {
+      const body = new FormData();
+      Object.entries(vehicleForm).forEach(([key, value]) => { if (value) body.append(key, value); });
+      body.append('vehicle_photo', vehiclePhoto);
+      const data = await apiRequest<{ message: string }>('/api/vehicles', { method: 'POST', body });
+      setVehiclePhoto(null);
+      setShowRegister(false);
+      setVehicleForm({ plate_number: '', vehicle_type: 'Sedan', year_model: '', make: '', model: '', color: '' });
+      setVehicleReloadKey(k => k + 1); setMyReloadKey(k => k + 1);
+      showToast(data.message);
+    } catch (error) {
+      setRegisterError(error instanceof Error ? error.message : 'Vehicle registration failed.');
+    } finally { setRegisterBusy(false); }
+  }
+
 
   // Regular user "Authorization Status" tab: only the signed-in user's vehicles.
   useEffect(() => {
@@ -298,7 +352,7 @@ export default function VehicleManagement() {
     if (!pendingAction) return;
 
     const { kind, row } = pendingAction;
-    const endpoint = kind === 'suspend' ? 'suspend' : 'lift-suspension';
+    const endpoint = kind === 'approve' || kind === 'reject' ? 'review' : kind === 'suspend' ? 'suspend' : 'lift-suspension';
 
     setActionBusy(true);
     setActionError('');
@@ -308,7 +362,7 @@ export default function VehicleManagement() {
         `/api/vehicles/authorizations/${row.authorization_id}/${endpoint}`,
         {
           method: 'PATCH',
-          body: JSON.stringify(kind === 'suspend' ? { reason: actionReason.trim() || null } : {}),
+          body: JSON.stringify(kind === 'approve' || kind === 'reject' ? { decision: kind === 'approve' ? 'approved' : 'rejected', reason: actionReason.trim() || null } : kind === 'suspend' ? { reason: actionReason.trim() || null } : {}),
         }
       );
 
@@ -383,7 +437,7 @@ export default function VehicleManagement() {
   return () => {
     cancelled = true;
   };
-}, []);
+}, [vehicleReloadKey]);
 
   const roleScopedVehicles = vehicles;
   const filtered = roleScopedVehicles.filter(v => {
@@ -449,7 +503,7 @@ export default function VehicleManagement() {
               { key: 'type', label: 'Type' },
               { key: 'color', label: 'Color' },
               { key: 'rfid', label: 'RFID', render: v => v.rfid ? <span className="text-xs font-mono text-slate-500">{v.rfid}</span> : <span className="text-xs text-slate-300">Unassigned</span> },
-              { key: 'status', label: 'Status', render: v => <Badge variant={statusBadge(v.status)}>{v.status}</Badge> },
+              { key: 'status', label: 'Authorization', render: v => <Badge variant={statusBadge(v.status)}>{v.status}</Badge> },
               { key: 'actions', label: 'Actions', render: v => <Button size="sm" variant="ghost" onClick={() => setSelected(v)}>View</Button> },
             ]}
             data={filtered}
@@ -541,7 +595,11 @@ export default function VehicleManagement() {
                     ? <span className="whitespace-nowrap">{formatDate(r.valid_from)} – {formatDate(r.valid_until)}</span>
                     : '—'
                 )},
+                { key: 'photo', label: 'Photo', render: (r: VehicleAuthorizationRow) => <Button size="sm" variant="outline" onClick={() => setPhotoVehicleId(r.vehicle_id)}>View photo</Button> },
                 { key: 'actions', label: 'Actions', render: (r: VehicleAuthorizationRow) => {
+                  if (r.authorization_status === 'pending') {
+                    return <div className="flex gap-2"><Button size="sm" onClick={() => openAction({ kind: 'approve', row: r })}>Approve</Button><Button size="sm" variant="danger" onClick={() => openAction({ kind: 'reject', row: r })}>Reject</Button></div>;
+                  }
                   if (r.authorization_status === 'approved') {
                     return (
                       <Button size="sm" variant="danger" onClick={() => openAction({ kind: 'suspend', row: r })}>Suspend</Button>
@@ -619,21 +677,23 @@ export default function VehicleManagement() {
       <Modal
         open={!!pendingAction}
         onClose={closeAction}
-        title={pendingAction?.kind === 'lift' ? 'Lift Suspension' : 'Suspend Vehicle Authorization'}
+        title={pendingAction?.kind === 'approve' ? 'Approve Vehicle' : pendingAction?.kind === 'reject' ? 'Reject Vehicle' : pendingAction?.kind === 'lift' ? 'Lift Suspension' : 'Suspend Vehicle Authorization'}
         size="sm"
       >
         {pendingAction && (
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              {pendingAction.kind === 'suspend' ? (
+              {pendingAction.kind === 'approve' || pendingAction.kind === 'reject' ? (
+                <>Confirm {pendingAction.kind} for {pendingAction.row.plate_number}? Approval requires an active account and an eligible verified driver license. RFID assignment is separate.</>
+              ) : pendingAction.kind === 'suspend' ? (
                 <>Suspend the authorization for <span className="font-mono font-bold text-[#080677]">{pendingAction.row.plate_number}</span>? The vehicle will be treated as unauthorized until the suspension is lifted.</>
               ) : (
                 <>Lift the suspension for <span className="font-mono font-bold text-[#080677]">{pendingAction.row.plate_number}</span>? The authorization will return to Approved if the vehicle still meets all approval and access requirements.</>
               )}
             </p>
-            {pendingAction.kind === 'suspend' && (
+            {(pendingAction.kind === 'suspend' || pendingAction.kind === 'reject') && (
               <Input
-                label="Reason (optional)"
+                label={pendingAction.kind === 'reject' ? 'Reason (required)' : 'Reason (optional)'}
                 placeholder="e.g. Parking violation under review"
                 maxLength={255}
                 value={actionReason}
@@ -655,7 +715,7 @@ export default function VehicleManagement() {
               >
                 {actionBusy
                   ? 'Saving...'
-                  : pendingAction.kind === 'suspend' ? 'Suspend' : 'Lift Suspension'}
+                  : pendingAction.kind === 'approve' ? 'Approve' : pendingAction.kind === 'reject' ? 'Reject' : pendingAction.kind === 'suspend' ? 'Suspend' : 'Lift Suspension'}
               </Button>
             </div>
           </div>
@@ -676,19 +736,22 @@ export default function VehicleManagement() {
                 <Badge variant={statusBadge(selected.status)}>{selected.status}</Badge>
               </div>
             </div>
-            {[['Owner', selected.owner], ['Vehicle Type', selected.type], ['Color', selected.color], ['RFID Tag', selected.rfid || 'Not assigned'], ['Registration Status', selected.status]].map(([k, v]) => (
+            {[['Owner', selected.owner], ['Vehicle Type', selected.type], ['Color', selected.color], ['RFID Tag', selected.rfid || 'Not assigned'], ['Registration Status', selected.registrationStatus || 'registered'], ['Authorization Status', selected.authorizationStatus || selected.status]].map(([k, v]) => (
               <div key={k} className="flex justify-between text-sm border-b border-slate-50 pb-2">
                 <span className="text-slate-400">{k}</span>
                 <span className="font-medium text-slate-700">{v}</span>
               </div>
             ))}
+            <VehiclePhotoPanel key={selected.id} id={selected.id} editable={isRegularUser && ['pending', 'rejected'].includes(selected.authorizationStatus || selected.status)} onSaved={() => { setVehicleReloadKey(k => k + 1); setMyReloadKey(k => k + 1); showToast('Photo saved; pending staff review.'); }} />
             <div className="flex gap-3 pt-2">
-              <Button onClick={() => { showToast('Demo only: changes were not saved to a database.'); setSelected(null); }}>Save</Button>
-              <Button variant="danger" onClick={() => { showToast(`Suspended: ${selected.plate}`); setSelected(null); }}>Suspend</Button>
               <Button variant="outline" onClick={() => setSelected(null)}>Close</Button>
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal open={photoVehicleId !== null} onClose={() => setPhotoVehicleId(null)} title="Vehicle photo">
+        {photoVehicleId !== null && <VehiclePhotoPanel key={photoVehicleId} id={photoVehicleId} editable={false} onSaved={() => {}} />}
       </Modal>
 
       {/* Register Vehicle Modal */}
@@ -709,18 +772,20 @@ export default function VehicleManagement() {
             {(license.status === 'pending_review' || license.status === 'processing') && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">Your license is still pending review. The vehicle cannot be authorized until it is verified.</p>
             )}
-            <Input label="Plate Number" placeholder="ABC-1234" />
+            <Input label="Plate Number" placeholder="ABC-1234" value={vehicleForm.plate_number} onChange={e => setVehicleForm(f => ({ ...f, plate_number: e.target.value.toUpperCase() }))} disabled={registerBusy} />
             <div className="grid grid-cols-2 gap-4">
-              <Select label="Vehicle Type"><option>Sedan</option><option>SUV</option><option>Hatchback</option><option>Pickup</option><option>Motorcycle</option><option>Van</option></Select>
-              <Input label="Year" placeholder="2024" type="number" />
+              <Select label="Vehicle Type" value={vehicleForm.vehicle_type} onChange={e => setVehicleForm(f => ({ ...f, vehicle_type: e.target.value }))} disabled={registerBusy}><option>Sedan</option><option>SUV</option><option>Hatchback</option><option>Pickup</option><option>Motorcycle</option><option>Van</option></Select>
+              <Input label="Year" placeholder="2024" type="number" value={vehicleForm.year_model} onChange={e => setVehicleForm(f => ({ ...f, year_model: e.target.value }))} disabled={registerBusy} />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Make" placeholder="Toyota" />
-              <Input label="Model" placeholder="Vios" />
+              <Input label="Make" placeholder="Toyota" value={vehicleForm.make} onChange={e => setVehicleForm(f => ({ ...f, make: e.target.value }))} disabled={registerBusy} />
+              <Input label="Model" placeholder="Vios" value={vehicleForm.model} onChange={e => setVehicleForm(f => ({ ...f, model: e.target.value }))} disabled={registerBusy} />
             </div>
-            <Input label="Color" placeholder="White" />
+            <Input label="Color" placeholder="White" value={vehicleForm.color} onChange={e => setVehicleForm(f => ({ ...f, color: e.target.value }))} disabled={registerBusy} />
+            <FileUpload label="Vehicle photo — show the plate clearly (JPG/PNG, up to 5 MB)" file={vehiclePhoto} onChange={setVehiclePhoto} onError={setRegisterError} />
+            {registerError && <p role="alert" className="text-sm text-red-700">{registerError}</p>}
             <div className="flex gap-3 pt-2">
-              <Button onClick={() => { showToast('Demo only: vehicle registration was not saved. Backend integration is required.'); setShowRegister(false); }}>Submit Registration</Button>
+              <Button onClick={registerVehicle} disabled={registerBusy}>{registerBusy ? 'Submitting…' : 'Submit Registration'}</Button>
               <Button variant="outline" onClick={() => setShowRegister(false)}>Cancel</Button>
             </div>
           </div>

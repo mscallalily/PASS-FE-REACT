@@ -178,33 +178,6 @@ loadOccupancy();
         </p>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard
-          label="Total Users"
-          value="248"
-          icon={<Users size={20} />}
-          color="blue"
-          sub="↑ 12 this week"
-        />
-        <StatCard
-          label="Vehicles"
-          value="320"
-          icon={<Car size={20} />}
-          color="sky"
-          sub="↑ 8 new"
-        />
-        <StatCard
-          label="RFID Tags"
-          value="250"
-          icon={<CreditCard size={20} />}
-          color="purple"
-          sub="12 unassigned"
-        />
-        <StatCard
-          label="Pending Approvals"
-          value="7"
-      {/* Summary Cards */}
-
       {/* Summary Cards */}
       {dashboardError && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -258,35 +231,10 @@ loadOccupancy();
             Entry & Exit Activity
           </h3>
           <p className="text-xs text-slate-400 mb-5">
-            Today's hourly traffic
+            Today's total entries and exits
           </p>
 
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={OCCUPANCY_DATA}>
-              <XAxis
-                dataKey="time"
-                tick={{ fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip />
-              <Bar
-                dataKey="entries"
-                name="Entries"
-                fill="#2563EB"
-                radius={[4, 4, 0, 0]}
-              />
-              <Bar
-                dataKey="exits"
-                name="Exits"
-                fill="#38BDF8"
-                radius={[4, 4, 0, 0]}
-              />
             <BarChart
   data={[
     {

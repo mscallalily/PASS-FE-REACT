@@ -1,3 +1,4 @@
+
 ﻿import React, { useEffect, useState } from 'react';
 import {
   Check,
@@ -980,6 +981,7 @@ export default function RegistrationForm({
 
                     {text('Expiry Date', 'licenseExpiry', '', 'date')}
                     {fileField("Driver's License (front)", 'licenseFile')}
+                    
                   </div>
                 </div>
               </>
