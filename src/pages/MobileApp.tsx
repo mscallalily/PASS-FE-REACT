@@ -286,10 +286,10 @@ function HomeScreen({ user, onNavigate, onLogout }: { user: MobileUser; onNaviga
 
         {/* Driver's license verification status */}
         <button onClick={() => onNavigate('license')} className="w-full bg-white rounded-2xl border border-blue-100 p-4 shadow-sm flex items-center gap-3 text-left active:scale-95 transition-all">
-          <span className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${licenseStatus === 'verified' ? 'bg-green-100 text-green-600' : licenseStatus === 'pending' ? 'bg-amber-100 text-amber-600' : licenseStatus === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-blue-50 text-[#2563EB]'}`}><IdCard size={18} /></span>
+          <span className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${licenseStatus === 'verified' ? 'bg-green-100 text-green-600' : licenseStatus === 'pending_review' || licenseStatus === 'processing' ? 'bg-amber-100 text-amber-600' : licenseStatus === 'needs_correction' ? 'bg-red-100 text-red-600' : 'bg-blue-50 text-[#2563EB]'}`}><IdCard size={18} /></span>
           <span className="flex-1 min-w-0">
             <span className="block text-sm font-semibold text-slate-700">Driver&apos;s License</span>
-            <span className="block text-xs text-slate-500">{LICENSE_STATUS_LABEL[licenseStatus]}{licenseStatus === 'not_submitted' ? ' — tap to submit' : licenseStatus === 'rejected' ? ' — tap to resubmit' : ''}</span>
+            <span className="block text-xs text-slate-500">{LICENSE_STATUS_LABEL[licenseStatus]}{licenseStatus === 'not_submitted' ? ' — tap to submit' : licenseStatus === 'needs_correction' ? ' — tap to resubmit' : ''}</span>
           </span>
           <ChevronRight size={16} className="text-slate-300 shrink-0" />
         </button>

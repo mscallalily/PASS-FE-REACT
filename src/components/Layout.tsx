@@ -1,5 +1,6 @@
-import React, { useState, ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, ReactNode } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { apiRequest } from '../lib/apiClient';
 import { roleLabel, useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, Users, Car, CreditCard, ParkingSquare, FileBarChart,
@@ -88,6 +89,19 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [logoutModal, setLogoutModal] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const { pathname } = useLocation();
+
+  // Unread notification count from the API; refreshed periodically and on navigation.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => apiRequest<{ unread_count: number }>('/api/notifications/unread-count')
+      .then(r => { if (!cancelled) setUnread(r.unread_count); })
+      .catch(() => { /* keep the last known count */ });
+    load();
+    const timer = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [pathname]);
 
   const role = user?.role ?? 'student';
   const visibleNav = NAV_ITEMS.filter(item => !item.roles || item.roles.includes(role));
@@ -180,9 +194,13 @@ export default function Layout({ children }: { children: ReactNode }) {
             <p className="hidden lg:block text-xs text-slate-500">Dr. Yanga&apos;s Colleges, Inc. · Parking Access and Space Management System</p>
           </div>
           <div className="flex items-center gap-2">
-            <NavLink to="/app/notifications" className="relative p-2 rounded-lg hover:bg-blue-50 text-slate-500 hover:text-[#2563EB] transition-colors">
+            <NavLink to="/app/notifications" aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'} className="relative p-2 rounded-lg hover:bg-blue-50 text-slate-500 hover:text-[#2563EB] transition-colors">
               <Bell size={18} />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+              {unread > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
             </NavLink>
             <NavLink to="/app/profile" className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">
               <div className="w-7 h-7 rounded-full bg-[#080677] text-white text-xs flex items-center justify-center font-semibold">

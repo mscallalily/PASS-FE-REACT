@@ -70,7 +70,7 @@ export default function VisitorQR() {
   return (
     <div className="animate-fadein">
       {toast && <Toast message={toast} type="success" onClose={() => setToast('')} />}
-      <PageHeader title="Visitor QR Access" subtitle="Keep temporary visitor access separate from regular-user RFID access"
+      <PageHeader backToDashboard title="Visitor QR Access" subtitle="Keep temporary visitor access separate from regular-user RFID access"
         action={tab === 'Visitor Records' ? <Button onClick={() => setShowGenerate(true)}><QrCode size={16} /> Create Visitor Pass</Button> : undefined}
       />
       <Tabs tabs={['Visitor Records', 'QR Verification']} active={tab} onChange={setTab} />

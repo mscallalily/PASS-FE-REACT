@@ -11,7 +11,6 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import GuestRegisterPage from './pages/GuestRegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import ResetPasswordPage from './pages/ResetPasswordPage';
 import MobileApp from './pages/MobileApp';
 
 import Dashboard from './pages/app/Dashboard';
@@ -67,7 +66,6 @@ function AppRoutes() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/register/guest" element={<GuestRegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/mobile" element={<MobileApp />} />
 
       {/* Guest dashboard (separate from regular user) */}

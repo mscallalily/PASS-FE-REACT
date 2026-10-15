@@ -62,7 +62,7 @@ export default function RFIDManagement() {
   return (
     <div className="animate-fadein">
       {toast && <Toast message={toast} type="success" onClose={() => setToast('')} />}
-      <PageHeader title="RFID Access" subtitle={user?.role === 'admin' ? 'Assign and revoke RFID credentials for authorized users' : 'Review regular-user RFID entry and exit results'}
+      <PageHeader backToDashboard title="RFID Access" subtitle={user?.role === 'admin' ? 'Assign and revoke RFID credentials for authorized users' : 'Review regular-user RFID entry and exit results'}
         action={tab === 'RFID Assignments' ? <Button onClick={() => setShowAssign(true)}><Plus size={16} /> Register RFID</Button> : undefined}
       />
 
