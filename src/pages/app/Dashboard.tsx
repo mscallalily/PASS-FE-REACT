@@ -9,6 +9,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { OCCUPANCY_DATA, ZONE_CAPACITY, MOCK_AUDIT_LOGS, MOCK_RFID_EVENTS } from '../../data/mock';
 
+
 type DashboardSummary = {
   total_users: number;
   total_vehicles: number;
@@ -44,7 +45,9 @@ const COLORS = ['#2563EB', '#38BDF8', '#10B981', '#F59E0B'];
 function AdminDashboard() {
   const [dashboardData, setDashboardData] =
     useState<DashboardData | null>(null);
-  const [dashboardError, setDashboardError] = useState('');
+    const [occupancyData, setOccupancyData] = useState<any>(null);
+    const [occupancyError, setOccupancyError] = useState('');
+    const [dashboardError, setDashboardError] = useState('');
 
   console.log('AdminDashboard rendered');
 
@@ -97,8 +100,37 @@ const loadDashboard = async () => {
       }
     };
 
-    loadDashboard();
-  }, []);
+loadDashboard();
+
+const loadOccupancy = async () => {
+  try {
+    const response = await fetch('/api/admin/parking/occupancy', {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Occupancy API failed (${response.status})`);
+    }
+
+    const data = await response.json();
+    console.log('Occupancy data:', data);
+    setOccupancyData(data);
+  } catch (error) {
+    setOccupancyError(
+      error instanceof Error
+        ? error.message
+        : 'Unable to load parking occupancy.'
+    );
+  }
+};
+
+loadOccupancy();
+}, []);
+
 
   return (
 

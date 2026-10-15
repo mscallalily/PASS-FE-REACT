@@ -158,6 +158,19 @@ export default function UserManagement() {
   const [error, setError] = useState('');
   const [actionId, setActionId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [newUser, setNewUser] = useState({
+  full_name: '',
+  user_code: '',
+  email: '',
+  password: '',
+  password_confirmation: '',
+  department_id: '',
+  contact_number: '',
+});
+
+const [savingUser, setSavingUser] = useState(false);
+const [addUserError, setAddUserError] = useState('');
+
 
   const showToast = (message: string) => {
     setToast(message);
@@ -233,6 +246,65 @@ export default function UserManagement() {
   });
 
   const pending = users.filter((user) => user.status === 'pending');
+
+async function handleAddUser() {
+  setAddUserError('');
+
+  if (
+    !newUser.full_name.trim() ||
+    !newUser.user_code.trim() ||
+    !newUser.email.trim() ||
+    !newUser.password ||
+    !newUser.password_confirmation ||
+    !newUser.department_id
+  ) {
+    setAddUserError('Please complete all required fields.');
+    return;
+  }
+
+  if (newUser.password !== newUser.password_confirmation) {
+    setAddUserError('Passwords do not match.');
+    return;
+  }
+
+  setSavingUser(true);
+
+  try {
+    const result = await apiRequest<{ message: string; user: ApiUser }>(
+      '/api/admin/users',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...newUser,
+          department_id: 9,
+        }),
+      }
+    );
+
+    showToast(result.message || 'Parking Staff account created.');
+    setShowAdd(false);
+    setNewUser({
+      full_name: '',
+      user_code: '',
+      email: '',
+      password: '',
+      password_confirmation: '',
+      department_id: '',
+      contact_number: '',
+    });
+    setRefreshKey((value) => value + 1);
+  } catch (err) {
+    setAddUserError(
+      err instanceof Error ? err.message : 'Unable to create account.'
+    );
+  } finally {
+    setSavingUser(false);
+  }
+}
+
 
   async function handleDecision(
     user: UserRow,
@@ -646,25 +718,94 @@ export default function UserManagement() {
         size="md"
       >
         <div className="space-y-4">
-          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-            Admin-side user creation is not connected to the backend yet.
-            This form will not create a database record.
-          </p>
+  <p className="text-sm text-slate-500">
+    Create a new Parking Staff account.
+  </p>
 
-          <Input label="Full Name" placeholder="Juan dela Cruz" />
-          <Input label="Institutional ID" placeholder="2024-00001" />
-          <Input
-            label="Email"
-            type="email"
-            placeholder="juan@university.edu"
-          />
+  {addUserError && (
+    <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+      {addUserError}
+    </p>
+  )}
 
-          <div className="flex gap-3 pt-2">
-            <Button variant="outline" onClick={() => setShowAdd(false)}>
-              Close
-            </Button>
-          </div>
-        </div>
+  <Input
+    label="Full Name"
+    placeholder="Juan dela Cruz"
+    value={newUser.full_name}
+    onChange={(e) =>
+      setNewUser({ ...newUser, full_name: e.target.value })
+    }
+  />
+
+  <Input
+    label="Staff ID"
+    placeholder="e.g. PST-0001"
+    value={newUser.user_code}
+    onChange={(e) =>
+      setNewUser({ ...newUser, user_code: e.target.value })
+    }
+  />
+
+  <Input
+    label="Email"
+    type="email"
+    placeholder="staff@university.edu"
+    value={newUser.email}
+    onChange={(e) =>
+      setNewUser({ ...newUser, email: e.target.value })
+    }
+  />
+
+  <Input
+    label="Password"
+    type="password"
+    value={newUser.password}
+    onChange={(e) =>
+      setNewUser({ ...newUser, password: e.target.value })
+    }
+  />
+
+  <Input
+    label="Confirm Password"
+    type="password"
+    value={newUser.password_confirmation}
+    onChange={(e) =>
+      setNewUser({ ...newUser, password_confirmation: e.target.value })
+    }
+  />
+
+  <div>
+  <label className="mb-1 block text-sm font-medium text-slate-700">
+    Department
+  </label>
+  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
+    Security Office
+  </div>
+</div>
+
+  <Input
+    label="Contact Number (optional)"
+    placeholder="09XXXXXXXXX"
+    value={newUser.contact_number}
+    onChange={(e) =>
+      setNewUser({ ...newUser, contact_number: e.target.value })
+    }
+  />
+
+  <div className="flex gap-3 pt-2">
+    <Button
+      variant="outline"
+      onClick={() => setShowAdd(false)}
+      disabled={savingUser}
+    >
+      Cancel
+    </Button>
+
+    <Button onClick={handleAddUser} disabled={savingUser}>
+      {savingUser ? 'Creating...' : 'Create Account'}
+    </Button>
+  </div>
+</div>
       </Modal>
     </div>
   );
