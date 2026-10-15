@@ -1,11 +1,9 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { REGULAR_USER_ROLES, useAuth } from '../../context/AuthContext';
 import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input, Tabs, Toast, EmptyState } from '../../components/ui';
 import { MOCK_VEHICLES } from '../../data/mock';
 import { Car, Plus, AlertTriangle, RefreshCw } from 'lucide-react';
-import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input, Tabs, Toast } from '../../components/ui';
-import { Car, Plus, AlertTriangle } from 'lucide-react';
 import DriverLicenseVerification from '../../components/DriverLicenseVerification';
 import LicenseReviewQueue from '../../components/LicenseReviewQueue';
 import { useLicense, licenseOnFile as isLicenseOnFile } from '../../context/LicenseContext';
@@ -72,7 +70,7 @@ function AuthStatusBadge({ status }: { status: AuthorizationStatus | null }) {
 }
 
 function vehicleDescription(r: VehicleRecord) {
-  return [r.year_model, r.make, r.model].filter(Boolean).join(' ') || '—';
+  return [r.year_model, r.make, r.model].filter(Boolean).join(' ') || 'â€”';
 }
 
 function getToken(): string | null {
@@ -109,7 +107,7 @@ async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T>
 }
 
 function formatDate(value: string | null) {
-  if (!value) return '—';
+  if (!value) return 'â€”';
 
   const date = new Date(value);
 
@@ -142,14 +140,6 @@ interface VehiclesApiResponse {
   vehicles?: VehicleRow[];
   message?: string;
 }
-
-function getToken(): string | null {
-  return (
-    localStorage.getItem('pass_auth_token') ||
-    sessionStorage.getItem('pass_auth_token')
-  );
-}
-
 async function fetchVehicles(): Promise<VehicleRow[]> {
   const token = getToken();
 
@@ -246,7 +236,6 @@ export default function VehicleManagement() {
       clearTimeout(timer);
     };
   }, [isRegularUser, tab, authSearch, authStatus, authReloadKey]);
-  const [toast, setToast] = useState('');
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
   const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [vehicleError, setVehicleError] = useState('');
@@ -412,7 +401,7 @@ export default function VehicleManagement() {
       {tab === 'My Vehicles' && isRegularUser && !licenseOnFile && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <AlertTriangle size={18} className="text-amber-600 shrink-0" />
-          <p className="flex-1 min-w-[200px] text-sm text-amber-800">Submit your driver’s license before registering a vehicle.</p>
+          <p className="flex-1 min-w-[200px] text-sm text-amber-800">Submit your driverâ€™s license before registering a vehicle.</p>
           <Button size="sm" onClick={() => setTab('Driver & License')}>Submit License</Button>
         </div>
       )}
@@ -467,7 +456,7 @@ export default function VehicleManagement() {
             </div>
             <Select label="Registered vehicle" value={requestVehicle} onChange={e => setRequestVehicle(e.target.value)}>
               <option value="">Select a vehicle</option>
-              {roleScopedVehicles.map(v => <option key={v.id} value={v.plate}>{v.plate} — {v.make} {v.model}</option>)}
+              {roleScopedVehicles.map(v => <option key={v.id} value={v.plate}>{v.plate} â€” {v.make} {v.model}</option>)}
             </Select>
             <Button disabled={!requestVehicle || rfidRequests.some(r => r.plate === requestVehicle)} onClick={() => {
               setRfidRequests(prev => [...prev, { plate: requestVehicle, status: 'Pending Admin Processing', submitted: new Date().toLocaleDateString() }]);
@@ -522,10 +511,10 @@ export default function VehicleManagement() {
                     {r.color && <p className="text-xs text-slate-400">{r.color}</p>}
                   </div>
                 )},
-                { key: 'vehicle_type', label: 'Type', render: (r: VehicleAuthorizationRow) => r.vehicle_type || '—' },
+                { key: 'vehicle_type', label: 'Type', render: (r: VehicleAuthorizationRow) => r.vehicle_type || 'â€”' },
                 { key: 'owner', label: 'Owner', render: (r: VehicleAuthorizationRow) => (
                   <div>
-                    <p className="text-slate-700">{r.owner_name || '—'}</p>
+                    <p className="text-slate-700">{r.owner_name || 'â€”'}</p>
                     <p className="text-xs text-slate-400">{r.owner_kind === 'visitor' ? 'Visitor' : r.owner_code || 'User'}</p>
                   </div>
                 )},
@@ -538,8 +527,8 @@ export default function VehicleManagement() {
                 )},
                 { key: 'validity', label: 'Validity', render: (r: VehicleAuthorizationRow) => (
                   r.valid_from || r.valid_until
-                    ? <span className="whitespace-nowrap">{formatDate(r.valid_from)} – {formatDate(r.valid_until)}</span>
-                    : '—'
+                    ? <span className="whitespace-nowrap">{formatDate(r.valid_from)} â€“ {formatDate(r.valid_until)}</span>
+                    : 'â€”'
                 )},
                 { key: 'actions', label: 'Actions', render: (r: VehicleAuthorizationRow) => {
                   if (r.authorization_status === 'approved') {
@@ -554,7 +543,7 @@ export default function VehicleManagement() {
                     );
                   }
 
-                  return <span className="text-xs text-slate-300">—</span>;
+                  return <span className="text-xs text-slate-300">â€”</span>;
                 }},
               ]}
               data={authRows}
@@ -593,21 +582,21 @@ export default function VehicleManagement() {
                     {r.color && <p className="text-xs text-slate-400">{r.color}</p>}
                   </div>
                 )},
-                { key: 'vehicle_type', label: 'Type', render: (r: VehicleRecord) => r.vehicle_type || '—' },
+                { key: 'vehicle_type', label: 'Type', render: (r: VehicleRecord) => r.vehicle_type || 'â€”' },
                 { key: 'authorization_status', label: 'Auth Status', render: (r: VehicleRecord) => <AuthStatusBadge status={r.authorization_status} /> },
-                { key: 'parking_area', label: 'Parking Area', render: (r: VehicleRecord) => r.authorization_id ? (r.parking_area || 'All areas') : '—' },
+                { key: 'parking_area', label: 'Parking Area', render: (r: VehicleRecord) => r.authorization_id ? (r.parking_area || 'All areas') : 'â€”' },
                 { key: 'sticker_number', label: 'Sticker No.', render: (r: VehicleRecord) => r.sticker_number
                   ? <span className="text-xs font-mono text-slate-500">{r.sticker_number}</span>
                   : <span className="text-xs text-slate-300">None</span> },
                 { key: 'validity', label: 'Validity', render: (r: VehicleRecord) => (
                   r.valid_from || r.valid_until
-                    ? <span className="whitespace-nowrap">{formatDate(r.valid_from)} – {formatDate(r.valid_until)}</span>
-                    : '—'
+                    ? <span className="whitespace-nowrap">{formatDate(r.valid_from)} â€“ {formatDate(r.valid_until)}</span>
+                    : 'â€”'
                 )},
                 { key: 'requested_at', label: 'Requested', render: (r: VehicleRecord) => formatDate(r.requested_at) },
                 { key: 'remarks', label: 'Remarks', render: (r: VehicleRecord) => r.remarks
                   ? <span className="block max-w-xs truncate text-slate-500" title={r.remarks}>{r.remarks}</span>
-                  : <span className="text-xs text-slate-300">—</span> },
+                  : <span className="text-xs text-slate-300">â€”</span> },
               ]}
               data={myRows}
             />
@@ -697,7 +686,7 @@ export default function VehicleManagement() {
           <div className="space-y-4">
             <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-              <p>A driver’s license is required before you can register a vehicle. Submit it first; you can register the vehicle while it is waiting for review.</p>
+              <p>A driverâ€™s license is required before you can register a vehicle. Submit it first; you can register the vehicle while it is waiting for review.</p>
             </div>
             <div className="flex gap-3">
               <Button onClick={() => { setShowRegister(false); setTab('Driver & License'); }}>Go to Driver & License</Button>
@@ -729,3 +718,4 @@ export default function VehicleManagement() {
     </div>
   );
 }
+

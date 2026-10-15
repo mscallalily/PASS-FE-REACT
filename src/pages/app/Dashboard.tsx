@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { StatCard, Card } from '../../components/ui';
@@ -168,7 +168,7 @@ loadOccupancy();
           Administrative Dashboard
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          System overview —{' '}
+          System overview â€”{' '}
           {new Date().toLocaleDateString('en-PH', {
             weekday: 'long',
             year: 'numeric',
@@ -178,31 +178,6 @@ loadOccupancy();
         </p>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard
-          label="Total Users"
-          value="248"
-          icon={<Users size={20} />}
-          color="blue"
-          sub="↑ 12 this week"
-        />
-        <StatCard
-          label="Vehicles"
-          value="320"
-          icon={<Car size={20} />}
-          color="sky"
-          sub="↑ 8 new"
-        />
-        <StatCard
-          label="RFID Tags"
-          value="250"
-          icon={<CreditCard size={20} />}
-          color="purple"
-          sub="12 unassigned"
-        />
-        <StatCard
-          label="Pending Approvals"
-          value="7"
       {/* Summary Cards */}
 
       {/* Summary Cards */}
@@ -262,31 +237,6 @@ loadOccupancy();
           </p>
 
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={OCCUPANCY_DATA}>
-              <XAxis
-                dataKey="time"
-                tick={{ fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip />
-              <Bar
-                dataKey="entries"
-                name="Entries"
-                fill="#2563EB"
-                radius={[4, 4, 0, 0]}
-              />
-              <Bar
-                dataKey="exits"
-                name="Exits"
-                fill="#38BDF8"
-                radius={[4, 4, 0, 0]}
-              />
             <BarChart
   data={[
     {
@@ -378,10 +328,10 @@ loadOccupancy();
 
                 <div className="flex-1">
                   <p className="text-sm font-medium text-slate-700">
-                    {event.action} — {event.user}
+                    {event.action} â€” {event.user}
                   </p>
                   <p className="text-xs text-slate-400">
-                    {event.module} · {event.timestamp}
+                    {event.module} Â· {event.timestamp}
                   </p>
                 </div>
               </div>
@@ -538,7 +488,7 @@ function UserDashboard() {
 
           <div className="mt-4 flex items-center gap-2 text-sm">
             <CheckCircle size={16} className="text-green-400" />
-            <span>RFID Active — Card RFID-001</span>
+            <span>RFID Active â€” Card RFID-001</span>
           </div>
 
           <div className="mt-2 flex items-center gap-2 text-sm">
@@ -634,7 +584,7 @@ function UserDashboard() {
                   {history.date}
                 </p>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  {history.zone} · Entry: {history.entry} · Exit: {history.exit}
+                  {history.zone} Â· Entry: {history.entry} Â· Exit: {history.exit}
                 </p>
               </div>
 
@@ -775,7 +725,7 @@ function ParkingStaffDashboard() {
               ? '...'
               : dashboard
                 ? String(dashboard.today_entries)
-                : '—'
+                : 'â€”'
           }
           icon={<TrendingUp size={20} />}
           color="green"
@@ -788,7 +738,7 @@ function ParkingStaffDashboard() {
               ? '...'
               : dashboard
                 ? String(dashboard.today_exits)
-                : '—'
+                : 'â€”'
           }
           icon={<Activity size={20} />}
           color="blue"
@@ -801,7 +751,7 @@ function ParkingStaffDashboard() {
               ? '...'
               : dashboard
                 ? String(dashboard.denied_access)
-                : '—'
+                : 'â€”'
           }
           icon={<AlertTriangle size={20} />}
           color="red"
@@ -814,7 +764,7 @@ function ParkingStaffDashboard() {
               ? '...'
               : dashboard
                 ? String(dashboard.active_visitors)
-                : '—'
+                : 'â€”'
           }
           icon={<UserCheck size={20} />}
           color="sky"
@@ -902,7 +852,7 @@ function ParkingStaffDashboard() {
 
                     <span className="text-sm text-slate-600 flex-1 truncate">
                       {event.plate_number ?? 'Unknown Vehicle'}
-                      {' — '}
+                      {' â€” '}
                       {event.ticket_number ?? 'No ticket'}
                     </span>
 
@@ -951,3 +901,4 @@ export default function Dashboard() {
 
   return <UserDashboard />;
 }
+
