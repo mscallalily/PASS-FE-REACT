@@ -5,7 +5,7 @@
       "destination": "https://projectsystem-production.up.railway.app/api/:path*"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
