@@ -4,6 +4,8 @@ import { REGULAR_USER_ROLES, useAuth } from '../../context/AuthContext';
 import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input, Tabs, Toast, EmptyState } from '../../components/ui';
 import { MOCK_VEHICLES } from '../../data/mock';
 import { Car, Plus, AlertTriangle, RefreshCw } from 'lucide-react';
+import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input, Tabs, Toast } from '../../components/ui';
+import { Car, Plus, AlertTriangle } from 'lucide-react';
 import DriverLicenseVerification from '../../components/DriverLicenseVerification';
 import LicenseReviewQueue from '../../components/LicenseReviewQueue';
 import { useLicense, licenseOnFile as isLicenseOnFile } from '../../context/LicenseContext';
@@ -120,6 +122,57 @@ function formatDate(value: string | null) {
   });
 }
 
+interface VehicleRow {
+  id: string;
+  plate: string;
+  owner: string;
+  make: string;
+  model: string;
+  year: number | string | null;
+  type: string;
+  color: string;
+  rfid: string | null;
+  status: string;
+  registrationStatus?: string;
+  authorizationStatus?: string | null;
+  validity?: string | null;
+}
+
+interface VehiclesApiResponse {
+  vehicles?: VehicleRow[];
+  message?: string;
+}
+
+function getToken(): string | null {
+  return (
+    localStorage.getItem('pass_auth_token') ||
+    sessionStorage.getItem('pass_auth_token')
+  );
+}
+
+async function fetchVehicles(): Promise<VehicleRow[]> {
+  const token = getToken();
+
+  if (!token) {
+    throw new Error('Session expired. Please log in again.');
+  }
+
+  const response = await fetch('/api/admin/vehicles', {
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data: VehiclesApiResponse = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || `Request failed (${response.status}).`);
+  }
+
+  return data.vehicles ?? [];
+}
+
 export default function VehicleManagement() {
   const { user } = useAuth();
   const { pathname } = useLocation();
@@ -193,6 +246,10 @@ export default function VehicleManagement() {
       clearTimeout(timer);
     };
   }, [isRegularUser, tab, authSearch, authStatus, authReloadKey]);
+  const [toast, setToast] = useState('');
+  const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
+  const [loadingVehicles, setLoadingVehicles] = useState(true);
+  const [vehicleError, setVehicleError] = useState('');
 
   // Regular user "Authorization Status" tab: only the signed-in user's vehicles.
   useEffect(() => {
@@ -293,9 +350,42 @@ export default function VehicleManagement() {
     else setTab('My Vehicles');
   }, [isRegularUser, pathname]);
 
-  const roleScopedVehicles = isRegularUser
-    ? MOCK_VEHICLES.filter(v => v.owner === user?.name)
-    : MOCK_VEHICLES;
+  useEffect(() => {
+  let cancelled = false;
+
+  async function loadVehicles() {
+    setLoadingVehicles(true);
+    setVehicleError('');
+
+    try {
+      const data = await fetchVehicles();
+
+      if (!cancelled) {
+        setVehicles(data);
+      }
+    } catch (error) {
+      if (!cancelled) {
+        setVehicleError(
+          error instanceof Error
+            ? error.message
+            : 'Failed to load vehicles.'
+        );
+      }
+    } finally {
+      if (!cancelled) {
+        setLoadingVehicles(false);
+      }
+    }
+  }
+
+  loadVehicles();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
+  const roleScopedVehicles = vehicles;
   const filtered = roleScopedVehicles.filter(v => {
     const q = search.toLowerCase();
     const matchQ = v.plate.toLowerCase().includes(q) || v.owner.toLowerCase().includes(q) || v.make.toLowerCase().includes(q);
@@ -341,6 +431,17 @@ export default function VehicleManagement() {
               </Select>
             </SearchBar>
           </div>
+          {loadingVehicles && (
+  <p className="px-5 py-3 text-sm text-slate-500">
+    Loading vehicles...
+  </p>
+)}
+
+{vehicleError && (
+  <p className="px-5 py-3 text-sm text-red-600">
+    {vehicleError}
+  </p>
+)}
           <Table
             columns={[
               { key: 'plate', label: 'Plate No.', render: v => <span className="font-mono font-bold text-[#080677]">{v.plate}</span> },
