@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { PageHeader, Card, Button } from '../../components/ui';
 import { apiRequest } from '../../lib/apiClient';
+import { useTopicVersion } from '../../lib/liveSync';
 import { CheckCircle, AlertTriangle, Info, XCircle, MailCheck, Bell } from 'lucide-react';
+import { formatCampusDateTime } from '../../lib/datetime';
 
 interface NotificationRow {
   notification_id: number;
@@ -33,7 +35,7 @@ function timeAgo(iso: string | null) {
   if (seconds < 60) return 'just now';
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`;
-  return new Date(iso).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return formatCampusDateTime(iso);
 }
 
 export default function Notifications() {
@@ -52,11 +54,9 @@ export default function Notifications() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-    const timer = setInterval(load, 30000);
-    return () => clearInterval(timer);
-  }, [load]);
+  // Reload whenever this user's notifications change (shared refresh).
+  const version = useTopicVersion(['notifications']);
+  useEffect(() => { load(); }, [load, version]);
 
   const markRead = async (n: NotificationRow) => {
     if (n.is_read) return;

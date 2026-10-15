@@ -34,6 +34,8 @@ interface AuthContextType {
   ) => Promise<{ success: boolean; role: UserRole }>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
+  /** False until a saved session has been checked; guards wait for it. */
+  ready: boolean;
 }
 
 interface ApiUser {
@@ -249,6 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         isAuthenticated: !!user,
+        ready: !restoringSession,
       }}
     >
       {restoringSession ? (
