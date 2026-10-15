@@ -28,11 +28,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
-import {
-  OCCUPANCY_DATA,
-  ZONE_CAPACITY,
-  MOCK_AUDIT_LOGS,
-} from '../../data/mock';
+import { ZONE_CAPACITY } from '../../data/mock';
 
 
 type DashboardSummary = {
@@ -76,6 +72,7 @@ function AdminDashboard() {
     const [occupancyData, setOccupancyData] = useState<any>(null);
     const [occupancyError, setOccupancyError] = useState('');
     const [dashboardError, setDashboardError] = useState('');
+    const [recentLogs, setRecentLogs] = useState<any[]>([]);
 
   console.log('AdminDashboard rendered');
 
@@ -157,9 +154,58 @@ const loadOccupancy = async () => {
 };
 
 loadOccupancy();
+const loadRecentLogs = async () => {
+  try {
+    const response = await fetch('/api/admin/audit-logs?page=1', {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Audit logs request failed (${response.status})`);
+    }
+
+    const result = await response.json();
+    setRecentLogs((result.data ?? []).slice(0, 5));
+  } catch (error) {
+    console.error('Failed to load recent audit logs:', error);
+  }
+};
+
+loadRecentLogs();
 }, []);
 
+const activeAlerts = [];
 
+if (dashboardData) {
+  const pending = dashboardData.summary.pending_approvals;
+
+  if (pending > 0) {
+    activeAlerts.push({
+      type: 'info',
+      msg: `${pending} user registration requests pending approval`,
+    });
+  }
+
+  const zones = dashboardData.parking_occupancy || [];
+
+  zones.forEach(zone => {
+    if (zone.capacity <= 0) return;
+
+    const percentage = Math.round(
+      (zone.occupied / zone.capacity) * 100
+    );
+
+    if (percentage >= 80) {
+      activeAlerts.push({
+        type: 'warning',
+        msg: `${zone.zone} at ${percentage}% capacity (${zone.occupied}/${zone.capacity} slots occupied)`,
+      });
+    }
+  });
+}
   return (
 
     <div className="animate-fadein space-y-6">
@@ -168,7 +214,7 @@ loadOccupancy();
           Administrative Dashboard
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          System overview â€”{' '}
+          System overview{' '}
           {new Date().toLocaleDateString('en-PH', {
             weekday: 'long',
             year: 'numeric',
@@ -310,33 +356,66 @@ loadOccupancy();
             </Link>
           </div>
 
-          <div className="space-y-3">
-            {MOCK_AUDIT_LOGS.slice(0, 5).map((event) => (
-              <div
-                key={event.id}
-                className="flex items-center gap-3 p-3 rounded-xl hover:bg-blue-50"
-              >
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                    event.status === 'success'
-                      ? 'bg-green-100 text-green-600'
-                      : 'bg-amber-100 text-amber-600'
-                  }`}
-                >
-                  {event.status === 'success' ? 'OK' : '!'}
-                </div>
+          
+<div className="space-y-3">
+  {recentLogs.length === 0 ? (
+    <p className="text-sm text-slate-400 p-3">
+      No recent administrative activity.
+    </p>
+  ) : (
+    recentLogs.map((event) => {
+      const action = String(event.action || '');
+      const isSuccess = [
+        'created',
+        'updated',
+        'approved',
+        'activated',
+        'assigned',
+      ].includes(action.toLowerCase());
 
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-slate-700">
-                    {event.action} â€” {event.user}
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    {event.module} Â· {event.timestamp}
-                  </p>
-                </div>
-              </div>
-            ))}
+      const moduleName =
+        event.auditable_type?.split('\\').pop() || 'System';
+
+      const actor =
+        event.actor_label ||
+        (event.user_id ? `User #${event.user_id}` : 'System');
+
+      const timestamp = event.created_at
+        ? new Date(
+            event.created_at.replace(' ', 'T')
+          ).toLocaleString('en-PH')
+        : 'Unknown date';
+
+      return (
+        <div
+          key={event.log_id}
+          className="flex items-center gap-3 p-3 rounded-xl hover:bg-blue-50"
+        >
+          <div
+            className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+              isSuccess
+                ? 'bg-green-100 text-green-600'
+                : 'bg-amber-100 text-amber-600'
+            }`}
+          >
+            {isSuccess ? 'OK' : '!'}
           </div>
+
+          <div className="flex-1">
+            <p className="text-sm font-medium text-slate-700">
+              {action} — {actor}
+            </p>
+
+            <p className="text-xs text-slate-400">
+              {moduleName} · {timestamp}
+            </p>
+          </div>
+        </div>
+      );
+    })
+  )}
+</div>
+
         </Card>
 
         <Card className="p-6">
@@ -397,20 +476,7 @@ loadOccupancy();
         </h3>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {[
-            {
-              type: 'warning',
-              msg: 'Zone B at 95% capacity (38/40 slots occupied)',
-            },
-            {
-              type: 'danger',
-              msg: '3 open parking violations require review',
-            },
-            {
-              type: 'info',
-              msg: '7 user registration requests pending approval',
-            },
-          ].map((alert, index) => (
+          {activeAlerts.map((alert, index) => (
             <div
               key={index}
               className="flex gap-3 p-4 rounded-xl border bg-blue-50 border-blue-200"

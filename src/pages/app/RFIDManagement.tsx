@@ -51,8 +51,70 @@ export default function RFIDManagement() {
   const { pathname } = useLocation();
   const [tab, setTab] = useState(user?.role === 'parking_staff' ? 'Access Records' : 'RFID Assignments');
   const [toast, setToast] = useState('');
+  const [rfidRecords, setRfidRecords] = useState<any[]>([]);
+const [rfidError, setRfidError] = useState('');
+
+useEffect(() => {
+  const token =
+    localStorage.getItem('pass_auth_token') ||
+    sessionStorage.getItem('pass_auth_token');
+
+  if (!token) {
+    setRfidError('Please log in again.');
+    return;
+  }
+
+  fetch('/api/rfid/assignments', {
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  })
+    .then(async response => {
+      if (!response.ok) {
+        throw new Error(`Unable to load RFID records (${response.status})`);
+      }
+      return response.json();
+    })
+    .then(result => setRfidRecords(result.data ?? []))
+    .catch(error => setRfidError(error.message));
+}, []);
   const [showAssign, setShowAssign] = useState(false);
-  const [requests, setRequests] = useState(() => MOCK_VEHICLES.filter(v => !v.rfid && v.status === 'pending').map(v => ({ id: `DEMO-REQ-${v.id}`, user: v.owner, vehicle: v.plate, submitted: 'Demo data', status: 'Pending Admin Processing' })));
+  const [requests, setRequests] = useState<any[]>([]);  useEffect(() => {
+  if (user?.role !== 'admin') return;
+
+  const token =
+  localStorage.getItem('pass_auth_token') ||
+  sessionStorage.getItem('pass_auth_token');
+
+fetch('/api/vehicles/authorizations?status=pending', {
+  headers: {
+    Accept: 'application/json',
+    Authorization: `Bearer ${token}`,
+  },
+})
+    .then(async response => {
+      if (!response.ok) {
+        throw new Error(`Failed to load requests (${response.status})`);
+      }
+      return response.json();
+    })
+    .then(result => {
+      setRequests(
+        (result.data ?? []).map((r: any) => ({
+          id: r.authorization_id,
+          user: r.owner_name || r.owner_code || 'Unknown',
+          vehicle: r.plate_number,
+          submitted: r.requested_at,
+          status: 'Pending Admin Processing',
+        }))
+      );
+    })
+    .catch(error => {
+      console.error(error);
+      setToast('Unable to load requests from database.');
+    });
+}, [user?.role]);
   const updateRequest = (id: string, status: string) => setRequests(items => items.map(item => item.id === id ? { ...item, status } : item));
 
   useEffect(() => {
@@ -72,7 +134,6 @@ export default function RFIDManagement() {
         <Card>
           <div className="p-4 border-b border-slate-100">
             <p className="text-sm text-slate-600">Review requests separately from assigning an RFID identifier. Approving a request does not assign or activate a tag.</p>
-            <p className="text-xs text-amber-700 mt-1">Prototype queue generated from sample pending vehicle records; connect this to the backend before operational use.</p>
           </div>
           <Table columns={[
             { key: 'id', label: 'Request' },
@@ -105,7 +166,15 @@ export default function RFIDManagement() {
                 </div>
               )},
             ]}
-            data={MOCK_RFID}
+            data={rfidRecords.map(r => ({
+  id: r.tag_uid,
+  user: r.user_name || r.user_code,
+  vehicle: r.plate_number,
+  type: r.tag_type,
+  assigned: r.assigned_at,
+  expires: r.valid_until,
+  status: r.assignment_status || r.tag_status,
+}))}
           />
         </Card>
       )}
