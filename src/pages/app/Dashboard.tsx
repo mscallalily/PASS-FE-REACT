@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { StatCard, Card } from '../../components/ui';
@@ -9,10 +9,131 @@ import {
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { OCCUPANCY_DATA, ZONE_CAPACITY, MOCK_AUDIT_LOGS, MOCK_RFID_EVENTS } from '../../data/mock';
 
+
+type DashboardSummary = {
+  total_users: number;
+  total_vehicles: number;
+  total_rfid_tags: number;
+  assigned_rfid_tags: number;
+  available_rfid_tags: number;
+  pending_approvals: number;
+  pending_vehicle_authorizations: number;
+};
+
+
+type ParkingOccupancy = {
+  zone_id: number;
+  zone: string;
+  capacity: number;
+  occupied: number;
+  available: number;
+};
+
+type DashboardData = {
+  summary: DashboardSummary;
+  today_activity: {
+    entries: number;
+    exits: number;
+  };
+  parking_occupancy: ParkingOccupancy[];
+};
+
+
 const COLORS = ['#2563EB', '#38BDF8', '#10B981', '#F59E0B'];
 
+
 function AdminDashboard() {
+  const [dashboardData, setDashboardData] =
+    useState<DashboardData | null>(null);
+    const [occupancyData, setOccupancyData] = useState<any>(null);
+    const [occupancyError, setOccupancyError] = useState('');
+    const [dashboardError, setDashboardError] = useState('');
+
+  console.log('AdminDashboard rendered');
+
+  useEffect(() => {
+    console.log('AdminDashboard useEffect running');
+    const token =
+      localStorage.getItem('pass_auth_token') ||
+      sessionStorage.getItem('pass_auth_token');
+
+      console.log('Token found:', !!token);
+
+    if (!token) {
+      setDashboardError('No login token found. Please log in again.');
+      return;
+    }
+const loadDashboard = async () => {
+  console.log('Starting dashboard API request');
+
+  try {
+    const response = await fetch('/api/admin/dashboard', {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    console.log('Dashboard API status:', response.status);
+
+        if (!response.ok) {
+          throw new Error(
+            response.status === 403
+              ? 'You are not authorized to view this dashboard.'
+              : `Failed to load dashboard (${response.status}).`
+          );
+        }
+
+        const data: DashboardData = await response.json();
+        console.log(
+  'Dashboard data:',
+  JSON.stringify(data, null, 2)
+);
+        setDashboardData(data);
+      } catch (error) {
+        setDashboardError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to load dashboard data.'
+        );
+      }
+    };
+
+loadDashboard();
+
+const loadOccupancy = async () => {
+  try {
+    const response = await fetch('/api/admin/parking/occupancy', {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Occupancy API failed (${response.status})`);
+    }
+
+    const data = await response.json();
+    console.log('Occupancy data:', data);
+    setOccupancyData(data);
+  } catch (error) {
+    setOccupancyError(
+      error instanceof Error
+        ? error.message
+        : 'Unable to load parking occupancy.'
+    );
+  }
+};
+
+loadOccupancy();
+}, []);
+
+
   return (
+
     <div className="animate-fadein space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-[#080677]">Administrative Dashboard</h1>
@@ -20,12 +141,52 @@ function AdminDashboard() {
       </div>
 
       {/* Summary Cards */}
+
+      {/* Summary Cards */}
+      {dashboardError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {dashboardError}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard label="Total Users" value="248" icon={<Users size={20} />} color="blue" sub="↑ 12 this week" />
-        <StatCard label="Vehicles" value="320" icon={<Car size={20} />} color="sky" sub="↑ 8 new" />
-        <StatCard label="RFID Tags" value="250" icon={<CreditCard size={20} />} color="purple" sub="12 unassigned" />
-        <StatCard label="Pending Approvals" value="7" icon={<Clock size={20} />} color="amber" sub="Needs action" />
+        <StatCard
+          label="Total Users"
+          value={dashboardData ? String(dashboardData.summary.total_users) : '...'}
+          icon={<Users size={20} />}
+          color="blue"
+          sub="Registered accounts"
+        />
+
+        <StatCard
+          label="Vehicles"
+          value={dashboardData ? String(dashboardData.summary.total_vehicles) : '...'}
+          icon={<Car size={20} />}
+          color="sky"
+          sub="Registered vehicles"
+        />
+
+        <StatCard
+          label="RFID Tags"
+          value={dashboardData ? String(dashboardData.summary.total_rfid_tags) : '...'}
+          icon={<CreditCard size={20} />}
+          color="purple"
+          sub={
+            dashboardData
+              ? `${dashboardData.summary.available_rfid_tags} available`
+              : 'Loading RFID tags...'
+          }
+        />
+
+        <StatCard
+          label="Pending Approvals"
+          value={dashboardData ? String(dashboardData.summary.pending_approvals) : '...'}
+          icon={<Clock size={20} />}
+          color="amber"
+          sub="Needs action"
+        />
       </div>
+
 
       {/* Charts */}
       <div className="grid lg:grid-cols-2 gap-6">
@@ -33,7 +194,15 @@ function AdminDashboard() {
           <h3 className="font-semibold text-slate-700 mb-1">Entry & Exit Activity</h3>
           <p className="text-xs text-slate-400 mb-5">Today's hourly traffic</p>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={OCCUPANCY_DATA}>
+            <BarChart
+  data={[
+    {
+      time: "Today",
+      entries: dashboardData?.today_activity.entries ?? 0,
+      exits: dashboardData?.today_activity.exits ?? 0,
+    },
+  ]}
+>
               <XAxis dataKey="time" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
