@@ -1,5 +1,6 @@
 import React, { ReactNode, useState } from 'react';
-import { X, CheckCircle, AlertTriangle, Info, XCircle, Search } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { X, CheckCircle, AlertTriangle, Info, XCircle, Search, ArrowLeft } from 'lucide-react';
 
 // Badge
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'default' | 'purple';
@@ -192,11 +193,27 @@ export function Table({ columns, data, onRowClick }: {
   );
 }
 
+// Back to Dashboard
+export function BackToDashboard() {
+  return (
+    <Link
+      to="/app/dashboard"
+      className="inline-flex items-center gap-1.5 mb-2 -ml-2 px-2 py-1 rounded-lg text-sm font-medium text-[#2563EB] hover:text-[#080677] hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-[#080677] focus:ring-offset-1"
+    >
+      <ArrowLeft size={16} className="shrink-0" />
+      Back to Dashboard
+    </Link>
+  );
+}
+
 // Page Header
-export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
+export function PageHeader({ title, subtitle, action, backToDashboard = false }: {
+  title: string; subtitle?: string; action?: ReactNode; backToDashboard?: boolean;
+}) {
   return (
     <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
       <div>
+        {backToDashboard && <BackToDashboard />}
         <h1 className="text-xl font-bold text-[#080677]">{title}</h1>
         {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
       </div>
