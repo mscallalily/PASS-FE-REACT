@@ -3,6 +3,8 @@ import { Loader2, FileText, RefreshCw, CheckCircle, XCircle, HelpCircle } from '
 import { Card, Badge, Button, Table, Modal, Select, SearchBar } from './ui';
 import { LICENSE_STATUS_LABEL, LICENSE_TYPE_LABEL, LicenseType } from '../context/LicenseContext';
 import { apiBlob, apiRequest, ApiError } from '../lib/apiClient';
+import { formatCampusDate, formatCampusDateTime } from '../lib/datetime';
+import { useTopicVersion } from '../lib/liveSync';
 
 type QueueStatus = 'processing' | 'needs_correction' | 'pending_review' | 'verified';
 type CheckResult = 'pass' | 'fail' | 'uncertain';
@@ -65,11 +67,7 @@ const CHECK_ICON: Record<CheckResult, React.ReactNode> = {
 };
 
 const formatDate = (value: string | null, withTime = false) =>
-  value
-    ? new Date(value).toLocaleString('en-PH', withTime
-      ? { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
-      : { year: 'numeric', month: 'short', day: 'numeric' })
-    : '—';
+  withTime ? formatCampusDateTime(value) : formatCampusDate(value);
 
 /** Staff/admin queue for driver's license verification, backed by the Laravel API. */
 export default function LicenseReviewQueue({ onToast }: { onToast: (message: string, type?: 'success' | 'error') => void }) {
@@ -104,10 +102,12 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
     }
   }, [statusFilter, search]);
 
+  // Reload on filter changes and whenever license or authorization records change (shared refresh).
+  const version = useTopicVersion(['vehicles']);
   useEffect(() => {
     const timer = setTimeout(load, 300);
     return () => clearTimeout(timer);
-  }, [load]);
+  }, [load, version]);
 
   // Keep refreshing while any automatic check is still running.
   const anyProcessing = rows.some(r => r.verification_status === 'processing');

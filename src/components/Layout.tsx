@@ -1,6 +1,7 @@
 import React, { useEffect, useState, ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/apiClient';
+import { useTopicVersion } from '../lib/liveSync';
 import { roleLabel, useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, Users, Car, CreditCard, ParkingSquare, FileBarChart,
@@ -28,6 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'User Accounts', icon: <Users size={18} />, roles: ['admin'], to: '/app/users' },
   { label: 'Vehicle Authorization', icon: <Car size={18} />, roles: ['admin'], to: '/app/vehicles/authorization' },
   { label: 'RFID Management', icon: <CreditCard size={18} />, roles: ['admin'], to: '/app/rfid' },
+  { label: 'Visitor Requests', icon: <QrCode size={18} />, roles: ['admin'], to: '/app/visitors' },
   { label: 'Reports & Analytics', icon: <FileBarChart size={18} />, roles: ['admin'], to: '/app/reports' },
   { label: 'Audit Logs', icon: <ScrollText size={18} />, roles: ['admin'], to: '/app/audit' },
   { label: 'System Settings', icon: <Settings size={18} />, roles: ['admin'], to: '/app/settings' },
@@ -92,16 +94,16 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [unread, setUnread] = useState(0);
   const { pathname } = useLocation();
 
-  // Unread notification count from the API; refreshed periodically and on navigation.
+  // Unread notification count from the API; refreshed when notifications change and on navigation.
+  const notificationsVersion = useTopicVersion(['notifications']);
   useEffect(() => {
     let cancelled = false;
     const load = () => apiRequest<{ unread_count: number }>('/api/notifications/unread-count')
       .then(r => { if (!cancelled) setUnread(r.unread_count); })
       .catch(() => { /* keep the last known count */ });
     load();
-    const timer = setInterval(load, 30000);
-    return () => { cancelled = true; clearInterval(timer); };
-  }, [pathname]);
+    return () => { cancelled = true; };
+  }, [pathname, notificationsVersion]);
 
   const role = user?.role ?? 'student';
   const visibleNav = NAV_ITEMS.filter(item => !item.roles || item.roles.includes(role));

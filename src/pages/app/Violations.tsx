@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { PageHeader, Card, Badge, Button, Table, SearchBar, Modal, Toast, StatCard, Input, Select } from '../../components/ui';
 import { apiRequest } from '../../lib/apiClient';
+import { useTopicVersion } from '../../lib/liveSync';
 import { AlertTriangle, Plus, Check } from 'lucide-react';
+import { formatCampusDateTime } from '../../lib/datetime';
 
 type ViolationStatus = 'open' | 'under_review' | 'resolved' | 'dismissed' | 'escalated';
 
@@ -23,6 +25,8 @@ interface ViolationRow {
   resolved_by: string | null;
   party_name: string | null;
   is_slot_incident: boolean;
+  /** The parking session has ended (vehicle exited) while the incident is unresolved. */
+  session_ended?: boolean;
 }
 
 interface ViolationType { violation_code: string; violation_name: string }
@@ -35,8 +39,7 @@ const STATUS_VARIANT: Record<ViolationStatus, 'danger' | 'warning' | 'success' |
   escalated: 'purple',
 };
 
-const formatDateTime = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+const formatDateTime = (iso: string | null) => formatCampusDateTime(iso);
 
 const location = (v: ViolationRow) => v.is_slot_incident
   ? `Assigned ${v.assigned_slot ?? '—'} → found at ${v.observed_slot ?? '—'}`
@@ -79,11 +82,12 @@ export default function Violations() {
     }
   }, [search, status]);
 
+  // Reload when filters change (debounced) and whenever violations change (shared refresh).
+  const version = useTopicVersion(['violations']);
   useEffect(() => {
     const first = setTimeout(load, 300);
-    const timer = setInterval(load, 15000);
-    return () => { clearTimeout(first); clearInterval(timer); };
-  }, [load]);
+    return () => clearTimeout(first);
+  }, [load, version]);
 
   useEffect(() => {
     apiRequest<{ data: ViolationType[] }>('/api/violation-types').then(r => setTypes(r.data)).catch(() => setTypes([]));
@@ -181,7 +185,12 @@ export default function Violations() {
               { key: 'location', label: 'Location', render: (v: ViolationRow) => <span className="text-xs">{location(v)}</span> },
               { key: 'datetime', label: 'Date & Time', render: (v: ViolationRow) => <span className="text-xs">{formatDateTime(v.occurred_at)}</span> },
               { key: 'reportedBy', label: 'Reported By', render: (v: ViolationRow) => v.reported_by ?? '—' },
-              { key: 'status', label: 'Status', render: (v: ViolationRow) => <Badge variant={STATUS_VARIANT[v.violation_status]}>{v.violation_status.replace('_', ' ')}</Badge> },
+              { key: 'status', label: 'Status', render: (v: ViolationRow) => (
+                <div className="space-y-1">
+                  <Badge variant={STATUS_VARIANT[v.violation_status]}>{v.violation_status.replace('_', ' ')}</Badge>
+                  {v.session_ended && ['open', 'under_review'].includes(v.violation_status) && <p className="text-[10px] text-slate-500">vehicle has exited</p>}
+                </div>
+              )},
               { key: 'actions', label: 'Actions', render: (v: ViolationRow) => <Button size="sm" variant="ghost" onClick={() => open(v)}>View</Button> },
             ]}
             data={rows ?? []}
@@ -217,6 +226,9 @@ export default function Violations() {
               </div>
             ))}
 
+            {active && selected.session_ended && (
+              <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3">This vehicle has already exited, so there is no slot record to change. Resolve or dismiss the incident with remarks; it stays in the violation history.</p>
+            )}
             {active && (
               <>
                 {selected.is_slot_incident && selected.transaction_status === 'active' && (

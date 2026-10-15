@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth, UserRole } from './context/AuthContext';
 import { LicenseProvider } from './context/LicenseContext';
+import { LiveSyncProvider } from './lib/liveSync';
 import Layout from './components/Layout';
 
 import LandingPage from './pages/LandingPage';
@@ -27,15 +28,22 @@ import Profile from './pages/app/Profile';
 import Notifications from './pages/app/Notifications';
 import ParkingHistory from './pages/app/ParkingHistory';
 
+/** Shown briefly while a saved session is restored, instead of redirecting to /login. */
+function SessionLoading() {
+  return <div className="min-h-screen flex items-center justify-center text-sm text-slate-400">Loading your session…</div>;
+}
+
 function ProtectedApp() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, ready } = useAuth();
+  if (!ready) return <SessionLoading />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (user?.role === 'guest') return <Navigate to="/guest-dashboard" replace />;
   return <Layout><Outlet /></Layout>;
 }
 
 function GuestRoute() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, ready } = useAuth();
+  if (!ready) return <SessionLoading />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (user?.role !== 'guest') return <Navigate to="/app/dashboard" replace />;
   return <Outlet />;
@@ -94,7 +102,7 @@ function AppRoutes() {
         <Route path="parking/layout" element={<RoleRoute roles={['parking_staff']}><ParkingOperations /></RoleRoute>} />
         <Route path="parking/occupancy" element={<RoleRoute roles={['parking_staff']}><ParkingOperations /></RoleRoute>} />
         <Route path="parking/availability" element={<RoleRoute roles={['parking_staff', 'student', 'faculty', 'employee']}><ParkingOperations /></RoleRoute>} />
-        <Route path="visitors" element={<RoleRoute roles={['parking_staff']}><VisitorQR /></RoleRoute>} />
+        <Route path="visitors" element={<RoleRoute roles={['admin', 'parking_staff']}><VisitorQR /></RoleRoute>} />
         <Route path="qr-verify" element={<RoleRoute roles={['parking_staff']}><VisitorQR /></RoleRoute>} />
         <Route path="reports" element={<RoleRoute roles={['admin']}><Reports /></RoleRoute>} />
         <Route path="audit" element={<RoleRoute roles={['admin']}><AuditLogs /></RoleRoute>} />
@@ -112,9 +120,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <LiveSyncProvider>
         <LicenseProvider>
           <AppRoutes />
         </LicenseProvider>
+        </LiveSyncProvider>
       </AuthProvider>
     </BrowserRouter>
   );
