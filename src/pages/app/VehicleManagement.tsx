@@ -423,7 +423,7 @@ export default function VehicleManagement() {
   function vehicleUseControl(vehicle: VehicleRow) {
     return <div className="space-y-2" onClick={event => event.stopPropagation()}>
       <Badge variant={vehicle.selectedForUse ? 'success' : 'default'}>{vehicle.selectedForUse ? 'Selected for use' : 'Inactive for entry'}</Badge>
-      {!vehicle.selectedForUse && <div><Button size="sm" variant="outline" disabled={!!switchingVehicle || vehicle.switchLocked || !vehicle.rfid || vehicle.status !== 'approved' || vehicle.registrationStatus !== 'registered'} onClick={() => selectVehicleForUse(vehicle)}>{switchingVehicle === vehicle.id ? 'Switching…' : 'Use this vehicle'}</Button></div>}
+      {!vehicle.selectedForUse && <div><Button className="w-full min-h-12 text-base" disabled={!!switchingVehicle || vehicle.switchLocked || !vehicle.rfid || vehicle.status !== 'approved' || vehicle.registrationStatus !== 'registered'} onClick={() => selectVehicleForUse(vehicle)}>{switchingVehicle === vehicle.id ? 'Switching…' : 'Use this vehicle'}</Button></div>}
       {vehicle.switchLocked && <p className="text-xs text-amber-700">Exit first to switch vehicles.</p>}
       {!vehicle.rfid && <p className="text-xs text-slate-400">Active RFID assignment required.</p>}
     </div>;
@@ -494,7 +494,7 @@ export default function VehicleManagement() {
 
       {tab === 'My Vehicles' && (
         <Card>
-          {isRegularUser && <div className="p-5 border-b border-slate-100 bg-slate-50 flex flex-wrap gap-3 justify-between items-center"><div className="text-sm text-slate-600"><p className="font-semibold text-[#080677]">One selected vehicle at a time</p><p className="mt-1 text-xs">Only your selected vehicle can enter. Switching is locked while any of your vehicles is inside. License and authorization checks still apply.</p></div><Button size="sm" variant="outline" onClick={() => setVehicleReloadKey(key => key + 1)}>Refresh status</Button></div>}
+          {isRegularUser && <div className="p-5 border-b border-slate-100 bg-slate-50 flex flex-wrap gap-3 justify-between items-center"><div className="text-sm text-slate-600"><p className="font-semibold text-[#080677]">Selected vehicle: <span className="font-mono">{vehicles.find(vehicle => vehicle.selectedForUse)?.plate || 'None selected'}</span></p><p className="mt-1 text-xs">Only your selected vehicle can enter. Switching is locked while any of your vehicles is inside. License and authorization checks still apply.</p></div><Button size="sm" variant="outline" onClick={() => setVehicleReloadKey(key => key + 1)}>Refresh status</Button></div>}
           <div className="p-5 border-b border-slate-50">
             <SearchBar value={search} onChange={setSearch} placeholder="Search by plate, owner, or make...">
               <Select value={filterType} onChange={e => setFilterType(e.target.value)}>
@@ -503,7 +503,7 @@ export default function VehicleManagement() {
               </Select>
               <Select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                 <option value="">All Status</option>
-                {['active', 'pending', 'suspended', 'rejected'].map(s => <option key={s}>{s}</option>)}
+                {['approved', 'pending', 'suspended', 'rejected'].map(s => <option key={s}>{s}</option>)}
               </Select>
             </SearchBar>
           </div>
@@ -518,7 +518,24 @@ export default function VehicleManagement() {
     {vehicleError}
   </p>
 )}
-          <Table
+          {isRegularUser ? <div className="grid min-w-0 gap-4 p-4 sm:p-5 xl:grid-cols-2">
+            {!loadingVehicles && !filtered.length && <p className="p-6 text-sm text-slate-500">No vehicles match your filters.</p>}
+            {filtered.map(vehicle => <article key={vehicle.id} aria-label={`Vehicle ${vehicle.plate}`} className={`min-w-0 overflow-hidden rounded-2xl border-2 ${vehicle.selectedForUse ? 'border-[#080677] shadow-sm' : 'border-slate-200'}`}>
+              <div className={`flex items-start gap-3 p-4 sm:p-5 ${vehicle.selectedForUse ? 'bg-[#080677] text-white' : 'bg-slate-50 text-[#080677]'}`}>
+                <Car size={28} className="shrink-0 mt-1"/>
+                <div className="min-w-0 flex-1"><p className="font-mono text-xl font-bold break-words">{vehicle.plate}</p><p className={`text-sm mt-1 break-words ${vehicle.selectedForUse ? 'text-blue-100' : 'text-slate-500'}`}>{[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')}</p></div>
+              </div>
+              <div className="p-4 sm:p-5 space-y-4">
+                <div className={`rounded-lg px-3 py-2 text-sm font-semibold ${vehicle.selectedForUse ? 'bg-green-50 text-green-800' : 'bg-slate-100 text-slate-600'}`}>{vehicle.selectedForUse ? '✓ Selected for use' : 'Inactive for entry'}</div>
+                <dl className="grid grid-cols-2 gap-3 text-sm"><div className="min-w-0"><dt className="text-xs text-slate-400">Vehicle type</dt><dd className="mt-1 break-words">{vehicle.type}</dd></div><div><dt className="text-xs text-slate-400">Authorization</dt><dd className="mt-1"><Badge variant={statusBadge(vehicle.status)}>{vehicle.status}</Badge></dd></div><div className="col-span-2 min-w-0"><dt className="text-xs text-slate-400">Assigned RFID</dt><dd className="font-mono text-xs mt-1 break-all">{vehicle.rfid || 'Not assigned'}</dd></div></dl>
+                {!vehicle.selectedForUse && <Button className="w-full min-h-12 text-base" disabled={!!switchingVehicle || vehicle.switchLocked || !vehicle.rfid || vehicle.status !== 'approved' || vehicle.registrationStatus !== 'registered'} onClick={() => selectVehicleForUse(vehicle)}>{switchingVehicle === vehicle.id ? 'Switching…' : 'Use this vehicle'}</Button>}
+                {vehicle.selectedForUse && <p className="text-xs leading-relaxed text-slate-500">This is your selected vehicle for entry. Normal RFID, license and authorization checks still apply.</p>}
+                {vehicle.switchLocked && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">A vehicle is still inside. Record its exit, then refresh to switch vehicles.</p>}
+                {!vehicle.rfid && <p className="text-xs text-slate-500">Staff must assign an active RFID before you can select this vehicle.</p>}
+                <Button className="w-full" variant="outline" onClick={() => setSelected(vehicle)}>View vehicle details</Button>
+              </div>
+            </article>)}
+          </div> : <Table
             columns={[
               { key: 'plate', label: 'Plate No.', render: v => <span className="font-mono font-bold text-[#080677]">{v.plate}</span> },
               { key: 'vehicle', label: 'Vehicle', render: v => `${v.year} ${v.make} ${v.model}` },
@@ -531,7 +548,7 @@ export default function VehicleManagement() {
             ]}
             data={filtered}
             onRowClick={setSelected}
-          />
+          />}
         </Card>
       )}
 
@@ -797,11 +814,11 @@ export default function VehicleManagement() {
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">Your license is still pending review. The vehicle cannot be authorized until it is verified.</p>
             )}
             <Input label="Plate Number" placeholder="ABC-1234" value={vehicleForm.plate_number} onChange={e => setVehicleForm(f => ({ ...f, plate_number: e.target.value.toUpperCase() }))} disabled={registerBusy} />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select label="Vehicle Type" value={vehicleForm.vehicle_type} onChange={e => setVehicleForm(f => ({ ...f, vehicle_type: e.target.value }))} disabled={registerBusy}><option>Sedan</option><option>SUV</option><option>Hatchback</option><option>Pickup</option><option>Motorcycle</option><option>Van</option></Select>
               <Input label="Year" placeholder="2024" type="number" value={vehicleForm.year_model} onChange={e => setVehicleForm(f => ({ ...f, year_model: e.target.value }))} disabled={registerBusy} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Make" placeholder="Toyota" value={vehicleForm.make} onChange={e => setVehicleForm(f => ({ ...f, make: e.target.value }))} disabled={registerBusy} />
               <Input label="Model" placeholder="Vios" value={vehicleForm.model} onChange={e => setVehicleForm(f => ({ ...f, model: e.target.value }))} disabled={registerBusy} />
             </div>

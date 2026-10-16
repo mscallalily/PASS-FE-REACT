@@ -188,7 +188,7 @@ export default function Layout({ children, navigation, profileTo = '/app/profile
             <p className="hidden lg:block text-xs text-slate-500">Dr. Yanga&apos;s Colleges, Inc. · Parking Access and Space Management System</p>
           </div>
           <div className="flex items-center gap-2">
-            <NavLink to={notificationsTo} aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'} className="relative p-2 rounded-lg hover:bg-blue-50 text-slate-500 hover:text-[#2563EB] transition-colors">
+            <NavLink to={notificationsTo} aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'} className="relative min-w-11 min-h-11 inline-flex items-center justify-center p-2 rounded-lg hover:bg-blue-50 text-slate-500 hover:text-[#2563EB] transition-colors">
               <Bell size={18} />
               {unread > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
@@ -196,11 +196,11 @@ export default function Layout({ children, navigation, profileTo = '/app/profile
                 </span>
               )}
             </NavLink>
-            <NavLink aria-label="Profile" to={profileTo} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">
+            <NavLink aria-label="Profile" to={profileTo} className="min-h-11 flex min-w-0 items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">
               <div className="w-7 h-7 rounded-full bg-[#080677] text-white text-xs flex items-center justify-center font-semibold">
                 {user?.name?.[0] ?? 'U'}
               </div>
-              <span className="hidden sm:block text-sm font-medium text-slate-700">{user?.name}</span>
+              <span className="hidden sm:block max-w-48 truncate text-sm font-medium text-slate-700">{user?.name}</span>
             </NavLink>
           </div>
         </header>
