@@ -34,6 +34,7 @@ interface Pass {
 }
 
 interface VisitorRequest {
+  driver?: { name: string; is_requester: boolean; license_reference: string | null; license_expiry: string | null; passenger_count: number } | null;
   request_id: number;
   request_status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired';
   purpose: string | null;
@@ -141,13 +142,18 @@ function RequestForm({ open, onClose, onSaved }: { open: boolean; onClose: () =>
     setVisitorId('');
     setErrors({});
     setError('');
-    setForm({ first_name: '', last_name: '', contact_number: '', email: '', affiliation: '', plate_number: '', vehicle_type_id: '', make: '', model: '', color: '', purpose: '', visiting: '', valid_from: campusLocal(0), valid_until: campusLocal(240) });
+    setForm({ first_name: '', last_name: '', contact_number: '', email: '', affiliation: '', plate_number: '', vehicle_type_id: '', make: '', model: '', color: '', purpose: '', visiting: '', valid_from: campusLocal(1440), valid_until: campusLocal(1680) });
     apiRequest<Options>('/api/visitors/options').then(setOptions).catch(err => setError(err instanceof Error ? err.message : 'Unable to load form options.'));
   }, [open]);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const submit = async () => {
+    if (form.valid_from && form.valid_from.slice(0, 10) < campusLocal(1440).slice(0, 10)) {
+      setErrors({ valid_from: 'Choose tomorrow or later (Manila time). Same-day requests are not allowed.' });
+      setError('Please correct the arrival date.');
+      return;
+    }
     setBusy(true);
     setErrors({});
     setError('');
@@ -212,10 +218,10 @@ function RequestForm({ open, onClose, onSaved }: { open: boolean; onClose: () =>
           <div className="grid sm:grid-cols-2 gap-3">
             {field('purpose', 'Purpose *')}
             {field('visiting', 'Person or office visited *')}
-            {field('valid_from', 'Arrives from (Manila time) *', { type: 'datetime-local' })}
-            {field('valid_until', 'Leaves by (Manila time) *', { type: 'datetime-local' })}
+            {field('valid_from', 'Arrives from (Manila time) *', { type: 'datetime-local', min: campusLocal(1440).slice(0, 10) + 'T00:00' })}
+            {field('valid_until', 'Leaves by (Manila time) *', { type: 'datetime-local', min: campusLocal(1440).slice(0, 10) + 'T00:00' })}
           </div>
-          {options && <p className="text-xs text-slate-400">A request may cover up to {options.max_visit_days} days. The pass allows one entry and one exit within this time.</p>}
+          {options && <p className="text-xs text-slate-400">Same-day requests are not allowed. Earliest visit date is tomorrow (Manila time). A request may cover up to {options.max_visit_days} days. The pass allows one entry and one exit within this time.</p>}
         </div>
         {error && <ErrorBox message={error} />}
         <div className="flex gap-3 justify-end">
@@ -307,6 +313,7 @@ function Requests({ notify, onShowPass, reloadKey, onChanged }: { notify: Notify
               </div>
             )},
             { key: 'vehicle', label: 'Vehicle', render: (r: VisitorRequest) => <div><span className="font-mono font-bold text-[#080677]">{r.vehicle.plate_number ?? '—'}</span><p className="text-xs text-slate-400">{r.vehicle.vehicle_type} · {r.vehicle.area_name}</p></div> },
+            { key: 'driver', label: 'Declared driver', render: (r: VisitorRequest) => r.driver ? <div className="text-xs"><p className="font-semibold">{r.driver.name}</p><p>{r.driver.is_requester ? 'Requester is driver' : 'Separate driver'}</p><p>License {r.driver.license_reference}</p><p>Expires {r.driver.license_expiry}</p><p>{r.driver.passenger_count} passenger(s)</p><p className="text-amber-700">Check physical license at gate</p></div> : <span className="text-xs text-amber-700">No declared driver details</span> },
             { key: 'purpose', label: 'Purpose', render: (r: VisitorRequest) => <span className="text-sm">{r.purpose}</span> },
             { key: 'window', label: 'Visit Window (Manila)', render: (r: VisitorRequest) => <span className={`text-xs ${r.window_ended ? 'text-slate-400' : ''}`}>{window_(r.valid_from, r.valid_until)}{r.window_ended ? ' · ended' : ''}</span> },
             { key: 'status', label: 'Status', render: (r: VisitorRequest) => (
@@ -341,6 +348,7 @@ function Requests({ notify, onShowPass, reloadKey, onChanged }: { notify: Notify
               <span className="font-semibold">{review.row.visitor.name}</span> · <span className="font-mono">{review.row.vehicle.plate_number}</span><br />
               {window_(review.row.valid_from, review.row.valid_until)}
             </p>
+            {review.row.driver && <p className="text-sm bg-amber-50 p-3 rounded-xl mb-3">Declared driver: {review.row.driver.name}. License {review.row.driver.license_reference}, expires {review.row.driver.license_expiry}. Passengers: {review.row.driver.passenger_count}. These details are not identity verification; staff must inspect the physical license at the gate.</p>}
             {review.action === 'approve'
               ? <p className="text-sm text-slate-500">Approving issues one Visitor QR pass for this vehicle and visit window (one entry and one exit). A guest with an account is notified and sees the pass in their account.</p>
               : <p className="text-sm text-slate-500">No QR pass is issued for a rejected request.</p>}

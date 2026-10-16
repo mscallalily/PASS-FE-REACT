@@ -31,7 +31,10 @@ interface Pass {
   revoke_reason: string | null;
 }
 
+interface VisitorDriver { name: string; is_requester: boolean; license_reference: string | null; license_expiry: string | null; passenger_count: number; identity_verified: boolean }
+
 interface GuestRequest {
+  driver?: VisitorDriver | null;
   request_id: number;
   request_status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired';
   purpose: string | null;
@@ -71,8 +74,8 @@ const SECTIONS: { id: Section; label: string; icon: React.ReactNode }[] = [
 ];
 
 /** Today's date in campus time, for the date picker minimum. */
-function campusToday() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: CAMPUS_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+function campusToday(offsetDays = 0) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: CAMPUS_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + offsetDays * 86400000));
 }
 
 const inputBase = 'w-full rounded-xl border px-3.5 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500 bg-white';
@@ -269,6 +272,7 @@ export default function GuestDashboardPage() {
                 {latest.request_status === 'pending' && <p className="text-sm text-slate-600 mb-5">An Administrator will review your request. No QR pass is issued until it is approved; you will be notified here.</p>}
                 {latest.request_status === 'rejected' && latest.review_remarks && <p className="text-sm text-red-700 mb-5">Reason: {latest.review_remarks}</p>}
                 <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-xl bg-slate-50 p-4"><p className="text-slate-500">Declared driver / passengers</p><p className="font-medium mt-1">{latest.driver ? `${latest.driver.name} · ${latest.driver.passenger_count} passenger(s)` : 'Not provided on this older request'}</p>{latest.driver && <p className="text-xs mt-2">License {latest.driver.license_reference} · Expires {latest.driver.license_expiry}. Physical license check required at gate.</p>}</div>
                   <div className="rounded-xl bg-slate-50 p-4"><p className="text-slate-500">Purpose</p><p className="font-medium text-slate-800 mt-1">{latest.purpose}</p></div>
                   <div className="rounded-xl bg-slate-50 p-4"><p className="text-slate-500">Vehicle</p><p className="font-medium text-slate-800 mt-1">{latest.vehicle_type} · {latest.plate_number}</p></div>
                   <div className="rounded-xl bg-slate-50 p-4 sm:col-span-2"><p className="text-slate-500">Visit schedule (Manila time)</p><p className="font-medium text-slate-800 mt-1">{formatCampusDateTime(latest.valid_from)} – {formatCampusDateTime(latest.valid_until)}</p></div>
@@ -335,7 +339,7 @@ export default function GuestDashboardPage() {
 // ----------------------------------------------------------------- request form
 
 function RequestForm({ vehicles, onAddVehicle, onSubmitted }: { vehicles: Vehicle[]; onAddVehicle: () => void; onSubmitted: (message: string) => void }) {
-  const empty = { vehicle_id: '', visit_date: '', arrival_time: '', departure_time: '', purpose: '', visiting: '' };
+  const empty = { vehicle_id: '', visit_date: '', arrival_time: '', departure_time: '', purpose: '', visiting: '', driver_is_requester: 'true', driver_name: '', driver_license_number: '', driver_license_expiry: '', passenger_count: '0' };
   const [form, setForm] = useState(empty);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
@@ -349,6 +353,11 @@ function RequestForm({ vehicles, onAddVehicle, onSubmitted }: { vehicles: Vehicl
     const next: Record<string, string> = {};
     if (!form.vehicle_id) next.vehicle_id = 'Choose your vehicle.';
     if (!form.visit_date) next.visit_date = 'Please select your visit date.';
+    if (form.visit_date && form.visit_date < campusToday(1)) next.visit_date = 'Choose tomorrow or later. Same-day requests are not allowed.';
+    if (form.driver_is_requester === 'false' && !/^\S+(\s+\S+)+$/.test(form.driver_name.trim())) next.driver_name = 'Enter the actual driver’s first and last name.';
+    if (!/^[A-Za-z0-9 -]{6,30}$/.test(form.driver_license_number.trim())) next.driver_license_number = 'Enter the driver’s license number.';
+    if (!form.driver_license_expiry || form.driver_license_expiry < form.visit_date) next.driver_license_expiry = 'The license must be valid on the visit date.';
+    if (!/^\d+$/.test(form.passenger_count) || Number(form.passenger_count) > 99) next.passenger_count = 'Enter 0–99 passengers, excluding the driver.';
     if (!form.arrival_time) next.arrival_time = 'Please select your expected arrival time.';
     if (!form.departure_time) next.departure_time = 'Please select your expected departure time.';
     if (form.arrival_time && form.departure_time && form.departure_time <= form.arrival_time) next.departure_time = 'Departure must be after arrival.';
@@ -359,7 +368,7 @@ function RequestForm({ vehicles, onAddVehicle, onSubmitted }: { vehicles: Vehicl
     if (Object.keys(next).length) return;
     setBusy(true);
     try {
-      const r = await apiRequest<{ message: string }>('/api/guest/requests', { method: 'POST', body: { ...form, vehicle_id: Number(form.vehicle_id) } });
+      const r = await apiRequest<{ message: string }>('/api/guest/requests', { method: 'POST', body: { ...form, vehicle_id: Number(form.vehicle_id), driver_is_requester: form.driver_is_requester === 'true', passenger_count: Number(form.passenger_count) } });
       setForm(empty);
       onSubmitted(r.message);
     } catch (err) {
@@ -382,7 +391,7 @@ function RequestForm({ vehicles, onAddVehicle, onSubmitted }: { vehicles: Vehicl
   return (
     <form onSubmit={submit}>
       <Card>
-        <SectionTitle icon={<ClipboardList size={22} />} title="Visitor Parking Request" subtitle="All fields are required. Times are Manila time." />
+        <SectionTitle icon={<ClipboardList size={22} />} title="Visitor Parking Request" subtitle="Submit at least one calendar day ahead. Same-day requests are not allowed. Times are Manila time." />
         <div className="grid sm:grid-cols-2 gap-5">
           <div className="sm:col-span-2"><label className="block text-sm font-medium text-slate-700 mb-1.5">Registered vehicle *</label>
             <select value={form.vehicle_id} onChange={set('vehicle_id')} className={inputClass(errors.vehicle_id)} disabled={busy}>
@@ -390,10 +399,16 @@ function RequestForm({ vehicles, onAddVehicle, onSubmitted }: { vehicles: Vehicl
               {vehicles.map(v => <option key={v.vehicle_id} value={v.vehicle_id}>{v.plate_number} · {v.type_name}{v.make ? ` · ${v.make} ${v.model ?? ''}` : ''}</option>)}
             </select><FieldError message={errors.vehicle_id} />
           </div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Visit date *</label><input type="date" min={campusToday()} value={form.visit_date} onChange={set('visit_date')} className={inputClass(errors.visit_date)} disabled={busy} /><FieldError message={errors.visit_date} /></div>
+          <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Visit date *</label><input type="date" min={campusToday(1)} value={form.visit_date} onChange={set('visit_date')} className={inputClass(errors.visit_date)} disabled={busy} /><FieldError message={errors.visit_date} /></div>
           <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Person / office to visit *</label><input value={form.visiting} onChange={set('visiting')} placeholder="Name or office" className={inputClass(errors.visiting)} disabled={busy} /><FieldError message={errors.visiting} /></div>
           <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Expected arrival time *</label><input type="time" value={form.arrival_time} onChange={set('arrival_time')} className={inputClass(errors.arrival_time)} disabled={busy} /><FieldError message={errors.arrival_time} /></div>
           <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Expected departure time *</label><input type="time" value={form.departure_time} onChange={set('departure_time')} className={inputClass(errors.departure_time)} disabled={busy} /><FieldError message={errors.departure_time} /></div>
+          <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Will you drive this vehicle? *</label><select value={form.driver_is_requester} onChange={set('driver_is_requester')} className={inputClass()} disabled={busy}><option value="true">Yes, I will drive</option><option value="false">No, someone else will drive</option></select></div>
+          {form.driver_is_requester === 'false' && <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Actual driver’s full name *</label><input value={form.driver_name} onChange={set('driver_name')} maxLength={200} className={inputClass(errors.driver_name)} disabled={busy}/><FieldError message={errors.driver_name}/></div>}
+          <div><label className="block text-sm font-medium mb-1.5">Actual driver’s license number *</label><input value={form.driver_license_number} onChange={set('driver_license_number')} maxLength={30} className={inputClass(errors.driver_license_number)} disabled={busy}/><FieldError message={errors.driver_license_number}/></div>
+          <div><label className="block text-sm font-medium mb-1.5">License expiry *</label><input type="date" min={form.visit_date || campusToday(1)} value={form.driver_license_expiry} onChange={set('driver_license_expiry')} className={inputClass(errors.driver_license_expiry)} disabled={busy}/><FieldError message={errors.driver_license_expiry}/></div>
+          <div><label className="block text-sm font-medium mb-1.5">Passengers, excluding driver *</label><input type="number" min="0" max="99" value={form.passenger_count} onChange={set('passenger_count')} className={inputClass(errors.passenger_count)} disabled={busy}/><FieldError message={errors.passenger_count}/></div>
+          <p className="sm:col-span-2 text-sm text-slate-600">These are declared details, not identity verification. The actual driver must present their physical license at the gate. Passengers remain subject to campus identity checks. Request approval does not reserve a parking slot.</p>
           <div className="sm:col-span-2"><label className="block text-sm font-medium text-slate-700 mb-1.5">Reason for visiting campus *</label><textarea value={form.purpose} onChange={set('purpose')} rows={3} maxLength={150} placeholder="Explain the purpose of your visit" className={inputClass(errors.purpose)} disabled={busy} /><FieldError message={errors.purpose} /></div>
         </div>
         <div className="mt-6 rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-600 flex gap-2"><AlertCircle size={18} className="text-slate-500 shrink-0 mt-0.5" /><p>Submitting sends your request to a PASS Administrator for review. It does not generate a QR pass or guarantee entry until it is approved.</p></div>
