@@ -147,3 +147,7 @@
 
 # Keep the PASS logo directly accessible to Vercel
 /public/branding/pass-logo.png -filter -diff -merge -text
+
+# Small layout evidence/preview images must travel inside offline Git bundles.
+/public/references/*.png -filter -diff -merge -text
+/docs/parking-fit-plan-preview.png -filter -diff -merge -text
