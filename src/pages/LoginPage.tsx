@@ -98,7 +98,7 @@ export default function LoginPage() {
                 className="flex items-start gap-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-5 text-sm"
               >
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                <span>{error}</span>
+                <span>{error} {error.toLowerCase().includes('verify') && <Link to="/verify-email" className="underline font-semibold">Verify email / resend code</Link>}</span>
               </div>
             )}
 

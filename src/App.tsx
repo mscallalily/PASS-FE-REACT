@@ -1,4 +1,6 @@
 import React from 'react';
+import EmailCodeVerification from './components/EmailCodeVerification';
+import PendingAccountPage from './pages/PendingAccountPage';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth, UserRole } from './context/AuthContext';
 import { LicenseProvider } from './context/LicenseContext';
@@ -37,6 +39,8 @@ function ProtectedApp() {
   const { isAuthenticated, user, ready } = useAuth();
   if (!ready) return <SessionLoading />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.emailVerified === false && ['student', 'faculty', 'employee', 'guest'].includes(user?.role ?? '')) return <Navigate to="/verify-email" replace />;
+  if (user?.accountStatus === 'pending') return <PendingAccountPage />;
   if (user?.role === 'guest') return <Navigate to="/guest-dashboard" replace />;
   return <Layout><Outlet /></Layout>;
 }
@@ -45,6 +49,7 @@ function GuestRoute() {
   const { isAuthenticated, user, ready } = useAuth();
   if (!ready) return <SessionLoading />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.emailVerified === false) return <Navigate to="/verify-email" replace />;
   if (user?.role !== 'guest') return <Navigate to="/app/dashboard" replace />;
   return <Outlet />;
 }
@@ -70,6 +75,7 @@ function AppRoutes() {
       {/* Public */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/guest" element={<GuestLandingPage />} />
+      <Route path="/verify-email" element={<div className="min-h-screen bg-slate-50 p-6 flex items-center"><EmailCodeVerification /></div>} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/register/guest" element={<GuestRegisterPage />} />

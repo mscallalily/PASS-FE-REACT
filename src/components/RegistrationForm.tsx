@@ -1,3 +1,4 @@
+import EmailCodeVerification from './EmailCodeVerification';
 
 ﻿import React, { useEffect, useState } from 'react';
 import {
@@ -252,9 +253,6 @@ export default function RegistrationForm({
 
   const [emailVerificationSent, setEmailVerificationSent] =
     useState<boolean | null>(null);
-  const [isResendingVerification, setIsResendingVerification] = useState(false);
-  const [resendMessage, setResendMessage] = useState('');
-  const [resendError, setResendError] = useState('');
 
   const [form, setForm] = useState<FormState>(INITIAL);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -526,141 +524,8 @@ export default function RegistrationForm({
     }
   };
 
-  const resendVerificationEmail = async () => {
-    if (isResendingVerification) {
-      return;
-    }
-
-    setIsResendingVerification(true);
-    setResendMessage('');
-    setResendError('');
-
-    try {
-      const response = await fetch('/api/email/verification-notification', {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: form.email.trim(),
-        }),
-      });
-
-      const result = await readJsonResponse(
-        response,
-        'RESEND VERIFICATION EMAIL',
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          result?.message ||
-            `Unable to resend the verification email. HTTP ${response.status}.`,
-        );
-      }
-
-      if (!result) {
-        throw new Error(
-          'The email verification API returned invalid JSON. Check the browser Console.',
-        );
-      }
-
-      setResendMessage(
-        result.message ||
-          'If your account exists and is not yet verified, a verification email will be sent.',
-      );
-    } catch (error) {
-      console.error('RESEND VERIFICATION ERROR:', error);
-
-      setResendError(
-        error instanceof Error
-          ? error.message
-          : 'Unable to connect to PASS. Please try again.',
-      );
-    } finally {
-      setIsResendingVerification(false);
-    }
-  };
-
   if (submitted) {
-    return (
-      <div
-        className={`text-center ${
-          m
-            ? 'px-6 py-12 flex flex-col items-center justify-center min-h-full'
-            : 'py-4'
-        }`}
-      >
-        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-          <Check size={36} className="text-green-600" />
-        </div>
-
-        <h2 className="text-2xl font-bold text-[#080677] mb-3">
-          Registration Submitted!
-        </h2>
-
-        {emailVerificationSent ? (
-          <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl p-3 mb-4">
-            A verification email was sent to {form.email.trim()}. Please check
-            your inbox and spam folder.
-          </p>
-        ) : (
-          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
-            Your registration was submitted, but we could not confirm that the
-            verification email was sent. You can request another email below.
-          </p>
-        )}
-
-        <div className="mb-5 w-full">
-          <button
-            type="button"
-            onClick={resendVerificationEmail}
-            disabled={isResendingVerification}
-            className="w-full py-3 border border-[#2563EB] text-[#2563EB] font-semibold rounded-xl hover:bg-blue-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-          >
-            {isResendingVerification
-              ? 'Sending...'
-              : 'Resend Verification Email'}
-          </button>
-
-          {resendMessage && (
-            <p role="status" className="text-sm text-green-700 mt-3">
-              {resendMessage}
-            </p>
-          )}
-
-          {resendError && (
-            <p role="alert" className="text-sm text-red-600 mt-3">
-              {resendError}
-            </p>
-          )}
-        </div>
-
-        <p className="text-slate-500 mb-2">
-          Your account is pending review by the PASS administrator.
-        </p>
-
-        {form.hasVehicle ? (
-          <p className="text-sm text-slate-400 mb-2">
-            Your vehicle and driver's license will be reviewed separately. No
-            RFID is issued until the vehicle is authorized.
-          </p>
-        ) : (
-          <p className="text-sm text-slate-400 mb-2">
-            You can add a vehicle later from <strong>My Vehicle</strong> once
-            your account is approved.
-          </p>
-        )}
-
-        <button
-          type="button"
-          onClick={onBackToLogin}
-          className="w-full py-3 bg-[#2563EB] text-white font-semibold rounded-xl hover:bg-[#1D4ED8] transition-colors"
-        >
-          Go to Sign In
-        </button>
-      </div>
-    );
+    return <EmailCodeVerification initialEmail={form.email.trim()} notice={emailVerificationSent ? 'Registration saved. Check your email for your verification code.' : 'Registration saved, but the email could not be sent. Use Send / resend code to try again.'} />;
   }
 
   const progress = m ? (

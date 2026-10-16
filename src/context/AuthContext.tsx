@@ -23,6 +23,9 @@ interface AuthUser {
   role: UserRole;
   idNum?: string;
   dept?: string;
+  accountStatus?: string;
+  emailVerified?: boolean;
+  schoolIdSubmitted?: boolean;
 }
 
 interface AuthContextType {
@@ -45,6 +48,9 @@ interface ApiUser {
   role: string | null;
   idNum?: string;
   dept?: string;
+  accountStatus?: string;
+  emailVerified?: boolean;
+  schoolIdSubmitted?: boolean;
 }
 
 interface ApiResponse {
@@ -99,6 +105,9 @@ function toAuthUser(apiUser: ApiUser): AuthUser {
     role: normalizeRole(apiUser.role),
     idNum: apiUser.idNum,
     dept: apiUser.dept,
+    accountStatus: apiUser.accountStatus,
+    emailVerified: apiUser.emailVerified,
+    schoolIdSubmitted: apiUser.schoolIdSubmitted,
   };
 }
 

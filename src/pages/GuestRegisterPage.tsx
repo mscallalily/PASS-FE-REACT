@@ -1,3 +1,4 @@
+import EmailCodeVerification from '../components/EmailCodeVerification';
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BrandLockup } from '../components/Brand';
@@ -7,8 +8,6 @@ export default function GuestRegisterPage() {
   const navigate = useNavigate();
   const [submitted, setSubmitted] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
-  const [resending, setResending] = useState(false);
-  const [resendMessage, setResendMessage] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [form, setForm] = useState({
     fullName: '', email: '', phone: '', password: '', confirmPwd: '',
@@ -20,31 +19,6 @@ export default function GuestRegisterPage() {
 
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState('');
-
-  const resendVerification = async () => {
-    if (resending) return;
-    if (!form.email.trim()) { setResendMessage('Enter your registered email address first.'); return; }
-    setResending(true);
-    setResendMessage('');
-    try {
-      const response = await fetch('/api/email/verification-notification', {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email.trim() }),
-      });
-      const data = await response.json().catch(() => ({}));
-      setResendMessage(data.message || (response.ok ? 'Check your inbox and spam folder.' : 'Could not resend. Please try again later.'));
-    } catch {
-      setResendMessage('Cannot reach the server. Please try again.');
-    } finally { setResending(false); }
-  };
-
-  const resendControl = <div className="text-sm mt-4">
-    <button type="button" disabled={resending || busy} onClick={resendVerification} className="text-blue-700 underline disabled:opacity-50">
-      {resending ? 'Sending…' : 'Resend verification email'}
-    </button>
-    {resendMessage && <p role="status" className="mt-2 text-slate-600">{resendMessage}</p>}
-  </div>;
 
   // Same rules as the server (POST /api/guest/register).
   const validate = () => {
@@ -97,24 +71,7 @@ export default function GuestRegisterPage() {
     }
   };
   if (submitted) {
-    return (
-      <div className="min-h-screen bg-[#F4F7FB] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-10 max-w-md w-full text-center">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Check size={36} className="text-green-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-[#080677] mb-3">Guest Account Created!</h2>
-          <p className="text-slate-500 mb-8">{verificationMessage} After verification, sign in to submit your visitor parking request. A QR pass is only issued after request approval.</p>
-          {resendControl}
-          <Link to="/login" className="w-full block py-3 bg-[#2563EB] text-white font-semibold rounded-xl hover:bg-[#1D4ED8] transition-colors">
-            Go to Login
-          </Link>
-          <p className="text-xs text-slate-400 mt-4">
-            <Link to="/guest" className="hover:text-[#2563EB]">← Back to Guest Page</Link>
-          </p>
-        </div>
-      </div>
-    );
+    return <div className="min-h-screen bg-slate-50 p-6 flex items-center"><EmailCodeVerification initialEmail={form.email.trim()} notice={verificationMessage} /></div>;
   }
 
   return (
@@ -126,10 +83,7 @@ export default function GuestRegisterPage() {
           <p className="text-sm text-slate-500 mt-1">Create a guest account before submitting a visitor parking request</p>
         </div>
 
-        <div className="mb-5">
-          <p className="text-sm text-slate-500">Already registered but need to verify? Enter your email below and use resend.</p>
-          {resendControl}
-        </div>
+        <p className="mb-5 text-sm text-center"><Link to="/verify-email" className="text-blue-700 underline">Already registered? Verify email / resend code</Link></p>
 
         {/* Guest Notice */}
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3 mb-6">
