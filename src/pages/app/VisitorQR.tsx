@@ -1,5 +1,6 @@
 import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
 import VisitorDocuments from '../../components/VisitorDocuments';
+import VisitorDocumentCheck from '../../components/VisitorDocumentCheck';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { PageHeader, Card, Badge, Button, Table, SearchBar, Modal,  Toast, Input, Select } from '../../components/ui';
@@ -360,6 +361,7 @@ function Requests({ notify, onShowPass, reloadKey, onChanged }: { notify: Notify
             <div className="min-w-0 space-y-4">
               <Badge variant={REQUEST_BADGE[review.row.request_status]}>{review.row.request_status}</Badge>
               <h3 className="text-lg font-semibold text-[#080677]">{review.row.visitor.name}</h3>
+              <VisitorDocumentCheck key={review.row.request_id} requestId={review.row.request_id} />
               <dl className="text-sm divide-y divide-slate-100">
                 {[
                   ['Contact', review.row.visitor.contact_number],
