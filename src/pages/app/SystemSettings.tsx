@@ -1,9 +1,12 @@
+import { useLocation } from 'react-router-dom';
+import { PAGE_SECTIONS, selectedSection } from '../../lib/pageSections';
 import React, { useState } from 'react';
-import { PageHeader, Card, Button, Tabs, Toggle, Toast, Input, Select } from '../../components/ui';
+import { PageHeader, Card, Button,  Toggle, Toast, Input, Select } from '../../components/ui';
 import { Settings, Save } from 'lucide-react';
 
 export default function SystemSettings() {
-  const [tab, setTab] = useState('General');
+  const { pathname } = useLocation();
+  const tab = selectedSection(PAGE_SECTIONS.settings, pathname);
   const [toast, setToast] = useState('');
   const [notifEmail, setNotifEmail] = useState(true);
   const [notifMobile, setNotifMobile] = useState(true);
@@ -15,11 +18,11 @@ export default function SystemSettings() {
   return (
     <div className="animate-fadein">
       {toast && <Toast message={toast} onClose={() => setToast('')} />}
-      <PageHeader title="System Settings" subtitle="Configure PASS system preferences and parameters"
+      <PageHeader title={tab === 'General' ? 'System Settings' : `System Settings · ${tab}`} subtitle="Configure PASS system preferences and parameters"
         action={<Button onClick={save}><Save size={16} /> Save Changes</Button>}
       />
 
-      <Tabs tabs={['General', 'Parking', 'Access Control', 'Notifications', 'Security']} active={tab} onChange={setTab} />
+
 
       {tab === 'General' && (
         <Card className="p-8 space-y-6 max-w-2xl">

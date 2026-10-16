@@ -1,7 +1,8 @@
+import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
 import VisitorDocuments from '../../components/VisitorDocuments';
 import React, { useCallback, useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import { PageHeader, Card, Badge, Button, Table, SearchBar, Modal, Tabs, Toast, Input, Select } from '../../components/ui';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { PageHeader, Card, Badge, Button, Table, SearchBar, Modal,  Toast, Input, Select } from '../../components/ui';
 import { apiRequest, ApiError } from '../../lib/apiClient';
 import { useTopicVersion, useLiveSync } from '../../lib/liveSync';
 import { CAMPUS_TIMEZONE, formatCampusDateTime } from '../../lib/datetime';
@@ -564,13 +565,15 @@ function Verification({ notify }: { notify: Notify }) {
 
 export default function VisitorQR() {
   const { pathname } = useLocation();
-  const [tab, setTab] = useState('Visitor Requests');
+  const navigate = useNavigate();
+  const tab = selectedSection(PAGE_SECTIONS.visitors, pathname);
+  const setTab = (label: string) => navigate(sectionPath(PAGE_SECTIONS.visitors, label));
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showPass, setShowPass] = useState<Pass | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
-  useEffect(() => { setTab(pathname.endsWith('/qr-verify') ? 'QR Verification' : 'Visitor Requests'); }, [pathname]);
+
 
   const { refreshNow } = useLiveSync();
   // Every successful action is followed by a notice: also tell other open screens to refresh.
@@ -583,10 +586,10 @@ export default function VisitorQR() {
   return (
     <div className="animate-fadein">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      <PageHeader backToDashboard title="Visitor QR Access" subtitle="Visitor requests, approval, and QR passes. Visitors enter and exit with their QR pass; campus users use RFID."
+      <PageHeader backToDashboard title={tab === 'Visitor Requests' ? 'Visitor QR Access' : tab} subtitle="Visitor requests, approval, and QR passes. Visitors enter and exit with their QR pass; campus users use RFID."
         action={<Button onClick={() => setShowForm(true)}><Plus size={16} /> New Visitor Request</Button>}
       />
-      <Tabs tabs={['Visitor Requests', 'QR Passes', 'QR Verification']} active={tab} onChange={setTab} />
+
 
       {tab === 'Visitor Requests' && <Requests notify={notify} onShowPass={setShowPass} reloadKey={reloadKey} onChanged={() => setReloadKey(k => k + 1)} />}
       {tab === 'QR Passes' && <Passes notify={notify} onShowPass={setShowPass} reloadKey={reloadKey} />}

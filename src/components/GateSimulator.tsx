@@ -14,11 +14,17 @@ interface SimStatus { enabled: boolean; gate: string; rfid: SimCredential[]; qr:
 interface ScanResult { status: string; message: string; slot_code?: string | null; parking_area?: string | null }
 
 /** Whether the simulator is available to the signed-in user (null while checking). */
-export function useSimulatorAvailable() {
+export function useSimulatorAvailable(enabled = true) {
   const [available, setAvailable] = useState<boolean | null>(null);
   useEffect(() => {
-    apiRequest<SimStatus>('/api/dev/simulator').then(() => setAvailable(true)).catch(() => setAvailable(false));
-  }, []);
+    let cancelled = false;
+    if (!enabled) { setAvailable(false); return; }
+    setAvailable(null);
+    apiRequest<SimStatus>('/api/dev/simulator')
+      .then(() => { if (!cancelled) setAvailable(true); })
+      .catch(() => { if (!cancelled) setAvailable(false); });
+    return () => { cancelled = true; };
+  }, [enabled]);
   return available;
 }
 

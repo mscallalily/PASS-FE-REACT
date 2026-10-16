@@ -97,23 +97,29 @@ function AppRoutes() {
         <Route path="my-history" element={<RoleRoute roles={['student', 'faculty', 'employee']}><ParkingHistory /></RoleRoute>} />
         <Route path="users" element={<RoleRoute roles={['admin']}><UserManagement /></RoleRoute>} />
         {/* Legacy links redirect to the consolidated account-management screen. */}
-        <Route path="users/requests" element={<Navigate to="/app/users" replace />} />
-        <Route path="roles" element={<Navigate to="/app/users" replace />} />
+        <Route path="users/requests" element={<RoleRoute roles={['admin']}><UserManagement /></RoleRoute>} />
+        <Route path="roles" element={<RoleRoute roles={['admin']}><UserManagement /></RoleRoute>} />
         <Route path="vehicles" element={<RoleRoute roles={['admin', 'parking_staff', 'student', 'faculty', 'employee']}><VehicleManagement /></RoleRoute>} />
+        <Route path="vehicles/licenses" element={<RoleRoute roles={['admin', 'parking_staff']}><VehicleManagement /></RoleRoute>} />
+        <Route path="vehicles/status" element={<RoleRoute roles={['student', 'faculty', 'employee']}><VehicleManagement /></RoleRoute>} />
+        <Route path="vehicles/rfid-requests" element={<RoleRoute roles={['student', 'faculty', 'employee']}><VehicleManagement /></RoleRoute>} />
         <Route path="vehicles/register" element={<RoleRoute roles={['student', 'faculty', 'employee']}><VehicleManagement /></RoleRoute>} />
         <Route path="vehicles/authorization" element={<RoleRoute roles={['admin', 'parking_staff']}><VehicleManagement /></RoleRoute>} />
         <Route path="drivers" element={<RoleRoute roles={['admin', 'parking_staff', 'student', 'faculty', 'employee']}><VehicleManagement /></RoleRoute>} />
-        <Route path="rfid" element={<RoleRoute roles={['admin']}><RFIDManagement /></RoleRoute>} />
+        <Route path="rfid" element={<RoleRoute roles={['admin', 'parking_staff']}><RFIDManagement /></RoleRoute>} />
+        <Route path="rfid/simulator" element={<RoleRoute roles={['admin', 'parking_staff']}><RFIDManagement /></RoleRoute>} />
         <Route path="rfid/monitor" element={<RoleRoute roles={['parking_staff']}><RFIDManagement /></RoleRoute>} />
         <Route path="parking/transactions" element={<RoleRoute roles={['parking_staff']}><ParkingOperations /></RoleRoute>} />
         <Route path="parking/layout" element={<RoleRoute roles={['parking_staff']}><ParkingOperations /></RoleRoute>} />
         <Route path="parking/occupancy" element={<RoleRoute roles={['parking_staff']}><ParkingOperations /></RoleRoute>} />
         <Route path="parking/availability" element={<RoleRoute roles={['parking_staff', 'student', 'faculty', 'employee']}><ParkingOperations /></RoleRoute>} />
+        <Route path="visitors/passes" element={<RoleRoute roles={['admin', 'parking_staff']}><VisitorQR /></RoleRoute>} />
         <Route path="visitors" element={<RoleRoute roles={['admin', 'parking_staff']}><VisitorQR /></RoleRoute>} />
-        <Route path="qr-verify" element={<RoleRoute roles={['parking_staff']}><VisitorQR /></RoleRoute>} />
+        <Route path="qr-verify" element={<RoleRoute roles={['admin', 'parking_staff']}><VisitorQR /></RoleRoute>} />
         <Route path="reports" element={<RoleRoute roles={['admin']}><Reports /></RoleRoute>} />
         <Route path="audit" element={<RoleRoute roles={['admin']}><AuditLogs /></RoleRoute>} />
         <Route path="violations" element={<RoleRoute roles={['parking_staff']}><Violations /></RoleRoute>} />
+        <Route path="settings/:section" element={<RoleRoute roles={['admin']}><SystemSettings /></RoleRoute>} />
         <Route path="settings" element={<RoleRoute roles={['admin']}><SystemSettings /></RoleRoute>} />
         <Route path="*" element={<AccessDenied />} />
       </Route>

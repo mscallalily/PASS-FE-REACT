@@ -1,3 +1,4 @@
+import { PAGE_SECTIONS, selectedSection } from '../../lib/pageSections';
 
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -12,7 +13,7 @@ import {
   Select,
   Modal,
   Input,
-  Tabs,
+
   Toast,
 } from '../../components/ui';
 import { UserPlus, Check, X, RefreshCw } from 'lucide-react';
@@ -142,8 +143,8 @@ async function apiRequest<T>(
 }
 
 export default function UserManagement() {
-  const [tab, setTab] = useState('All Users');
   const { pathname } = useLocation();
+  const tab = selectedSection(PAGE_SECTIONS.users, pathname);
 
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState('');
@@ -177,15 +178,7 @@ const [addUserError, setAddUserError] = useState('');
     window.setTimeout(() => setToast(''), 3500);
   };
 
-  useEffect(() => {
-    if (pathname.endsWith('/requests')) {
-      setTab('Pending Approval');
-    } else if (pathname.endsWith('/roles')) {
-      setTab('Roles & Permissions');
-    } else {
-      setTab('All Users');
-    }
-  }, [pathname]);
+
 
   useEffect(() => {
     if (tab === 'Roles & Permissions') return;
@@ -360,7 +353,7 @@ async function handleAddUser() {
       )}
 
       <PageHeader
-        title="User Management"
+        title={tab === 'All Users' ? 'User Management' : tab}
         subtitle="Manage user accounts and registration requests"
         action={
           <Button onClick={() => setShowAdd(true)}>
@@ -370,11 +363,7 @@ async function handleAddUser() {
         }
       />
 
-      <Tabs
-        tabs={['All Users', 'Pending Approval', 'Roles & Permissions']}
-        active={tab}
-        onChange={setTab}
-      />
+
 
       {error && (
         <div

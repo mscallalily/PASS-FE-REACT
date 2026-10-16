@@ -1,4 +1,6 @@
-import React, { useEffect, useState, ReactNode } from 'react';
+import { PAGE_SECTIONS, type PageSection } from '../lib/pageSections';
+import { useSimulatorAvailable } from './GateSimulator';
+import React, { useEffect, useState, useId, ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/apiClient';
 import { useTopicVersion } from '../lib/liveSync';
@@ -15,78 +17,60 @@ interface NavItem {
   label: string;
   icon: ReactNode;
   to?: string;
-  children?: { label: string; to: string }[];
+  children?: PageSection[];
   roles?: string[];
 }
 
-// One sidebar entry per page. Sub-sections (e.g. Entry & Exit / Occupancy / Layout) live as
-// tabs inside their page, so they are NOT repeated here. Profile and Notifications live in the
-// top bar (avatar + bell), so they are not repeated here either.
+// Each expandable group exposes every page section; selection is stored in the URL.
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', icon: <LayoutDashboard size={18} />, to: '/app/dashboard', roles: ['admin', 'parking_staff', 'student', 'faculty', 'employee'] },
-
-  // Admin
-  { label: 'User Accounts', icon: <Users size={18} />, roles: ['admin'], to: '/app/users' },
-  { label: 'Vehicle Authorization', icon: <Car size={18} />, roles: ['admin'], to: '/app/vehicles/authorization' },
-  { label: 'RFID Management', icon: <CreditCard size={18} />, roles: ['admin'], to: '/app/rfid' },
-  { label: 'Visitor Requests', icon: <QrCode size={18} />, roles: ['admin'], to: '/app/visitors' },
-  { label: 'Reports & Analytics', icon: <FileBarChart size={18} />, roles: ['admin'], to: '/app/reports' },
-  { label: 'Audit Logs', icon: <ScrollText size={18} />, roles: ['admin'], to: '/app/audit' },
-  { label: 'System Settings', icon: <Settings size={18} />, roles: ['admin'], to: '/app/settings' },
-
-  // Parking staff
-  { label: 'Vehicle Verification', icon: <Car size={18} />, roles: ['parking_staff'], to: '/app/vehicles/authorization' },
-  { label: 'RFID Access Records', icon: <CreditCard size={18} />, roles: ['parking_staff'], to: '/app/rfid/monitor' },
-  { label: 'Parking Operations', icon: <ParkingSquare size={18} />, roles: ['parking_staff'], to: '/app/parking/transactions' },
-  { label: 'Visitor QR Access', icon: <QrCode size={18} />, roles: ['parking_staff'], to: '/app/visitors' },
-  { label: 'Violations', icon: <AlertTriangle size={18} />, roles: ['parking_staff'], to: '/app/violations' },
-
-  // Student / Faculty / Employee
-  { label: 'My Vehicle', icon: <Car size={18} />, roles: ['student', 'faculty', 'employee'], to: '/app/vehicles' },
-  { label: 'Parking Info', icon: <MapPin size={18} />, roles: ['student', 'faculty', 'employee'], to: '/app/parking/availability' },
-  { label: 'Parking History', icon: <Activity size={18} />, roles: ['student', 'faculty', 'employee'], to: '/app/my-history' },
+  { label: 'Dashboard', icon: <LayoutDashboard size={18}/>, to: '/app/dashboard' },
+  { label: 'User Accounts', icon: <Users size={18}/>, roles: ['admin'], children: PAGE_SECTIONS.users },
+  { label: 'Vehicle Authorization', icon: <Car size={18}/>, roles: ['admin'], children: PAGE_SECTIONS.vehicleStaff },
+  { label: 'Vehicle Verification', icon: <Car size={18}/>, roles: ['parking_staff'], children: PAGE_SECTIONS.vehicleStaff },
+  { label: 'RFID Management', icon: <CreditCard size={18}/>, roles: ['admin'], children: PAGE_SECTIONS.rfid },
+  { label: 'RFID Access Records', icon: <CreditCard size={18}/>, roles: ['parking_staff'], children: PAGE_SECTIONS.rfid },
+  { label: 'Parking Operations', icon: <ParkingSquare size={18}/>, roles: ['parking_staff'], children: PAGE_SECTIONS.parking.filter(section => section.label !== 'Availability') },
+  { label: 'Visitor Requests', icon: <QrCode size={18}/>, roles: ['admin'], children: PAGE_SECTIONS.visitors },
+  { label: 'Visitor QR Access', icon: <QrCode size={18}/>, roles: ['parking_staff'], children: PAGE_SECTIONS.visitors },
+  { label: 'Reports & Analytics', icon: <FileBarChart size={18}/>, roles: ['admin'], to: '/app/reports' },
+  { label: 'Audit Logs', icon: <ScrollText size={18}/>, roles: ['admin'], to: '/app/audit' },
+  { label: 'System Settings', icon: <Settings size={18}/>, roles: ['admin'], children: PAGE_SECTIONS.settings },
+  { label: 'Violations', icon: <AlertTriangle size={18}/>, roles: ['parking_staff'], to: '/app/violations' },
+  { label: 'My Vehicle', icon: <Car size={18}/>, roles: ['student', 'faculty', 'employee'], children: PAGE_SECTIONS.vehicleUser },
+  { label: 'Parking Info', icon: <MapPin size={18}/>, roles: ['student', 'faculty', 'employee'], to: '/app/parking/availability' },
+  { label: 'Parking History', icon: <Activity size={18}/>, roles: ['student', 'faculty', 'employee'], to: '/app/my-history' },
+  { label: 'Profile', icon: <UserCog size={18}/>, to: '/app/profile' },
+  { label: 'Notifications', icon: <Bell size={18}/>, to: '/app/notifications' },
 ];
 
-function SidebarItem({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
-  const [open, setOpen] = useState(false);
+function SidebarItem({ item, collapsed, onExpand }: { item: NavItem; collapsed: boolean; onExpand: () => void }) {
+  const { pathname } = useLocation();
+  const activeGroup = !!item.children?.some(child => child.to === pathname);
+  const [open, setOpen] = useState(activeGroup);
+  const childId = useId();
+  useEffect(() => { if (activeGroup) setOpen(true); }, [pathname, activeGroup]);
   if (item.children) {
-    return (
-      <div>
-        <button
-          onClick={() => setOpen(o => !o)}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-white/10 text-blue-100 ${open ? 'bg-white/10' : ''}`}
-        >
-          <span className="shrink-0">{item.icon}</span>
-          {!collapsed && <><span className="flex-1 text-sm font-medium">{item.label}</span>{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</>}
-        </button>
-        {open && !collapsed && (
-          <div className="ml-9 mt-1 space-y-0.5">
-            {item.children.map(c => (
-              <NavLink key={c.to} to={c.to}
-                className={({ isActive }) =>
-                  `block px-3 py-2 rounded-lg text-xs font-medium transition-colors ${isActive ? 'bg-white/15 text-white border-l-2 border-[#D4A72C]' : 'text-blue-200 hover:bg-white/10 hover:text-white'}`
-                }
-              >{c.label}</NavLink>
-            ))}
-          </div>
-        )}
-      </div>
-    );
+    return <div>
+      <button type="button" title={collapsed ? item.label : undefined} aria-expanded={!collapsed && open} aria-controls={childId} aria-label={item.label}
+        onClick={() => { if (collapsed) { onExpand(); setOpen(true); } else setOpen(previous => !previous); }}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors min-h-11 ${activeGroup ? 'bg-white/15 text-white border-l-2 border-[#D4A72C]' : 'hover:bg-white/10 text-blue-100'}`}>
+        <span className="shrink-0">{item.icon}</span>
+        {!collapsed && <><span className="flex-1 text-sm font-medium">{item.label}</span>{open ? <ChevronDown size={15}/> : <ChevronRight size={15}/>}</>}
+      </button>
+      {open && !collapsed && <div id={childId} role="group" aria-label={`${item.label} sections`} className="ml-5 pl-3 mt-1 mb-2 space-y-1 border-l border-white/15">
+        {item.children.map(child => <NavLink end key={child.to} to={child.to} className={({ isActive }) => `block px-3 py-2.5 min-h-10 rounded-lg text-xs font-medium transition-colors ${isActive ? 'bg-white/15 text-white border-l-2 border-[#D4A72C]' : 'text-blue-200 hover:bg-white/10 hover:text-white'}`}>{child.label}</NavLink>)}
+      </div>}
+    </div>;
   }
-  return (
-    <NavLink end={item.to?.startsWith('/guest-dashboard')} to={item.to!}
-      className={({ isActive }) =>
-        `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isActive ? 'bg-white/15 text-white border-l-2 border-[#D4A72C]' : 'text-blue-100 hover:bg-white/10 hover:text-white'}`
-      }
-    >
-      <span className="shrink-0">{item.icon}</span>
-      {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
-    </NavLink>
-  );
+  return <NavLink end={item.to?.startsWith('/guest-dashboard')} to={item.to!} title={collapsed ? item.label : undefined} aria-label={item.label}
+    className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 min-h-11 rounded-lg transition-colors ${isActive ? 'bg-white/15 text-white border-l-2 border-[#D4A72C]' : 'text-blue-100 hover:bg-white/10 hover:text-white'}`}>
+    <span className="shrink-0">{item.icon}</span>{!collapsed && <span className="text-sm font-medium">{item.label}</span>}
+  </NavLink>;
 }
 
 export default function Layout({ children, navigation, profileTo = '/app/profile', notificationsTo = '/app/notifications' }: { children: ReactNode; navigation?: NavItem[]; profileTo?: string; notificationsTo?: string }) {
   const { user, logout } = useAuth();
+  const simulatorAvailable = useSimulatorAvailable(user?.role === 'admin' || user?.role === 'parking_staff');
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -113,7 +97,7 @@ export default function Layout({ children, navigation, profileTo = '/app/profile
   }, [pathname, notificationsVersion]);
 
   const role = user?.role ?? 'student';
-  const visibleNav = (navigation ?? NAV_ITEMS).filter(item => !item.roles || item.roles.includes(role));
+  const visibleNav = (navigation ?? NAV_ITEMS).filter(item => !item.roles || item.roles.includes(role)).map(item => ({ ...item, children: item.children?.filter(child => !child.simulatorOnly || simulatorAvailable === true) }));
 
   const handleLogout = () => {
     logout();
@@ -148,7 +132,7 @@ export default function Layout({ children, navigation, profileTo = '/app/profile
       {/* Nav */}
       <nav aria-label="Main navigation" onClick={event => { if ((event.target as Element).closest('a')) setSidebarOpen(false); }} className="flex-1 overflow-y-auto sidebar-scrollbar px-2 py-3 space-y-0.5">
         {visibleNav.map((item, i) => (
-          <SidebarItem key={i} item={item} collapsed={collapsed} />
+          <SidebarItem key={item.label} item={item} collapsed={collapsed} onExpand={() => setCollapsed(false)} />
         ))}
       </nav>
 
@@ -171,6 +155,7 @@ export default function Layout({ children, navigation, profileTo = '/app/profile
       <aside className={`hidden lg:flex flex-col bg-[#080677] transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'} shrink-0 relative`}>
         {sidebarContent}
         <button
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           onClick={() => setCollapsed(c => !c)}
           className="absolute -right-3 top-20 bg-[#080677] text-white w-6 h-6 rounded-full flex items-center justify-center shadow-lg border-2 border-white z-10"
         >

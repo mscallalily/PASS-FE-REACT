@@ -217,7 +217,7 @@ export default function GuestDashboardPage() {
   const usablePasses = passes.filter(p => p.status === 'active' || p.status === 'scheduled');
   const name = profile?.full_name || user?.name || 'Guest';
 
-  const navigation = SECTIONS.filter(item => !['profile', 'notifications'].includes(item.id)).map(item => ({
+  const navigation = SECTIONS.map(item => ({
     label: item.id === 'overview' ? 'Dashboard' : item.label,
     icon: item.icon,
     to: item.id === 'overview' ? '/guest-dashboard' : `/guest-dashboard/${item.id}`,

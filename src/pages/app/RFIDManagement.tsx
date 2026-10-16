@@ -1,7 +1,8 @@
+import { PAGE_SECTIONS, selectedSection } from '../../lib/pageSections';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { PageHeader, Card, Badge, Table, SearchBar, Tabs, StatCard, Select, Input, Button } from '../../components/ui';
+import { PageHeader, Card, Badge, Table, SearchBar, StatCard, Select, Input, Button } from '../../components/ui';
 import { apiRequest } from '../../lib/apiClient';
 import { useTopicVersion, useLiveSync } from '../../lib/liveSync';
 import { formatCampusDateTime } from '../../lib/datetime';
@@ -293,21 +294,17 @@ export default function RFIDManagement() {
   const { user } = useAuth();
   const { pathname } = useLocation();
   const simulator = useSimulatorAvailable();
-  const [tab, setTab] = useState('Access Records');
+  const tab = selectedSection(PAGE_SECTIONS.rfid, pathname, user?.role === 'admin' ? 'RFID Credentials' : 'Access Records');
   const [reloadKey, setReloadKey] = useState(0);
 
-  useEffect(() => {
-    setTab(pathname.endsWith('/monitor') || user?.role !== 'admin' ? 'Access Records' : 'RFID Credentials');
-  }, [pathname, user?.role]);
-
-  const tabs = ['Access Records', 'RFID Credentials', ...(simulator ? ['Gate Simulator'] : [])];
 
   return (
     <div className="animate-fadein">
-      <PageHeader backToDashboard title="RFID Access Records" subtitle="Entry and exit records at the shared Main Entrance / Exit, from the PASS database" />
-      <Tabs tabs={tabs} active={tab} onChange={setTab} />
+      <PageHeader backToDashboard title={tab === 'Access Records' ? 'RFID Access Records' : tab} subtitle="Entry and exit records at the shared Main Entrance / Exit, from the PASS database" />
+
       {tab === 'Access Records' && <AccessRecords reloadKey={reloadKey} />}
       {tab === 'RFID Credentials' && <RfidCredentials />}
+      {tab === 'Gate Simulator' && simulator === false && <p role="alert" className="text-sm text-slate-500">The development gate simulator is not available for this account.</p>}
       {tab === 'Gate Simulator' && simulator && <GateSimulator onScanned={() => setReloadKey(k => k + 1)} />}
     </div>
   );

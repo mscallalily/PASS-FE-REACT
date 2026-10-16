@@ -1,7 +1,8 @@
+import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { REGULAR_USER_ROLES, useAuth } from '../../context/AuthContext';
-import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input, Tabs, Toast, EmptyState } from '../../components/ui';
+import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input,  Toast, EmptyState } from '../../components/ui';
 import { MOCK_VEHICLES } from '../../data/mock';
 import { Car, Plus, AlertTriangle, RefreshCw } from 'lucide-react';
 import DriverLicenseVerification from '../../components/DriverLicenseVerification';
@@ -208,7 +209,10 @@ export default function VehicleManagement() {
   const license = useLicense();
   const licenseOnFile = isLicenseOnFile(license.status);
   const isRegularUser = REGULAR_USER_ROLES.includes(user?.role ?? null);
-  const [tab, setTab] = useState(isRegularUser ? 'My Vehicles' : 'Authorization');
+  const navigate = useNavigate();
+  const sections = isRegularUser ? PAGE_SECTIONS.vehicleUser : PAGE_SECTIONS.vehicleStaff;
+  const tab = selectedSection(sections, pathname);
+  const setTab = (label: string) => navigate(sectionPath(sections, label));
   const [rfidRequests, setRfidRequests] = useState<{ plate: string; status: string; submitted: string }[]>([]);
   const [requestVehicle, setRequestVehicle] = useState('');
   const [search, setSearch] = useState('');
@@ -397,12 +401,7 @@ export default function VehicleManagement() {
     }
   };
 
-  useEffect(() => {
-    if (!isRegularUser) setTab('Authorization');
-    else if (pathname.endsWith('/drivers')) setTab('Driver & License');
-    else if (pathname.endsWith('/rfid')) setTab('RFID Requests');
-    else setTab('My Vehicles');
-  }, [isRegularUser, pathname]);
+
 
   useEffect(() => {
   let cancelled = false;
@@ -452,16 +451,12 @@ export default function VehicleManagement() {
     <div className="animate-fadein">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       <PageHeader backToDashboard
-        title={isRegularUser ? 'My Vehicle' : 'Vehicle Authorization'}
+        title={tab === 'My Vehicles' ? 'My Vehicle' : tab === 'Authorization' ? 'Vehicle Authorization' : tab}
         subtitle={isRegularUser ? 'Manage your vehicle, driver information, and authorization status' : 'Review campus vehicle records and authorization status'}
         action={isRegularUser ? <Button onClick={() => setShowRegister(true)}><Plus size={16} /> Register Vehicle</Button> : undefined}
       />
 
-      <Tabs
-        tabs={isRegularUser ? ['My Vehicles', 'Driver & License', 'Authorization Status', 'RFID Requests'] : ['Authorization', 'License Verification']}
-        active={tab}
-        onChange={setTab}
-      />
+
 
       {tab === 'My Vehicles' && isRegularUser && !licenseOnFile && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
