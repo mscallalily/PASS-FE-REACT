@@ -51,6 +51,7 @@ function AdminDashboard() {
     const [occupancyData, setOccupancyData] = useState<any>(null);
     const [occupancyError, setOccupancyError] = useState('');
     const [dashboardError, setDashboardError] = useState('');
+    const [recentLogs, setRecentLogs] = useState<any[]>([]);
 
   console.log('AdminDashboard rendered');
 
@@ -132,9 +133,58 @@ const loadOccupancy = async () => {
 };
 
 loadOccupancy();
+const loadRecentLogs = async () => {
+  try {
+    const response = await fetch('/api/admin/audit-logs?page=1', {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Audit logs request failed (${response.status})`);
+    }
+
+    const result = await response.json();
+    setRecentLogs((result.data ?? []).slice(0, 5));
+  } catch (error) {
+    console.error('Failed to load recent audit logs:', error);
+  }
+};
+
+loadRecentLogs();
 }, []);
 
+const activeAlerts = [];
 
+if (dashboardData) {
+  const pending = dashboardData.summary.pending_approvals;
+
+  if (pending > 0) {
+    activeAlerts.push({
+      type: 'info',
+      msg: `${pending} user registration requests pending approval`,
+    });
+  }
+
+  const zones = dashboardData.parking_occupancy || [];
+
+  zones.forEach(zone => {
+    if (zone.capacity <= 0) return;
+
+    const percentage = Math.round(
+      (zone.occupied / zone.capacity) * 100
+    );
+
+    if (percentage >= 80) {
+      activeAlerts.push({
+        type: 'warning',
+        msg: `${zone.zone} at ${percentage}% capacity (${zone.occupied}/${zone.capacity} slots occupied)`,
+      });
+    }
+  });
+}
   return (
 
     <div className="animate-fadein space-y-6">
@@ -264,6 +314,12 @@ loadOccupancy();
               </div>
             ))}
           </div>
+        </div>
+      );
+    })
+  )}
+</div>
+
         </Card>
 
         <Card className="p-6">
