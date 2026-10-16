@@ -1,9 +1,10 @@
 import '../styles/guest-portal.css';
+import ParkingAvailabilityMap from '../components/ParkingAvailabilityMap';
 import VisitorDocuments from '../components/VisitorDocuments';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DyciLogo } from '../components/Brand';
-import { Shield, CarFront, ClipboardList, Info, CheckCircle2, Clock3, AlertCircle, QrCode, Bell, User, History, Plus, X, Maximize2, ArrowRight, UploadCloud } from 'lucide-react';
+import { Shield, CarFront, ClipboardList, Info, CheckCircle2, Clock3, AlertCircle, QrCode, Bell, User, History, Plus, X, Maximize2, ArrowRight, UploadCloud, MapPin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import { Modal, Button, Card as SharedCard, PageHeader, StatCard } from '../components/ui';
@@ -16,7 +17,7 @@ import { CAMPUS_TIMEZONE, formatCampusDateTime } from '../lib/datetime';
 // in MySQL via /api/guest/*: profile, vehicles, visitor parking requests, the
 // Visitor QR passes an Administrator issued, visits, and notifications.
 
-type Section = 'overview' | 'request' | 'vehicles' | 'passes' | 'visits' | 'notifications' | 'profile';
+type Section = 'overview' | 'request' | 'vehicles' | 'passes' | 'visits' | 'notifications' | 'profile' | 'parking';
 type PassStatus = 'active' | 'scheduled' | 'used' | 'expired' | 'revoked' | 'legacy';
 
 interface Pass {
@@ -72,6 +73,7 @@ const SECTIONS: { id: Section; label: string; icon: React.ReactNode }[] = [
   { id: 'request', label: 'New Request', icon: <ClipboardList size={18} /> },
   { id: 'passes', label: 'My QR Passes', icon: <QrCode size={18} /> },
   { id: 'vehicles', label: 'My Vehicles', icon: <CarFront size={18} /> },
+  { id: 'parking', label: 'Parking Layout', icon: <MapPin size={18} /> },
   { id: 'visits', label: 'Visit History', icon: <History size={18} /> },
   { id: 'notifications', label: 'Notifications', icon: <Bell size={18} /> },
   { id: 'profile', label: 'Profile', icon: <User size={18} /> },
@@ -286,6 +288,7 @@ export default function GuestDashboardPage() {
           </div>
         )}
 
+        {section === 'parking' && <ParkingAvailabilityMap />}
         {section === 'request' && <RequestForm vehicles={vehicles} onAddVehicle={() => setSection('vehicles')} onSubmitted={message => { notify(message); load(); setSection('overview'); }} />}
         {section === 'vehicles' && <Vehicles vehicles={vehicles} types={types} onAdded={message => { notify(message); load(); }} />}
 

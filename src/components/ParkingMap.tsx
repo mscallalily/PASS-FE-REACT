@@ -109,7 +109,7 @@ function textAngle(rotation: number, w: number, h: number) {
 export function slotFill(slot: MapSlot) {
   if (slot.status === 'maintenance') return { fill: '#9CA3AF', stroke: '#6B7280', side: '#6B7280', dash: undefined, text: '#FFFFFF' };
   if (slot.status === 'occupied') {
-    return { fill: '#EF4444', stroke: slot.occupant?.confirmed ? '#B91C1C' : '#FFFFFF', side: '#B91C1C', dash: slot.occupant?.confirmed ? undefined : '1.2 0.8', text: '#FFFFFF' };
+    return { fill: '#EF4444', stroke: !slot.occupant || slot.occupant.confirmed ? '#B91C1C' : '#FFFFFF', side: '#B91C1C', dash: !slot.occupant || slot.occupant.confirmed ? undefined : '1.2 0.8', text: '#FFFFFF' };
   }
   return { fill: '#22C55E', stroke: '#15803D', side: '#15803D', dash: undefined, text: '#FFFFFF' };
 }
@@ -118,7 +118,7 @@ export const slotNumber = (code: string) => String(Number(code.split('-')[1] ?? 
 
 export function slotLabel(slot: MapSlot) {
   const state = slot.status === 'occupied'
-    ? `occupied by ${slot.occupant?.plate_number}${slot.occupant?.confirmed ? '' : ' (location not yet confirmed)'}`
+    ? slot.occupant ? `occupied by ${slot.occupant.plate_number}${slot.occupant.confirmed ? '' : ' (location not yet confirmed)'}` : 'occupied'
     : slot.status;
   return `Slot ${slot.slot_code}${slot.accessible ? ' (accessible / PWD)' : ''}, ${slot.area_name}, ${state}${slot.incident ? ', wrong-slot report' : ''}`;
 }

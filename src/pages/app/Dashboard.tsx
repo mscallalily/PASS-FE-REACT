@@ -1,3 +1,4 @@
+import ParkingAvailabilityMap from '../../components/ParkingAvailabilityMap';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -7,7 +8,6 @@ import {
   TrendingUp, Activity, Shield, Bell, ArrowRight, CheckCircle, Clock
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { OCCUPANCY_DATA, ZONE_CAPACITY, MOCK_AUDIT_LOGS } from '../../data/mock';
 import { formatCampusDateTime } from '../../lib/datetime';
 import { apiRequest } from '../../lib/apiClient';
 import { useLiveLoad, useLiveSync } from '../../lib/liveSync';
@@ -325,81 +325,14 @@ if (dashboardData) {
 
 function UserDashboard() {
   const { user } = useAuth();
-  return (
-    <div className="animate-fadein space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-[#080677]">Hello, {user?.name?.split(' ')[0]}</h1>
-        <p className="text-sm text-slate-500 mt-1">{new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="My Vehicles" value="1" icon={<Car size={20} />} color="blue" />
-        <StatCard label="Available Near You" value="39" icon={<ParkingSquare size={20} />} color="green" sub="Zone C" />
-        <StatCard label="Today's Entries" value="1" icon={<Activity size={20} />} color="sky" />
-        <StatCard label="Notifications" value="3" icon={<Bell size={20} />} color="amber" sub="2 unread" />
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-6">
-        <Card className="p-6 bg-gradient-to-br from-[#080677] to-[#2563EB] text-white">
-          <p className="text-blue-200 text-sm">Vehicle: ABC-1234</p>
-          <h2 className="text-xl font-bold mt-1">Toyota Vios 2021</h2>
-          <div className="mt-4 flex items-center gap-2 text-sm">
-            <CheckCircle size={16} className="text-green-400" />
-            <span className="text-blue-100">RFID Active — Card RFID-001</span>
-          </div>
-          <div className="mt-2 flex items-center gap-2 text-sm">
-            <CheckCircle size={16} className="text-green-400" />
-            <span className="text-blue-100">Authorization: Valid until Aug 2025</span>
-          </div>
-          <Link to="/app/vehicles" className="mt-5 inline-flex items-center gap-1.5 text-sm text-[#38BDF8] hover:underline">
-            View vehicle details <ArrowRight size={14} />
-          </Link>
-        </Card>
-
-        <Card className="p-6">
-          <h3 className="font-semibold text-slate-700 mb-4">Parking Availability</h3>
-          <div className="space-y-3">
-            {ZONE_CAPACITY.map((z, i) => {
-              const pct = Math.round((z.occupied / z.capacity) * 100);
-              return (
-                <div key={z.zone} className="flex items-center gap-3">
-                  <span className="w-14 text-sm text-slate-500 font-medium">{z.zone}</span>
-                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: COLORS[i] }} />
-                  </div>
-                  <span className="text-xs font-bold text-slate-600 w-12 text-right">{z.capacity - z.occupied} free</span>
-                </div>
-              );
-            })}
-          </div>
-          <Link to="/app/parking/availability" className="mt-4 text-xs text-[#2563EB] hover:underline flex items-center gap-1">
-            View full map <ArrowRight size={12} />
-          </Link>
-        </Card>
-      </div>
-
-      <Card className="p-6">
-        <h3 className="font-semibold text-slate-700 mb-4">Recent Parking Activity</h3>
-        <div className="space-y-3">
-          {[
-            { date: 'Sep 1, 2024', entry: '07:32 AM', exit: '05:45 PM', zone: 'Zone A', duration: '10h 13m' },
-            { date: 'Aug 30, 2024', entry: '08:10 AM', exit: '06:00 PM', zone: 'Zone B', duration: '9h 50m' },
-          ].map((h, i) => (
-            <div key={i} className="flex items-center justify-between p-4 bg-blue-50 rounded-xl">
-              <div>
-                <p className="font-medium text-slate-700 text-sm">{h.date}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{h.zone} · Entry: {h.entry} · Exit: {h.exit}</p>
-              </div>
-              <span className="text-sm font-bold text-[#2563EB]">{h.duration}</span>
-            </div>
-          ))}
-        </div>
-        <Link to="/app/my-history" className="mt-4 text-xs text-[#2563EB] hover:underline flex items-center gap-1">
-          View full history <ArrowRight size={12} />
-        </Link>
-      </Card>
+  return <div className="animate-fadein space-y-6">
+    <div className="flex flex-wrap justify-between gap-4 items-start">
+      <div><h1 className="text-2xl font-bold text-[#080677]">Hello, {user?.name?.split(' ')[0]}</h1><p className="text-sm text-slate-500 mt-1">Check campus parking before your trip.</p></div>
+      <Link to="/app/vehicles" className="inline-flex items-center gap-2 rounded-xl bg-[#080677] px-4 py-3 text-sm font-semibold text-white"><Car size={16} />My vehicles</Link>
     </div>
-  );
+    <ParkingAvailabilityMap />
+    <Link to="/app/my-history" className="inline-flex items-center gap-2 text-sm font-medium text-[#2563EB]">View my parking history <ArrowRight size={14} /></Link>
+  </div>;
 }
 
 // ============================================

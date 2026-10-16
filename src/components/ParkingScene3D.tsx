@@ -146,47 +146,13 @@ export type SceneSlot = MapSlot & { gx: number; gy: number; gw: number; gh: numb
 
 export interface TrayPanel { area: string; footprint: Point[]; titleAt: Point; title: string; note: string; codes: string }
 
-/** Slots with their scene position: drawn bays, then the trays for unprinted slots. */
+/** Slots with their scene position: the mapped bays only. */
 export function layoutSlots(data: MapData): { slots: SceneSlot[]; trays: TrayPanel[] } {
   const slots: SceneSlot[] = data.slots
     .filter(s => s.placed)
     .map(s => ({ ...s, gx: s.x!, gy: s.y!, gw: s.w!, gh: s.h!, rot: s.rotation, base: PAVE, tray: false }));
-  const trays: TrayPanel[] = [];
-
-  for (const t of data.geometry.trays ?? []) {
-    const list = data.slots
-      .filter(s => !s.placed && s.area_code === t.area)
-      .sort((a, b) => a.slot_code.localeCompare(b.slot_code, undefined, { numeric: true }));
-    if (!list.length) continue;
-
-    const [bw, bh] = t.bay;
-    const cols = Math.min(t.columns, list.length);
-    const rows = Math.ceil(list.length / t.columns);
-    const [ox, oy] = t.origin;
-    const width = cols * bw + (cols - 1) * t.gap;
-    const height = rows * bh + (rows - 1) * t.gap;
-
-    list.forEach((s, i) => {
-      slots.push({
-        ...s,
-        gx: ox + (i % t.columns) * (bw + t.gap) + bw / 2,
-        gy: oy + Math.floor(i / t.columns) * (bh + t.gap) + bh / 2,
-        gw: bw, gh: bh, rot: 0, base: PAVE, tray: true,
-      });
-    });
-
-    const pad = 4;
-    trays.push({
-      area: t.area,
-      footprint: [[ox - pad, oy - pad], [ox + width + pad, oy - pad], [ox + width + pad, oy + height + pad], [ox - pad, oy + height + pad]],
-      titleAt: [ox - pad, oy - pad],
-      title: t.title,
-      note: t.note,
-      codes: `${list[0].slot_code}${list.length > 1 ? ` – ${list[list.length - 1].slot_code}` : ''}`,
-    });
-  }
-
-  return { slots, trays };
+  // Only mapped bays belong on the physical scene. Unmapped inventory stays off-map.
+  return { slots, trays: [] };
 }
 
 /** The vehicle's long axis follows the bay's longer side. */

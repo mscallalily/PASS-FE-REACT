@@ -6,8 +6,9 @@ import { PageHeader, Card, Badge, Button, Table, SearchBar, Select, Modal, StatC
 import { apiRequest } from '../../lib/apiClient';
 import { CAMPUS_TIMEZONE, formatCampusDateTime } from '../../lib/datetime';
 import { useLiveLoad, useLiveSync, POLL_MS, type Topic } from '../../lib/liveSync';
-import ParkingMap, { MapData, MapSlot, slotFill } from '../../components/ParkingMap';
+import { MapData, MapSlot, slotFill } from '../../components/ParkingMap';
 import ParkingLot3D from '../../components/ParkingLot3D';
+import ParkingAvailabilityMap from '../../components/ParkingAvailabilityMap';
 import { ParkingSquare, Car, CheckCircle, Wrench, AlertTriangle, LogIn, LogOut, RefreshCw, MapPin, Box, Map as MapIcon, Bike, Layers } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
@@ -762,9 +763,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
     [{ background: '#EF4444', outline: '1.5px dashed #FFFFFF', outlineOffset: -3 }, 'Occupied, location not yet confirmed'],
     [{ background: '#FFFFFF', border: '1px dashed #94A3B8' }, 'Painted bay, not a PASS slot'],
   ];
-  // The 3D view shows unprinted slots in in-scene trays; list only any it cannot place.
-  const trayAreas = new Set((data?.geometry.trays ?? []).map(t => t.area));
-  const unplaced = (data?.slots.filter(s => !s.placed) ?? []).filter(s => view === 'plan' || !trayAreas.has(s.area_code));
+  const unplaced = data?.slots.filter(s => !s.placed) ?? [];
   const others = activeVehicles.filter(t => t.transaction_id !== selected?.occupant?.transaction_id);
   const colors = selected ? slotFill(selected) : null;
   const gateOnline = (data?.gate?.gate_status ?? 'online') === 'online';
@@ -809,12 +808,8 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
           !error && <p className="py-16 text-center text-sm text-slate-400">Loading parking map...</p>
         ) : (
           <>
-            {view === '3d' ? (
-              <ParkingLot3D data={data} highlight={highlight} selectedId={selectedId} recent={recent} gateOnline={gateOnline}
-                focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} onGate={() => setGateMenu(true)} />
-            ) : (
-              <ParkingMap data={data} highlight={highlight} focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} />
-            )}
+            <ParkingLot3D viewMode={view} data={data} highlight={highlight} selectedId={selectedId} recent={recent} gateOnline={gateOnline}
+              focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} onGate={() => setGateMenu(true)} />
             <p className="text-xs text-slate-400">
               Drag to pan · scroll, pinch or use the buttons to zoom · select a slot for details{view === '3d' ? ' · select the Main Entrance / Exit to record an entry or exit' : ''}. Updates automatically: checks for changes every {POLL_MS / 1000} seconds while this tab is open.{' '}
               {highlight && (
@@ -826,7 +821,8 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
             <Reconciliation inside={data.inside} />
 
             {unplaced.length > 0 && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+              <details className="rounded-xl border border-slate-200 p-4 space-y-3">
+                <summary className="cursor-pointer text-sm font-medium text-slate-600">Unmapped slot inventory ({unplaced.length})</summary>
                 <div>
                   <p className="text-sm font-semibold text-amber-800">Slots not shown on the reference drawing ({unplaced.length})</p>
                   <p className="text-xs text-amber-700">These PASS slots exist and are tracked, but the DYCI layout drawing does not print their position. They are assigned only after all mapped bays in their area are taken. Verify their physical location before use.</p>
@@ -853,7 +849,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
                     </div>
                   );
                 })}
-              </div>
+              </details>
             )}
 
             <details className="rounded-xl border border-slate-100 p-4 text-sm">
@@ -1107,7 +1103,7 @@ export default function ParkingOperations() {
         <EntryExitRecords areas={areas} notify={notify} onShowOnMap={code => { setHighlight(code); setTab('Parking Layout'); }} />
       )}
       {tab === 'Occupancy Monitor' && !isRegularUser && <OccupancyMonitor overview={overview} error={overviewError} />}
-      {tab === 'Parking Layout' && !isRegularUser && <ParkingLayout notify={notify} highlight={highlight} onHighlight={setHighlight} />}
+      {tab === 'Parking Layout' && (isRegularUser ? <ParkingAvailabilityMap /> : <ParkingLayout notify={notify} highlight={highlight} onHighlight={setHighlight} />)}
       {tab === 'Availability' && <Availability />}
     </div>
   );

@@ -2,8 +2,8 @@ import React, { Component, memo, useCallback, useEffect, useImperativeHandle, us
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
-import { ZoomControls, slotLabel, slotNumber, type MapData, type MapGeometry, type MapSlot } from './ParkingMap';
-import ParkingScene3D, {
+import ParkingMap, { ZoomControls, slotLabel, slotNumber, type MapData, type MapGeometry, type MapSlot } from './ParkingMap';
+import {
   arrowShape, bayAxis, before, bodyColor, carSize, isMotorcycle, layoutSlots, motoSize, offset, plantTrees, rect,
   type SceneSlot, type TrayPanel,
 } from './ParkingScene3D';
@@ -244,7 +244,7 @@ function Box({ size, at, color, extra, cast = true }: { size: [number, number, n
 function Car({ s }: { s: SceneSlot }) {
   const { deg } = bayAxis(s);
   const { L, W } = carSize(s);
-  const color = bodyColor(s.occupant!.plate_number);
+  const color = bodyColor(s.occupant?.plate_number ?? s.slot_code);
   const paint = { metalness: 0.45, roughness: 0.35 };
   return (
     <group position={[s.gx, PAVE, s.gy]} rotation-y={-THREE.MathUtils.degToRad(deg)}>
@@ -268,7 +268,7 @@ function Car({ s }: { s: SceneSlot }) {
 function Motorcycle({ s }: { s: SceneSlot }) {
   const { deg } = bayAxis(s);
   const { L, W } = motoSize(s);
-  const color = bodyColor(s.occupant!.plate_number);
+  const color = bodyColor(s.occupant?.plate_number ?? s.slot_code);
   return (
     <group position={[s.gx, PAVE, s.gy]} rotation-y={-THREE.MathUtils.degToRad(deg)}>
       {[-0.36, 0.36].map(u => (
@@ -532,7 +532,7 @@ const Slots = memo(function Slots({ slots, extra, selectedId, closeUp, onSelect 
     const faint = new Paint(PAINT);
     for (const s of slots) {
       white.outline(rect(s.gx, s.gy, s.gw, s.gh, s.rot), 0.5);
-      if (s.status === 'occupied' && !s.occupant?.confirmed) white.dashed(rect(s.gx, s.gy, s.gw - 2.2, s.gh - 2.2, s.rot), 0.45, 1.4, 1, true);
+      if (s.status === 'occupied' && s.occupant && !s.occupant.confirmed) white.dashed(rect(s.gx, s.gy, s.gw - 2.2, s.gh - 2.2, s.rot), 0.45, 1.4, 1, true);
     }
     for (const b of extra) {
       const r = rect(b.x, b.y, b.w, b.h, b.rotation);
@@ -552,9 +552,9 @@ const Slots = memo(function Slots({ slots, extra, selectedId, closeUp, onSelect 
         const label = slotNumber(s.slot_code);
         const short = Math.min(s.gw, s.gh);
         const h = Math.max(3, Math.min(s.area_code === 'MC' ? 4.4 : 6, short * 0.55));
-        if (s.occupant) {
+        if (s.status === 'occupied') {
           const top = isMotorcycle(s) ? 7 : 9.5;
-          const tex = badge(closeUp ? [label, s.occupant.plate_number] : [label], '#DC2626', { size: 30 });
+          const tex = badge(closeUp && s.occupant ? [label, s.occupant.plate_number] : [label], '#DC2626', { size: 30 });
           return <Billboard key={`n${s.slot_id}`} tex={tex} at={[s.gx, PAVE + top + h * 0.7, s.gy]} h={closeUp ? h * 1.6 : h * 1.15} />;
         }
         return (
@@ -572,7 +572,7 @@ const Slots = memo(function Slots({ slots, extra, selectedId, closeUp, onSelect 
       ))}
 
       {slots.map(s => (
-        s.occupant
+        s.status === 'occupied'
           ? <group key={`v${s.slot_id}`} onClick={e => onSelect(s, e)}>{isMotorcycle(s) ? <Motorcycle s={s} /> : <Car s={s} />}</group>
           : s.status === 'maintenance' ? <group key={`c${s.slot_id}`} onClick={e => onSelect(s, e)}><Cone s={s} /></group> : null
       ))}
@@ -676,7 +676,7 @@ const CameraRig = React.forwardRef<CameraApi, { home: THREE.Box2; onCloseUp: (cl
     const c = controls.current;
     if (!c) return;
     c.target.copy(target);
-    camera.position.copy(target).addScaledVector(VIEW_DIR, distance);
+    camera.position.copy(target).addScaledVector(camera instanceof THREE.OrthographicCamera ? new THREE.Vector3(0, 1, 0) : VIEW_DIR, distance);
     camera.lookAt(target);
     c.update();
     invalidate();
@@ -684,6 +684,17 @@ const CameraRig = React.forwardRef<CameraApi, { home: THREE.Box2; onCloseUp: (cl
 
   /** Frame a ground box: project its corners through the real camera and refine. */
   const focus = useCallback((box: THREE.Box2, minDistance = 60) => {
+    if (camera instanceof THREE.OrthographicCamera) {
+      const centre = box.getCenter(new THREE.Vector2());
+      const target = new THREE.Vector3(centre.x, 0, centre.y);
+      camera.left = -size.width / 2; camera.right = size.width / 2;
+      camera.top = size.height / 2; camera.bottom = -size.height / 2;
+      camera.zoom = Math.min(size.width / Math.max(1, box.max.x - box.min.x), size.height / Math.max(1, box.max.y - box.min.y)) * 0.92;
+      camera.up.set(0, 0, -1);
+      camera.updateProjectionMatrix();
+      place(target, 900);
+      return;
+    }
     const cam = camera as THREE.PerspectiveCamera;
     cam.aspect = size.width / Math.max(1, size.height);
     cam.updateProjectionMatrix();
@@ -715,12 +726,16 @@ const CameraRig = React.forwardRef<CameraApi, { home: THREE.Box2; onCloseUp: (cl
     zoom: f => {
       const c = controls.current;
       if (!c) return;
+      if (camera instanceof THREE.OrthographicCamera) {
+        camera.zoom = THREE.MathUtils.clamp(camera.zoom * f, c.minZoom, c.maxZoom);
+        camera.updateProjectionMatrix(); c.update(); invalidate(); return;
+      }
       const dist = camera.position.distanceTo(c.target) / f;
       place(c.target.clone(), THREE.MathUtils.clamp(dist, c.minDistance, c.maxDistance));
     },
     reset,
     focus,
-  }), [camera, place, reset, focus]);
+  }), [camera, place, reset, focus, invalidate]);
 
   useEffect(() => {
     const c = new MapControls(camera, gl.domElement);
@@ -729,11 +744,13 @@ const CameraRig = React.forwardRef<CameraApi, { home: THREE.Box2; onCloseUp: (cl
     c.enableDamping = true;
     c.dampingFactor = 0.14;
     c.zoomToCursor = true;
+    c.minZoom = 0.1;
+    c.maxZoom = 20;
     c.minDistance = 45;
     c.maxDistance = 2200;
     const onChange = () => {
       invalidate();
-      const close = camera.position.distanceTo(c.target) < 260;
+      const close = camera instanceof THREE.OrthographicCamera ? camera.zoom > 3 : camera.position.distanceTo(c.target) < 260;
       if (close !== closeRef.current) { closeRef.current = close; onCloseUp(close); }
     };
     c.addEventListener('change', onChange);
@@ -766,6 +783,7 @@ function webglAvailable() {
 }
 
 type Props = {
+  viewMode?: '3d' | 'plan';
   data: MapData & { areas?: { area_code: string; capacity: number; available: number }[] };
   highlight: string | null;
   selectedId: number | null;
@@ -780,15 +798,15 @@ export default function ParkingLot3D(props: Props) {
   const [supported] = useState(webglAvailable);
   const fallback = (
     <div className="space-y-2">
-      <p className="text-xs text-amber-700">3D rendering (WebGL) is not available in this browser, so a simplified view is shown.</p>
-      <ParkingScene3D {...props} />
+      <p className="text-xs text-amber-700">This browser is showing the simplified plan. Slot positions and availability are unchanged.</p>
+      <ParkingMap data={props.data} highlight={props.highlight} onSelect={props.onSelect} focusArea={props.focusArea} />
     </div>
   );
   if (!supported) return fallback;
   return <WebGLBoundary fallback={fallback}><Lot {...props} /></WebGLBoundary>;
 }
 
-function Lot({ data, highlight, selectedId, recent, gateOnline, onSelect, onGate, focusArea }: Props) {
+function Lot({ viewMode = '3d', data, highlight, selectedId, recent, gateOnline, onSelect, onGate, focusArea }: Props) {
   // Static geometry only changes when the layout itself changes, not on every poll.
   const geometryKey = JSON.stringify(data.geometry);
   const g = useMemo(() => data.geometry, [geometryKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -841,7 +859,7 @@ function Lot({ data, highlight, selectedId, recent, gateOnline, onSelect, onGate
     light.position.set(center.x - 260, 520, center.y - 300);
     light.target.position.set(center.x, 0, center.y);
     light.castShadow = true;
-    light.shadow.mapSize.set(4096, 4096);
+    light.shadow.mapSize.set(2048, 2048);
     Object.assign(light.shadow.camera, { left: -460, right: 460, top: 460, bottom: -460, near: 50, far: 1600 });
     light.shadow.bias = -0.0004;
     light.shadow.normalBias = 0.6;
@@ -853,15 +871,17 @@ function Lot({ data, highlight, selectedId, recent, gateOnline, onSelect, onGate
     <div className="relative rounded-2xl border border-slate-200 overflow-hidden bg-gradient-to-b from-[#E6EDF5] to-[#D9E2EC]">
       <ZoomControls onZoomIn={() => rig.current?.zoom(1.4)} onZoomOut={() => rig.current?.zoom(1 / 1.4)} onReset={() => rig.current?.reset()} />
       {/* The lot is wide; size the view to it so the default framing fills the frame. */}
-      <div className="w-full min-h-[360px] max-h-[680px]" style={{ aspectRatio: '2.45 / 1' }}>
+      <div className="w-full min-h-[340px] sm:min-h-[440px] max-h-[680px]" style={{ aspectRatio: '2.45 / 1' }}>
       <Canvas
+        key={viewMode}
+        orthographic={viewMode === 'plan'}
         className="cursor-grab active:cursor-grabbing"
         shadows="percentage"
-        dpr={[1, 2]}
+        dpr={[1, 1.5]}
         frameloop={animate ? 'always' : 'demand'}
         camera={{ fov: FOV, near: 4, far: 6000, position: [center.x, 700, center.y + 500] }}
         gl={{ antialias: true, preserveDrawingBuffer: false }}
-        aria-label="3D view of the DYCI parking layout. Drag to pan, scroll or pinch to zoom, select a slot for details."
+        aria-label={`${viewMode === 'plan' ? 'Plan' : '3D'} view of the DYCI parking layout. Drag to pan, scroll or pinch to zoom, select a slot for details.`}
         role="application"
       >
         <hemisphereLight args={['#F1F5FF', '#5B7F43', 0.9]} />
