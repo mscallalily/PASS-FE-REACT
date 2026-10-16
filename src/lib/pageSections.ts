@@ -9,12 +9,14 @@ export const PAGE_SECTIONS = {
   vehicleStaff: [
     { label: 'Authorization', to: '/app/vehicles/authorization' },
     { label: 'License Verification', to: '/app/vehicles/licenses' },
+    { label: 'Emergency Vehicle Release', to: '/app/vehicle-releases' },
   ],
   vehicleUser: [
     { label: 'My Vehicles', to: '/app/vehicles' },
     { label: 'Driver & License', to: '/app/drivers' },
     { label: 'Authorization Status', to: '/app/vehicles/status' },
     { label: 'RFID Requests', to: '/app/vehicles/rfid-requests' },
+    { label: 'Emergency Vehicle Release', to: '/app/vehicle-releases' },
   ],
   rfid: [
     { label: 'Access Records', to: '/app/rfid/monitor' },

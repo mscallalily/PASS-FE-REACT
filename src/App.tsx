@@ -19,6 +19,7 @@ import MobileApp from './pages/MobileApp';
 import Dashboard from './pages/app/Dashboard';
 import UserManagement from './pages/app/UserManagement';
 import VehicleManagement from './pages/app/VehicleManagement';
+import VehicleRelease from './pages/app/VehicleRelease';
 import RFIDManagement from './pages/app/RFIDManagement';
 import ParkingOperations from './pages/app/ParkingOperations';
 import VisitorQR from './pages/app/VisitorQR';
@@ -99,6 +100,7 @@ function AppRoutes() {
         {/* Legacy links redirect to the consolidated account-management screen. */}
         <Route path="users/requests" element={<RoleRoute roles={['admin']}><UserManagement /></RoleRoute>} />
         <Route path="roles" element={<RoleRoute roles={['admin']}><UserManagement /></RoleRoute>} />
+        <Route path="vehicle-releases" element={<RoleRoute roles={['admin', 'parking_staff', 'student', 'faculty', 'employee']}><VehicleRelease /></RoleRoute>} />
         <Route path="vehicles" element={<RoleRoute roles={['admin', 'parking_staff', 'student', 'faculty', 'employee']}><VehicleManagement /></RoleRoute>} />
         <Route path="vehicles/licenses" element={<RoleRoute roles={['admin', 'parking_staff']}><VehicleManagement /></RoleRoute>} />
         <Route path="vehicles/status" element={<RoleRoute roles={['student', 'faculty', 'employee']}><VehicleManagement /></RoleRoute>} />
