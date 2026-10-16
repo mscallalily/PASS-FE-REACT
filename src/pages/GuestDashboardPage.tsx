@@ -1,7 +1,9 @@
+import '../styles/guest-portal.css';
+import VisitorDocuments from '../components/VisitorDocuments';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DyciLogo } from '../components/Brand';
-import { Shield, CarFront, ClipboardList, LogOut, Info, CheckCircle2, Clock3, AlertCircle, QrCode, Bell, User, History, Plus, X, Maximize2 } from 'lucide-react';
+import { Shield, CarFront, ClipboardList, LogOut, Info, CheckCircle2, Clock3, AlertCircle, QrCode, Bell, User, History, Plus, X, Maximize2, Menu, ArrowRight, UploadCloud, CalendarDays, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Modal, Button } from '../components/ui';
 import QrCodeImage from '../components/QrCode';
@@ -34,6 +36,7 @@ interface Pass {
 interface VisitorDriver { name: string; is_requester: boolean; license_reference: string | null; license_expiry: string | null; passenger_count: number; identity_verified: boolean }
 
 interface GuestRequest {
+  documents?: { license_available: boolean; vehicle_available: boolean; reviewed_at: string | null };
   driver?: VisitorDriver | null;
   request_id: number;
   request_status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired';
@@ -86,7 +89,7 @@ function FieldError({ message }: { message?: string }) {
 }
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <section className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-7 ${className}`}>{children}</section>;
+  return <section className={`guest-panel bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-7 ${className}`}>{children}</section>;
 }
 
 function SectionTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle?: string }) {
@@ -142,7 +145,7 @@ function FullScreenPass({ pass, name, onClose }: { pass: Pass; name: string; onC
       <p className="font-mono text-lg font-bold text-slate-700">{pass.plate_number}</p>
       <span className={`mt-2 text-sm font-semibold px-3 py-1 rounded-full ${PASS_TONE[pass.status]}`}>{PASS_LABEL[pass.status]}</span>
       <div className={`my-5 p-3 rounded-2xl border-4 ${usable ? 'border-green-400' : 'border-slate-200 opacity-40'}`}>
-        <QrCodeImage value={pass.pass_code} size={Math.min(320, Math.round((typeof window !== 'undefined' ? window.innerWidth : 360) * 0.75))} />
+        <QrCodeImage value={pass.pass_code} size={Math.min(280, Math.round((typeof window !== 'undefined' ? window.innerWidth : 360) * 0.75))} />
       </div>
       <div className="w-full max-w-sm text-sm space-y-1.5 rounded-xl bg-slate-50 p-4">
         <p className="flex justify-between gap-3"><span className="text-slate-500">Valid from</span><span className="font-medium text-right">{formatCampusDateTime(pass.valid_from)}</span></p>
@@ -161,6 +164,25 @@ export default function GuestDashboardPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [logoutModal, setLogoutModal] = useState(false);
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [documentRequest, setDocumentRequest] = useState<number | null>(null);
+  useEffect(() => {
+    if (!mobileMenu) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileMenu(false);
+      if (event.key === 'Tab') {
+        const buttons = document.querySelectorAll<HTMLButtonElement>('.guest-sidebar button');
+        const first = buttons[0], last = buttons[buttons.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    };
+    document.querySelector<HTMLButtonElement>('.guest-sidebar .guest-menu-toggle')?.focus();
+    document.addEventListener('keydown', close);
+    const previous = document.body.style.overflow; document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', close); document.body.style.overflow = previous; previousFocus?.focus(); };
+  }, [mobileMenu]);
   const [section, setSection] = useState<Section>('overview');
   const [requests, setRequests] = useState<GuestRequest[] | null>(null);
   const [passes, setPasses] = useState<Pass[]>([]);
@@ -215,32 +237,27 @@ export default function GuestDashboardPage() {
   const name = profile?.full_name || user?.name || 'Guest';
 
   return (
-    <div className="min-h-screen bg-[#F4F7FB] font-['Inter']">
-      <header className="bg-[#080677] text-white shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3"><DyciLogo onDark className="h-9" /><span className="h-7 w-px bg-white/25" /><div><p className="font-bold text-sm">PASS</p><p className="text-[#96D1F2] text-xs">Guest Visitor Portal</p></div></div>
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={() => setSection('notifications')} className="relative text-blue-100 hover:text-white" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
-              <Bell size={19} />{unread > 0 && <span className="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-[10px] font-bold flex items-center justify-center">{unread}</span>}
-            </button>
-            <span className="hidden sm:inline text-xs bg-white/10 rounded-full px-3 py-1.5">Guest account</span>
-            <button onClick={() => setLogoutModal(true)} className="inline-flex items-center gap-2 text-sm text-blue-100 hover:text-white"><LogOut size={16} /> <span className="hidden sm:inline">Logout</span></button>
-          </div>
+    <div className="guest-portal min-h-screen font-['Inter']">
+      <a className="guest-skip" href="#guest-content">Skip to content</a>
+      <header className="guest-header">
+        <div className="guest-header-inner">
+          <button type="button" className="guest-brand" onClick={() => setSection('overview')} aria-label="PASS guest home"><DyciLogo onDark className="h-9"/><span/><div><strong>PASS</strong><small>VISITOR PORTAL</small></div></button>
+          <div className="guest-header-actions"><span className="guest-account-badge"><span/>Verified guest</span><button type="button" onClick={() => setSection('notifications')} aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} className="guest-icon-button"><Bell size={20}/>{unread > 0 && <b>{unread}</b>}</button><button type="button" onClick={() => setLogoutModal(true)} className="guest-icon-button" aria-label="Sign out"><LogOut size={19}/></button><button type="button" className="guest-menu-toggle guest-icon-button" onClick={() => setMobileMenu(true)} aria-label="Open navigation" aria-expanded={mobileMenu}><Menu size={21}/></button></div>
         </div>
       </header>
-
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        <div className="mb-5"><p className="text-xs uppercase tracking-wider font-semibold text-blue-700 mb-2">Visitor parking access</p><h1 className="text-2xl sm:text-3xl font-bold text-[#080677]">Welcome, {name}</h1><p className="text-slate-600 mt-2 max-w-2xl">Register your vehicle, then submit a visitor parking request. Your QR pass appears here once an Administrator approves the request.</p></div>
-
-        <nav className="flex gap-2 overflow-x-auto pb-2 mb-5 -mx-4 px-4 sm:mx-0 sm:px-0" aria-label="Guest sections">
-          {SECTIONS.map(s => (
-            <button key={s.id} type="button" onClick={() => setSection(s.id)} aria-current={section === s.id ? 'page' : undefined}
-              className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium border transition-colors ${section === s.id ? 'bg-[#080677] text-white border-[#080677]' : 'bg-white text-slate-600 border-slate-200 hover:bg-blue-50'}`}>
-              {s.icon}{s.label}{s.id === 'notifications' && unread > 0 && <span className="ml-1 text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5">{unread}</span>}
-            </button>
-          ))}
-        </nav>
-
+      {mobileMenu && <button type="button" className="guest-menu-backdrop" onClick={() => setMobileMenu(false)} aria-label="Close navigation"/>}
+      <div className="guest-workspace">
+        <aside role={mobileMenu ? 'dialog' : undefined} aria-modal={mobileMenu || undefined} aria-label="Guest navigation" className={`guest-sidebar ${mobileMenu ? 'is-open' : ''}`}>
+          <div className="guest-sidebar-heading"><span className="guest-eyebrow">YOUR VISIT, SIMPLIFIED</span><button type="button" className="guest-menu-toggle guest-icon-button" onClick={() => setMobileMenu(false)} aria-label="Close navigation"><X size={21}/></button></div>
+          <nav aria-label="Guest sections">{SECTIONS.map(item => <button key={item.id} type="button" onClick={() => { setSection(item.id); setMobileMenu(false); }} aria-current={section === item.id ? 'page' : undefined} className={section === item.id ? 'is-active' : ''}>{item.icon}<span>{item.label}</span>{item.id === 'notifications' && unread > 0 ? <b>{unread}</b> : <ChevronRight size={14}/>}</button>)}</nav>
+          <div className="guest-sidebar-note"><Shield size={22}/><strong>Plan ahead. Arrive ready.</strong><p>Apply from tomorrow onwards. Bring your approved QR pass and physical driver’s license.</p><span>DYCI · Marciano Campus</span></div>
+        </aside>
+        <main id="guest-content" className="guest-main">
+          {section === 'overview' && <>
+          <section className="guest-hero"><div className="guest-hero-copy"><span className="guest-eyebrow">WELCOME TO DYCI</span><h1>Hello, {name.split(' ')[0]}<span>.</span></h1><p>Your campus visit starts here. Plan ahead, follow your request, and keep your pass close.</p><button type="button" className="guest-hero-action" onClick={() => setSection(vehicles.length ? 'request' : 'vehicles')}>{vehicles.length ? 'Plan a visit' : 'Add your first vehicle'}<ArrowRight size={17}/></button></div><div className="guest-hero-label"><CalendarDays size={26}/><span>VISITS BY APPROVAL</span><strong>Tomorrow<br/>onwards.</strong><small>All schedules in Manila time</small></div></section>
+          <div className="guest-stats" aria-label="Your visitor account summary">{[{ label: 'Registered vehicles', value: vehicles.length, detail: 'Ready for your next visit', target: 'vehicles' as Section, icon: <CarFront size={21}/> }, { label: 'Awaiting review', value: requests?.filter(request => request.request_status === 'pending' && !request.window_ended).length ?? 0, detail: 'We’ll notify you of a decision', target: 'overview' as Section, icon: <Clock3 size={21}/> }, { label: 'Upcoming / active passes', value: usablePasses.length, detail: 'Keep your QR ready', target: 'passes' as Section, icon: <QrCode size={21}/> }].map(stat => <button key={stat.label} type="button" className="guest-stat" onClick={() => setSection(stat.target)}><span className="guest-stat-icon">{stat.icon}</span><div><span>{stat.label}</span><strong>{stat.value}</strong><small>{stat.detail}</small></div><ArrowRight size={15}/></button>)}</div>
+          </>}
+          <div className="guest-content-heading"><div><span className="guest-eyebrow">GUEST WORKSPACE</span><h2>{SECTIONS.find(item => item.id === section)?.label}</h2></div>{section === 'overview' && <button type="button" className="guest-text-button" onClick={() => setSection('visits')}>Visit history<ArrowRight size={15}/></button>}</div>
         {flash && <div role="status" className={`mb-5 rounded-xl border p-4 text-sm ${flash.type === 'success' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-700'}`}>{flash.message}</div>}
         {loadError && <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</div>}
 
@@ -248,7 +265,7 @@ export default function GuestDashboardPage() {
           <div className="space-y-6">
             {usablePasses.length > 0 && (
               <Card>
-                <SectionTitle icon={<QrCode size={22} />} title="Your QR pass is ready" subtitle="Show it at the Main Entrance / Exit." />
+                <SectionTitle icon={<QrCode size={22} />} title="Your visitor pass" subtitle="Scheduled passes can only be used during the approved visit window." />
                 <div className="grid gap-4">{usablePasses.map(p => <PassCard key={p.qr_pass_id} pass={p} onOpen={() => setOpenPass(p)} />)}</div>
               </Card>
             )}
@@ -269,6 +286,7 @@ export default function GuestDashboardPage() {
                     <p className="text-sm text-slate-600 mt-1">Status: <span className={`font-semibold ${latest.request_status === 'approved' ? 'text-green-700' : latest.request_status === 'pending' ? 'text-amber-700' : 'text-red-700'}`}>{REQUEST_LABEL[latest.request_status]}</span></p>
                   </div>
                 </div>
+                {latest.documents && <button type="button" className="guest-text-button mb-4" onClick={() => setDocumentRequest(latest.request_id)}>View submitted photos<ArrowRight size={15}/></button>}
                 {latest.request_status === 'pending' && <p className="text-sm text-slate-600 mb-5">An Administrator will review your request. No QR pass is issued until it is approved; you will be notified here.</p>}
                 {latest.request_status === 'rejected' && latest.review_remarks && <p className="text-sm text-red-700 mb-5">Reason: {latest.review_remarks}</p>}
                 <div className="grid sm:grid-cols-2 gap-3 text-sm">
@@ -327,7 +345,11 @@ export default function GuestDashboardPage() {
 
         {section === 'notifications' && <Notifications notices={notices} onChanged={load} />}
         {section === 'profile' && profile && <ProfileForm profile={profile} onSaved={message => { notify(message); load(); }} />}
+        <footer className="guest-footer"><span>DR. YANGA’S COLLEGES, INC.</span><span>Marciano Campus · Visitor parking access</span></footer>
       </main>
+      </div>
+      <nav className="guest-bottom-nav" aria-label="Quick navigation">{SECTIONS.filter(item => ['overview', 'request', 'passes', 'vehicles'].includes(item.id)).map(item => <button key={item.id} type="button" onClick={() => setSection(item.id)} aria-current={section === item.id ? 'page' : undefined} className={section === item.id ? 'is-active' : ''}>{item.icon}<span>{item.id === 'overview' ? 'Home' : item.id === 'request' ? 'Request' : item.id === 'passes' ? 'QR passes' : 'Vehicles'}</span></button>)}<button type="button" onClick={() => setMobileMenu(true)} aria-label="More sections" aria-expanded={mobileMenu}><Menu size={20}/><span>More</span></button></nav>
+      <Modal open={documentRequest !== null} onClose={() => setDocumentRequest(null)} title="Your submitted photos" size="lg">{documentRequest !== null && <VisitorDocuments requestId={documentRequest}/>}</Modal>
 
       {openPass && <FullScreenPass pass={openPass} name={name} onClose={() => setOpenPass(null)} />}
 
@@ -339,88 +361,120 @@ export default function GuestDashboardPage() {
 // ----------------------------------------------------------------- request form
 
 function RequestForm({ vehicles, onAddVehicle, onSubmitted }: { vehicles: Vehicle[]; onAddVehicle: () => void; onSubmitted: (message: string) => void }) {
+  const { user } = useAuth();
   const empty = { vehicle_id: '', visit_date: '', arrival_time: '', departure_time: '', purpose: '', visiting: '', driver_is_requester: 'true', driver_name: '', driver_license_number: '', driver_license_expiry: '', passenger_count: '0' };
   const [form, setForm] = useState(empty);
+  const [step, setStep] = useState(0);
+  const [licensePhoto, setLicensePhoto] = useState<File | null>(null);
+  const [vehiclePhoto, setVehiclePhoto] = useState<File | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const set = (k: keyof typeof empty) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
-
-  useEffect(() => { if (!form.vehicle_id && vehicles.length === 1) setForm(f => ({ ...f, vehicle_id: String(vehicles[0].vehicle_id) })); }, [vehicles, form.vehicle_id]);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const formTop = React.useRef<HTMLDivElement>(null);
+  const set = (key: keyof typeof empty) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setForm(previous => ({ ...previous, [key]: event.target.value }));
+    setErrors(previous => ({ ...previous, [key]: '' }));
+  };
+  useEffect(() => { if (!form.vehicle_id && vehicles.length === 1) setForm(previous => ({ ...previous, vehicle_id: String(vehicles[0].vehicle_id) })); }, [vehicles, form.vehicle_id]);
+  const groups = [['vehicle_id', 'visit_date', 'arrival_time', 'departure_time', 'purpose', 'visiting'], ['driver_name', 'driver_license_number', 'driver_license_expiry', 'passenger_count'], ['driver_license_photo', 'vehicle_photo']];
+  const validate = () => {
     const next: Record<string, string> = {};
     if (!form.vehicle_id) next.vehicle_id = 'Choose your vehicle.';
-    if (!form.visit_date) next.visit_date = 'Please select your visit date.';
-    if (form.visit_date && form.visit_date < campusToday(1)) next.visit_date = 'Choose tomorrow or later. Same-day requests are not allowed.';
+    if (!form.visit_date || form.visit_date < campusToday(1)) next.visit_date = 'Choose tomorrow or a later date.';
+    if (!form.arrival_time) next.arrival_time = 'Choose an arrival time.';
+    if (!form.departure_time || (form.arrival_time && form.departure_time <= form.arrival_time)) next.departure_time = 'Choose a departure time after arrival.';
+    if (!form.visiting.trim()) next.visiting = 'Enter the person or office to visit.';
+    if (!form.purpose.trim()) next.purpose = 'Tell us the purpose of your visit.';
     if (form.driver_is_requester === 'false' && !/^\S+(\s+\S+)+$/.test(form.driver_name.trim())) next.driver_name = 'Enter the actual driver’s first and last name.';
-    if (!/^[A-Za-z0-9 -]{6,30}$/.test(form.driver_license_number.trim())) next.driver_license_number = 'Enter the driver’s license number.';
+    if (!/^[A-Za-z0-9 -]{6,30}$/.test(form.driver_license_number.trim())) next.driver_license_number = 'Enter the actual driver’s license number.';
     if (!form.driver_license_expiry || form.driver_license_expiry < form.visit_date) next.driver_license_expiry = 'The license must be valid on the visit date.';
     if (!/^\d+$/.test(form.passenger_count) || Number(form.passenger_count) > 99) next.passenger_count = 'Enter 0–99 passengers, excluding the driver.';
-    if (!form.arrival_time) next.arrival_time = 'Please select your expected arrival time.';
-    if (!form.departure_time) next.departure_time = 'Please select your expected departure time.';
-    if (form.arrival_time && form.departure_time && form.departure_time <= form.arrival_time) next.departure_time = 'Departure must be after arrival.';
-    if (!form.purpose.trim()) next.purpose = 'Please provide the reason for your visit.';
-    if (!form.visiting.trim()) next.visiting = 'Please identify the person or office you will visit.';
-    setErrors(next);
-    setError('');
-    if (Object.keys(next).length) return;
+    if (!licensePhoto) next.driver_license_photo = 'Upload the actual driver’s license photo.';
+    if (!vehiclePhoto) next.vehicle_photo = 'Upload a vehicle photo with the plate visible.';
+    return next;
+  };
+  const changeStep = (next: number) => { setStep(next); setError(''); formTop.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  const advance = () => {
+    const next = validate();
+    const current = Object.fromEntries(Object.entries(next).filter(([key]) => groups[step].includes(key)));
+    setErrors(current);
+    if (!Object.keys(current).length) changeStep(step + 1);
+  };
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (busy) return;
+    if (step < 2) { advance(); return; }
+    const next = validate(); setErrors(next); setError('');
+    if (Object.keys(next).length) { changeStep(groups.findIndex(group => group.some(key => next[key]))); return; }
     setBusy(true);
     try {
-      const r = await apiRequest<{ message: string }>('/api/guest/requests', { method: 'POST', body: { ...form, vehicle_id: Number(form.vehicle_id), driver_is_requester: form.driver_is_requester === 'true', passenger_count: Number(form.passenger_count) } });
-      setForm(empty);
-      onSubmitted(r.message);
+      const body = new FormData();
+      Object.entries(form).forEach(([key, value]) => body.append(key, key === 'driver_is_requester' ? (value === 'true' ? '1' : '0') : value));
+      body.append('driver_license_photo', licensePhoto!); body.append('vehicle_photo', vehiclePhoto!);
+      const result = await apiRequest<{ message: string }>('/api/guest/requests', { method: 'POST', body });
+      setForm(empty); setLicensePhoto(null); setVehiclePhoto(null); setStep(0); onSubmitted(result.message);
     } catch (err) {
-      if (err instanceof ApiError) { setErrors(err.fieldErrors); setError(err.message); } else setError('The request could not be submitted.');
-    } finally {
-      setBusy(false);
-    }
+      if (err instanceof ApiError) {
+        setErrors(err.fieldErrors); setError(err.message);
+        const errorStep = groups.findIndex(group => group.some(key => err.fieldErrors[key]));
+        if (errorStep >= 0) setStep(errorStep);
+      } else setError('Your request could not be submitted. Please try again.');
+    } finally { setBusy(false); }
   };
-
-  if (!vehicles.length) {
-    return (
+  const field = (key: keyof typeof empty, label: string, props: React.InputHTMLAttributes<HTMLInputElement> = {}) => <label className="guest-field"><span>{label}</span><input {...props} value={form[key]} onChange={set(key)} disabled={busy} aria-invalid={!!errors[key]} aria-describedby={errors[key] ? `error-${key}` : undefined} className={inputClass(errors[key])} /><span id={`error-${key}`}><FieldError message={errors[key]} /></span></label>;
+  if (!vehicles.length) return <Card><div className="guest-empty"><CarFront size={38}/><h2>Add your vehicle first</h2><p>Register the vehicle you will bring, then plan your visit.</p><button type="button" className="guest-primary" onClick={onAddVehicle}><Plus size={18}/> Add a vehicle</button></div></Card>;
+  const chosenVehicle = vehicles.find(vehicle => String(vehicle.vehicle_id) === form.vehicle_id);
+  return <div ref={formTop} className="guest-request-layout">
+    <form onSubmit={submit} className="min-w-0" noValidate>
       <Card>
-        <SectionTitle icon={<ClipboardList size={22} />} title="Visitor Parking Request" />
-        <p className="text-sm text-slate-600 mb-4">Register the vehicle you will bring before submitting a request.</p>
-        <Button onClick={onAddVehicle}><Plus size={14} /> Register vehicle</Button>
-      </Card>
-    );
-  }
-
-  return (
-    <form onSubmit={submit}>
-      <Card>
-        <SectionTitle icon={<ClipboardList size={22} />} title="Visitor Parking Request" subtitle="Submit at least one calendar day ahead. Same-day requests are not allowed. Times are Manila time." />
-        <div className="grid sm:grid-cols-2 gap-5">
-          <div className="sm:col-span-2"><label className="block text-sm font-medium text-slate-700 mb-1.5">Registered vehicle *</label>
-            <select value={form.vehicle_id} onChange={set('vehicle_id')} className={inputClass(errors.vehicle_id)} disabled={busy}>
-              <option value="">Choose your vehicle…</option>
-              {vehicles.map(v => <option key={v.vehicle_id} value={v.vehicle_id}>{v.plate_number} · {v.type_name}{v.make ? ` · ${v.make} ${v.model ?? ''}` : ''}</option>)}
-            </select><FieldError message={errors.vehicle_id} />
-          </div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Visit date *</label><input type="date" min={campusToday(1)} value={form.visit_date} onChange={set('visit_date')} className={inputClass(errors.visit_date)} disabled={busy} /><FieldError message={errors.visit_date} /></div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Person / office to visit *</label><input value={form.visiting} onChange={set('visiting')} placeholder="Name or office" className={inputClass(errors.visiting)} disabled={busy} /><FieldError message={errors.visiting} /></div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Expected arrival time *</label><input type="time" value={form.arrival_time} onChange={set('arrival_time')} className={inputClass(errors.arrival_time)} disabled={busy} /><FieldError message={errors.arrival_time} /></div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Expected departure time *</label><input type="time" value={form.departure_time} onChange={set('departure_time')} className={inputClass(errors.departure_time)} disabled={busy} /><FieldError message={errors.departure_time} /></div>
-          <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Will you drive this vehicle? *</label><select value={form.driver_is_requester} onChange={set('driver_is_requester')} className={inputClass()} disabled={busy}><option value="true">Yes, I will drive</option><option value="false">No, someone else will drive</option></select></div>
-          {form.driver_is_requester === 'false' && <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Actual driver’s full name *</label><input value={form.driver_name} onChange={set('driver_name')} maxLength={200} className={inputClass(errors.driver_name)} disabled={busy}/><FieldError message={errors.driver_name}/></div>}
-          <div><label className="block text-sm font-medium mb-1.5">Actual driver’s license number *</label><input value={form.driver_license_number} onChange={set('driver_license_number')} maxLength={30} className={inputClass(errors.driver_license_number)} disabled={busy}/><FieldError message={errors.driver_license_number}/></div>
-          <div><label className="block text-sm font-medium mb-1.5">License expiry *</label><input type="date" min={form.visit_date || campusToday(1)} value={form.driver_license_expiry} onChange={set('driver_license_expiry')} className={inputClass(errors.driver_license_expiry)} disabled={busy}/><FieldError message={errors.driver_license_expiry}/></div>
-          <div><label className="block text-sm font-medium mb-1.5">Passengers, excluding driver *</label><input type="number" min="0" max="99" value={form.passenger_count} onChange={set('passenger_count')} className={inputClass(errors.passenger_count)} disabled={busy}/><FieldError message={errors.passenger_count}/></div>
-          <p className="sm:col-span-2 text-sm text-slate-600">These are declared details, not identity verification. The actual driver must present their physical license at the gate. Passengers remain subject to campus identity checks. Request approval does not reserve a parking slot.</p>
-          <div className="sm:col-span-2"><label className="block text-sm font-medium text-slate-700 mb-1.5">Reason for visiting campus *</label><textarea value={form.purpose} onChange={set('purpose')} rows={3} maxLength={150} placeholder="Explain the purpose of your visit" className={inputClass(errors.purpose)} disabled={busy} /><FieldError message={errors.purpose} /></div>
-        </div>
-        <div className="mt-6 rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-600 flex gap-2"><AlertCircle size={18} className="text-slate-500 shrink-0 mt-0.5" /><p>Submitting sends your request to a PASS Administrator for review. It does not generate a QR pass or guarantee entry until it is approved.</p></div>
-        {error && <p className="mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3" role="alert">{error}</p>}
-        <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
-          <button type="button" onClick={() => { setForm(empty); setErrors({}); setError(''); }} className="px-5 py-3 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50" disabled={busy}>Clear form</button>
-          <button type="submit" disabled={busy} className="px-5 py-3 rounded-xl bg-[#080677] hover:bg-blue-900 text-white text-sm font-semibold disabled:opacity-50">{busy ? 'Submitting…' : 'Submit for Approval'}</button>
-        </div>
+        <div className="guest-section-heading"><span className="guest-eyebrow">PLAN YOUR CAMPUS VISIT</span><h2>Visitor parking request</h2><p>A few details now. A smoother arrival later.</p></div>
+        <ol className="guest-stepper" aria-label="Request progress">{['Visit details', 'Driver', 'Photos & review'].map((title, index) => <li key={title} aria-current={step === index ? 'step' : undefined} className={index === step ? 'is-current' : index < step ? 'is-complete' : ''}><span>{index < step ? <CheckCircle2 size={17}/> : index + 1}</span><strong>{title}</strong></li>)}</ol>
+        {step === 0 && <fieldset disabled={busy} className="guest-fieldset"><legend>Your visit</legend>
+          <div className="guest-form-grid">
+            <label className="guest-field guest-span"><span>Vehicle *</span><select value={form.vehicle_id} onChange={set('vehicle_id')} className={inputClass(errors.vehicle_id)} aria-invalid={!!errors.vehicle_id}><option value="">Choose a vehicle</option>{vehicles.map(vehicle => <option key={vehicle.vehicle_id} value={vehicle.vehicle_id}>{vehicle.plate_number} · {vehicle.type_name}</option>)}</select><FieldError message={errors.vehicle_id}/></label>
+            {field('visit_date', 'Visit date *', { type: 'date', min: campusToday(1) })}
+            {field('visiting', 'Person / office to visit *', { placeholder: 'e.g. Registrar’s Office', maxLength: 90 })}
+            {field('arrival_time', 'Estimated arrival *', { type: 'time' })}
+            {field('departure_time', 'Estimated departure *', { type: 'time' })}
+            <label className="guest-field guest-span"><span>Purpose of visit *</span><textarea rows={3} maxLength={150} value={form.purpose} onChange={set('purpose')} className={inputClass(errors.purpose)} placeholder="Briefly describe your campus visit" aria-invalid={!!errors.purpose}/><FieldError message={errors.purpose}/></label>
+          </div><p className="guest-inline-note"><Clock3 size={16}/> Tomorrow onwards only. All times are Manila time.</p>
+        </fieldset>}
+        {step === 1 && <fieldset disabled={busy} className="guest-fieldset"><legend>Who will drive?</legend>
+          <div className="guest-driver-choice">{[{ value: 'true', label: 'I will drive', detail: user?.name || 'Use my guest profile', icon: <User size={22}/> }, { value: 'false', label: 'Another driver', detail: 'Provide their details', icon: <CarFront size={22}/> }].map(choice => <label key={choice.value} className={form.driver_is_requester === choice.value ? 'is-selected' : ''}><input type="radio" name="driver_is_requester" value={choice.value} checked={form.driver_is_requester === choice.value} onChange={set('driver_is_requester')}/>{choice.icon}<span><strong>{choice.label}</strong><small>{choice.detail}</small></span></label>)}</div>
+          <div className="guest-form-grid">
+            {form.driver_is_requester === 'false' && <div className="guest-span">{field('driver_name', 'Actual driver’s full name *', { maxLength: 200, placeholder: 'First name and last name' })}</div>}
+            {field('driver_license_number', 'Driver’s license number *', { maxLength: 30, placeholder: 'As shown on their license', autoComplete: 'off' })}
+            {field('driver_license_expiry', 'License expiry *', { type: 'date', min: form.visit_date || campusToday(1) })}
+            {field('passenger_count', 'Passengers, excluding driver *', { type: 'number', min: 0, max: 99, inputMode: 'numeric' })}
+          </div><p className="guest-inline-note"><Shield size={16}/> The driver must bring the same physical license on the visit.</p>
+        </fieldset>}
+        {step === 2 && <fieldset disabled={busy} className="guest-fieldset"><legend>Photos for advance review</legend>
+          <p className="guest-muted">PASS staff will compare these photos with your request before issuing a QR pass.</p>
+          <div className="guest-form-grid"><PhotoUpload label="Driver’s license (front)" hint="Clear photo. Name, photo, number and expiry must be readable." file={licensePhoto} onChange={setLicensePhoto} error={errors.driver_license_photo} disabled={busy}/><PhotoUpload label="Vehicle with visible plate" hint="Show the vehicle and its plate together in one clear photo." file={vehiclePhoto} onChange={setVehiclePhoto} error={errors.vehicle_photo} disabled={busy}/></div>
+          <div className="guest-review-summary"><h3>Check your visit details</h3><dl><div><dt>Vehicle</dt><dd>{chosenVehicle?.plate_number} · {chosenVehicle?.type_name}</dd></div><div><dt>Date / time</dt><dd>{form.visit_date} · {form.arrival_time}–{form.departure_time}</dd></div><div><dt>Driver</dt><dd>{form.driver_is_requester === 'true' ? user?.name : form.driver_name}</dd></div><div><dt>Passengers</dt><dd>{form.passenger_count}, excluding driver</dd></div><div><dt>Destination</dt><dd>{form.visiting}</dd></div><div><dt>Purpose</dt><dd>{form.purpose}</dd></div></dl></div>
+          <p className="guest-inline-note"><Shield size={16}/> Photos are private to you and authorized PASS staff. Approval is for your visit; parking remains first-come, first-served.</p>
+        </fieldset>}
+        {error && <p role="alert" className="guest-error">{error}</p>}
+        {Object.keys(errors).length > 0 && <p role="alert" className="guest-error">Please check the highlighted fields before continuing.</p>}
+        <div className="guest-form-actions"><span className="guest-muted">Step {step + 1} of 3</span><div>{step > 0 && <button type="button" className="guest-secondary" disabled={busy} onClick={() => changeStep(step - 1)}>Back</button>}<button type="submit" className="guest-primary" disabled={busy}>{busy ? 'Uploading & submitting…' : step < 2 ? 'Continue' : 'Submit for review'}{!busy && <ArrowRight size={17}/>}</button></div></div>
       </Card>
     </form>
-  );
+    <aside className="guest-guide"><span className="guest-eyebrow">BEFORE YOU ARRIVE</span><h3>A little preparation,<br/>a smoother visit.</h3><ol><li><span>1</span><div><strong>Submit ahead</strong><p>Choose tomorrow or a later date and upload clear photos.</p></div></li><li><span>2</span><div><strong>Wait for approval</strong><p>Your QR pass appears after staff review. Watch your notifications.</p></div></li><li><span>3</span><div><strong>Bring your QR & license</strong><p>Staff match your driver and plate at the gate. Availability is checked on arrival.</p></div></li></ol><p className="guest-guide-footer">DR. YANGA’S COLLEGES, INC.<br/>Marciano Campus · Visitor parking</p></aside>
+  </div>;
 }
+
+function PhotoUpload({ label, hint, file, onChange, error, disabled }: { label: string; hint: string; file: File | null; onChange: (file: File | null) => void; error?: string; disabled?: boolean }) {
+  const [preview, setPreview] = useState('');
+  const [localError, setLocalError] = useState('');
+  const input = React.useRef<HTMLInputElement>(null);
+  useEffect(() => { if (!file) { setPreview(''); return; } const url = URL.createObjectURL(file); setPreview(url); return () => URL.revokeObjectURL(url); }, [file]);
+  return <div className="guest-upload"><label><strong>{label} *</strong><span className="guest-upload-area">{preview ? <img src={preview} alt={`Selected ${label}`}/> : <span className="guest-upload-placeholder"><UploadCloud size={30}/><strong>Choose a photo</strong><small>JPG or PNG · Up to 5 MB</small></span>}<input ref={input} type="file" accept="image/jpeg,image/png" disabled={disabled} onChange={event => {
+    const chosen = event.target.files?.[0]; if (!chosen) return;
+    if (!['image/jpeg', 'image/png'].includes(chosen.type) || chosen.size > 5 * 1024 * 1024) { onChange(null); setLocalError('Choose a JPG or PNG image up to 5 MB.'); event.target.value = ''; return; }
+    setLocalError(''); onChange(chosen);
+  }}/></span></label><p className="guest-upload-hint">{hint}</p>{file && <div className="guest-upload-file"><span>{file.name}</span><button type="button" disabled={disabled} onClick={() => { onChange(null); if (input.current) input.current.value = ''; }} aria-label={`Remove ${label}`}><X size={16}/></button></div>}<FieldError message={localError || error}/></div>;
+}
+
 
 // ----------------------------------------------------------------- vehicles
 
@@ -498,7 +552,7 @@ function Notifications({ notices, onChanged }: { notices: Notice[]; onChanged: (
   const markOne = async (id: number) => { await apiRequest(`/api/notifications/${id}/read`, { method: 'PATCH' }).catch(() => {}); onChanged(); };
   return (
     <Card>
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <SectionTitle icon={<Bell size={22} />} title="Notifications" subtitle="Updates about your visitor parking requests." />
         {notices.some(n => !n.is_read) && <Button size="sm" variant="ghost" onClick={markAll}>Mark all as read</Button>}
       </div>
@@ -506,9 +560,9 @@ function Notifications({ notices, onChanged }: { notices: Notice[]; onChanged: (
         <ul className="space-y-3">
           {notices.map(n => (
             <li key={n.notification_id} className={`rounded-xl border p-4 ${n.is_read ? 'border-slate-100 bg-white' : 'border-blue-200 bg-blue-50/60'}`}>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <p className="font-semibold text-[#080677] text-sm">{n.title}</p>
-                <span className="text-[11px] text-slate-400 shrink-0">{formatCampusDateTime(n.created_at)}</span>
+                <span className="text-[11px] text-slate-400">{formatCampusDateTime(n.created_at)}</span>
               </div>
               <p className="text-sm text-slate-600 mt-1">{n.body}</p>
               {!n.is_read && <button type="button" onClick={() => markOne(n.notification_id)} className="mt-2 text-xs font-semibold text-blue-700 hover:underline">Mark as read</button>}

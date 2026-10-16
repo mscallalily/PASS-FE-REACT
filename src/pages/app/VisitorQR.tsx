@@ -1,3 +1,4 @@
+import VisitorDocuments from '../../components/VisitorDocuments';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { PageHeader, Card, Badge, Button, Table, SearchBar, Modal, Tabs, Toast, Input, Select } from '../../components/ui';
@@ -15,6 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 type PassStatus = 'active' | 'scheduled' | 'used' | 'expired' | 'revoked' | 'legacy';
 
 interface Pass {
+  driver?: { name: string; license_reference: string | null; passenger_count: number } | null;
   qr_pass_id: number;
   pass_code: string;
   status: PassStatus;
@@ -34,6 +36,7 @@ interface Pass {
 }
 
 interface VisitorRequest {
+  documents?: { license_available: boolean; vehicle_available: boolean; reviewed_at: string | null };
   driver?: { name: string; is_requester: boolean; license_reference: string | null; license_expiry: string | null; passenger_count: number } | null;
   request_id: number;
   request_status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired';
@@ -130,6 +133,8 @@ function PassCard({ pass }: { pass: Pass }) {
 // ----------------------------------------------------------------- request form
 
 function RequestForm({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: (message: string) => void }) {
+  const [licensePhoto, setLicensePhoto] = useState<File | null>(null);
+  const [vehiclePhoto, setVehiclePhoto] = useState<File | null>(null);
   const [options, setOptions] = useState<Options | null>(null);
   const [visitorId, setVisitorId] = useState('');
   const [form, setForm] = useState<Record<string, string>>({});
@@ -139,10 +144,10 @@ function RequestForm({ open, onClose, onSaved }: { open: boolean; onClose: () =>
 
   useEffect(() => {
     if (!open) return;
-    setVisitorId('');
+    setVisitorId(''); setLicensePhoto(null); setVehiclePhoto(null);
     setErrors({});
     setError('');
-    setForm({ first_name: '', last_name: '', contact_number: '', email: '', affiliation: '', plate_number: '', vehicle_type_id: '', make: '', model: '', color: '', purpose: '', visiting: '', valid_from: campusLocal(1440), valid_until: campusLocal(1680) });
+    setForm({ first_name: '', last_name: '', contact_number: '', email: '', affiliation: '', plate_number: '', vehicle_type_id: '', make: '', model: '', color: '', purpose: '', visiting: '', valid_from: campusLocal(1440), valid_until: campusLocal(1680), driver_name: '', driver_license_number: '', driver_license_expiry: '', passenger_count: '0' });
     apiRequest<Options>('/api/visitors/options').then(setOptions).catch(err => setError(err instanceof Error ? err.message : 'Unable to load form options.'));
   }, [open]);
 
@@ -154,13 +159,17 @@ function RequestForm({ open, onClose, onSaved }: { open: boolean; onClose: () =>
       setError('Please correct the arrival date.');
       return;
     }
+    if (!licensePhoto || !vehiclePhoto) { setError('Upload both the driver’s license and vehicle photos.'); return; }
     setBusy(true);
     setErrors({});
     setError('');
     try {
       const body: Record<string, unknown> = { ...form, vehicle_type_id: form.vehicle_type_id ? Number(form.vehicle_type_id) : null };
       if (visitorId) { body.visitor_id = Number(visitorId); ['first_name', 'last_name', 'contact_number', 'email', 'affiliation'].forEach(k => delete body[k]); }
-      const r = await apiRequest<{ message: string }>('/api/visitors/requests', { method: 'POST', body });
+      const upload = new FormData();
+      Object.entries(body).forEach(([key, value]) => { if (value !== null) upload.append(key, String(value)); });
+      upload.append('driver_license_photo', licensePhoto); upload.append('vehicle_photo', vehiclePhoto);
+      const r = await apiRequest<{ message: string }>('/api/visitors/requests', { method: 'POST', body: upload });
       onSaved(r.message);
     } catch (err) {
       if (err instanceof ApiError) { setErrors(err.fieldErrors); setError(err.message); } else setError('The request could not be saved.');
@@ -223,6 +232,10 @@ function RequestForm({ open, onClose, onSaved }: { open: boolean; onClose: () =>
           </div>
           {options && <p className="text-xs text-slate-400">Same-day requests are not allowed. Earliest visit date is tomorrow (Manila time). A request may cover up to {options.max_visit_days} days. The pass allows one entry and one exit within this time.</p>}
         </div>
+        <div className="space-y-3 border-t pt-4"><h4 className="font-semibold text-slate-700">Actual driver and advance review</h4><div className="grid sm:grid-cols-2 gap-3">{field('driver_name', 'Actual driver’s full name *')}{field('driver_license_number', 'Driver’s license number *')}{field('driver_license_expiry', 'License expiry *', { type: 'date' })}{field('passenger_count', 'Passengers excluding driver *', { type: 'number', min: 0, max: 99 })}</div>
+          <label className="block text-sm font-medium">Driver’s license photo *<input type="file" accept="image/jpeg,image/png" onChange={event => setLicensePhoto(event.target.files?.[0] ?? null)} disabled={busy} className="block w-full text-sm mt-2"/><span className="text-xs text-red-600">{errors.driver_license_photo}</span></label>
+          <label className="block text-sm font-medium">Vehicle photo with visible plate *<input type="file" accept="image/jpeg,image/png" onChange={event => setVehiclePhoto(event.target.files?.[0] ?? null)} disabled={busy} className="block w-full text-sm mt-2"/><span className="text-xs text-red-600">{errors.vehicle_photo}</span></label><p className="text-xs text-slate-500">JPG or PNG, up to 5 MB each. Private photos are reviewed before a QR pass can be issued.</p>
+        </div>
         {error && <ErrorBox message={error} />}
         <div className="flex gap-3 justify-end">
           <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
@@ -247,6 +260,10 @@ function Requests({ notify, onShowPass, reloadKey, onChanged }: { notify: Notify
   const [remarks, setRemarks] = useState('');
   const [busy, setBusy] = useState(false);
   const [reviewError, setReviewError] = useState('');
+  const [documentsReviewed, setDocumentsReviewed] = useState(false);
+  const [photosReady, setPhotosReady] = useState(false);
+  const [documentRequest, setDocumentRequest] = useState<number | null>(null);
+  useEffect(() => { setDocumentsReviewed(false); setPhotosReady(false); }, [review?.row.request_id, review?.action]);
 
   useEffect(() => { const t = setTimeout(() => setDebounced(search), 300); return () => clearTimeout(t); }, [search]);
 
@@ -270,7 +287,7 @@ function Requests({ notify, onShowPass, reloadKey, onChanged }: { notify: Notify
     setBusy(true);
     setReviewError('');
     try {
-      const r = await apiRequest<{ message: string; pass?: Pass }>(`/api/visitors/requests/${review.row.request_id}/${review.action}`, { method: 'POST', body: { remarks: remarks.trim() || null } });
+      const r = await apiRequest<{ message: string; pass?: Pass }>(`/api/visitors/requests/${review.row.request_id}/${review.action}`, { method: 'POST', body: { remarks: remarks.trim() || null, documents_reviewed: documentsReviewed } });
       setReview(null);
       notify(r.message);
       onChanged();
@@ -314,6 +331,7 @@ function Requests({ notify, onShowPass, reloadKey, onChanged }: { notify: Notify
             )},
             { key: 'vehicle', label: 'Vehicle', render: (r: VisitorRequest) => <div><span className="font-mono font-bold text-[#080677]">{r.vehicle.plate_number ?? '—'}</span><p className="text-xs text-slate-400">{r.vehicle.vehicle_type} · {r.vehicle.area_name}</p></div> },
             { key: 'driver', label: 'Declared driver', render: (r: VisitorRequest) => r.driver ? <div className="text-xs"><p className="font-semibold">{r.driver.name}</p><p>{r.driver.is_requester ? 'Requester is driver' : 'Separate driver'}</p><p>License {r.driver.license_reference}</p><p>Expires {r.driver.license_expiry}</p><p>{r.driver.passenger_count} passenger(s)</p><p className="text-amber-700">Check physical license at gate</p></div> : <span className="text-xs text-amber-700">No declared driver details</span> },
+            { key: 'documents', label: 'Photos', render: (r: VisitorRequest) => r.documents?.license_available && r.documents?.vehicle_available ? <Button size="sm" variant="outline" onClick={() => setDocumentRequest(r.request_id)}>Review photos</Button> : <span className="text-xs text-amber-700">Photos required · resubmit request</span> },
             { key: 'purpose', label: 'Purpose', render: (r: VisitorRequest) => <span className="text-sm">{r.purpose}</span> },
             { key: 'window', label: 'Visit Window (Manila)', render: (r: VisitorRequest) => <span className={`text-xs ${r.window_ended ? 'text-slate-400' : ''}`}>{window_(r.valid_from, r.valid_until)}{r.window_ended ? ' · ended' : ''}</span> },
             { key: 'status', label: 'Status', render: (r: VisitorRequest) => (
@@ -341,13 +359,16 @@ function Requests({ notify, onShowPass, reloadKey, onChanged }: { notify: Notify
         />
       )}
 
-      <Modal open={!!review} onClose={() => !busy && setReview(null)} title={review?.action === 'approve' ? 'Approve Visitor Request' : 'Reject Visitor Request'} size="sm">
+      <Modal open={documentRequest !== null} onClose={() => setDocumentRequest(null)} title="Private visitor request photos" size="lg">{documentRequest !== null && <VisitorDocuments requestId={documentRequest}/>}</Modal>
+      <Modal open={!!review} onClose={() => !busy && setReview(null)} title={review?.action === 'approve' ? 'Review & approve visitor request' : 'Reject Visitor Request'} size="lg">
         {review && (
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
               <span className="font-semibold">{review.row.visitor.name}</span> · <span className="font-mono">{review.row.vehicle.plate_number}</span><br />
               {window_(review.row.valid_from, review.row.valid_until)}
             </p>
+            <VisitorDocuments requestId={review.row.request_id} onReady={setPhotosReady}/>
+            {review.action === 'approve' && <label className="flex gap-3 items-start rounded-xl bg-blue-50 border border-blue-100 p-4 text-sm"><input type="checkbox" checked={documentsReviewed} onChange={event => setDocumentsReviewed(event.target.checked)} disabled={busy || !photosReady} className="mt-1"/><span>I reviewed both photos and matched the driver’s name, photo, license details and vehicle plate against this request. This review does not confirm official license authenticity; gate staff must match the arriving driver.</span></label>}
             {review.row.driver && <p className="text-sm bg-amber-50 p-3 rounded-xl mb-3">Declared driver: {review.row.driver.name}. License {review.row.driver.license_reference}, expires {review.row.driver.license_expiry}. Passengers: {review.row.driver.passenger_count}. These details are not identity verification; staff must inspect the physical license at the gate.</p>}
             {review.action === 'approve'
               ? <p className="text-sm text-slate-500">Approving issues one Visitor QR pass for this vehicle and visit window (one entry and one exit). A guest with an account is notified and sees the pass in their account.</p>
@@ -356,7 +377,7 @@ function Requests({ notify, onShowPass, reloadKey, onChanged }: { notify: Notify
             {reviewError && <ErrorBox message={reviewError} />}
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setReview(null)} disabled={busy}>Cancel</Button>
-              <Button variant={review.action === 'approve' ? 'success' : 'danger'} onClick={submitReview} disabled={busy || (review.action === 'reject' && !remarks.trim())}>
+              <Button variant={review.action === 'approve' ? 'success' : 'danger'} onClick={submitReview} disabled={busy || (review.action === 'approve' && (!documentsReviewed || !photosReady)) || (review.action === 'reject' && !remarks.trim())}>
                 {busy ? 'Saving...' : review.action === 'approve' ? 'Approve & Issue Pass' : 'Reject Request'}
               </Button>
             </div>
@@ -534,7 +555,7 @@ function Verification({ notify }: { notify: Notify }) {
           </div>
         )}
       </Card>
-      <div>{found ? <PassCard pass={found} /> : <Card className="p-8 text-center text-sm text-slate-400 h-full flex items-center justify-center">Pass details appear here.</Card>}</div>
+      <div>{found ? <div className="space-y-4"><PassCard pass={found} />{found.request_id && <Card><h3 className="font-semibold text-slate-800 mb-3">Approved visit reference</h3>{found.driver && <p className="text-sm mb-3">Driver: <strong>{found.driver.name}</strong> · License {found.driver.license_reference} · {found.driver.passenger_count} passenger(s)</p>}<VisitorDocuments requestId={found.request_id}/><p className="text-xs text-slate-500 mt-3">Match the arriving driver and visible plate with the reviewed photos before recording entry. Handle any mismatch with campus security.</p></Card>}</div> : <Card className="p-8 text-center text-sm text-slate-400 h-full flex items-center justify-center">Pass details appear here.</Card>}</div>
     </div>
   );
 }
