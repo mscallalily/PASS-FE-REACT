@@ -615,12 +615,12 @@ function OccupancyPanel({ areas, overall, inside }: { areas: AreaStats[]; overal
   ];
 
   return (
-    <div className="grid md:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
       {cards.map(({ key, title, icon, stats }) => {
         const pct = (n: number) => (stats.capacity ? (n / stats.capacity) * 100 : 0);
         const sumOk = stats.available + stats.occupied + stats.maintenance === stats.capacity;
         return (
-          <div key={key} className={`rounded-2xl border p-4 space-y-3 ${key === 'ALL' ? 'border-[#080677]/15 bg-gradient-to-br from-[#080677]/[0.04] to-[#2563EB]/[0.06]' : 'border-slate-100 bg-white'}`}>
+          <div key={key} className={`min-w-0 rounded-2xl border p-3 sm:p-4 space-y-3 ${key === 'ALL' ? 'border-[#080677]/15 bg-gradient-to-br from-[#080677]/[0.04] to-[#2563EB]/[0.06]' : 'border-slate-100 bg-white'}`}>
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-[#2563EB] text-white flex items-center justify-center shrink-0">{icon}</div>
               <div className="min-w-0">
@@ -636,7 +636,7 @@ function OccupancyPanel({ areas, overall, inside }: { areas: AreaStats[]; overal
               {([['Available', stats.available, 'text-green-600 bg-green-50'], ['Occupied', stats.occupied, 'text-red-600 bg-red-50'], ['Maintenance', stats.maintenance, 'text-gray-600 bg-gray-100']] as const).map(([label, value, tone]) => (
                 <div key={label} className={`rounded-xl py-2 ${tone}`}>
                   <p className="text-xl font-bold leading-tight">{value}</p>
-                  <p className="text-[10px] font-medium opacity-80">{label}</p>
+                  <p className="text-[10px] font-medium opacity-80 break-words">{label}</p>
                 </div>
               ))}
             </div>
