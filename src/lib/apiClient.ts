@@ -70,7 +70,7 @@ export async function apiRequest<T>(url: string, options: Omit<RequestInit, 'bod
 
 /** Download a protected file (e.g. an uploaded document) as a Blob. */
 export async function apiBlob(url: string): Promise<Blob> {
-  const response = await send(url, { headers: { Accept: '*/*' } });
+  const response = await send(url, { headers: { Accept: 'application/json, */*' } });
 
   if (!response.ok) throw await toError(response);
 

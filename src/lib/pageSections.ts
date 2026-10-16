@@ -1,3 +1,5 @@
+import { REPORT_CATEGORIES } from './reportConfig';
+
 /** Sidebar destinations and the page section shown at each URL. */
 export type PageSection = { label: string; to: string; simulatorOnly?: boolean };
 export const PAGE_SECTIONS = {
@@ -34,6 +36,7 @@ export const PAGE_SECTIONS = {
     { label: 'QR Passes', to: '/app/visitors/passes' },
     { label: 'QR Verification', to: '/app/qr-verify' },
   ],
+  reports: REPORT_CATEGORIES.map(([key, label]) => ({ label, to: key === 'overview' ? '/app/reports' : `/app/reports/${key}` })),
   settings: [
     { label: 'General', to: '/app/settings' },
     { label: 'Parking', to: '/app/settings/parking' },

@@ -110,7 +110,7 @@ function AppRoutes() {
         <Route path="drivers" element={<RoleRoute roles={['admin', 'parking_staff', 'student', 'faculty', 'employee']}><VehicleManagement /></RoleRoute>} />
         <Route path="rfid" element={<RoleRoute roles={['admin', 'parking_staff']}><RFIDManagement /></RoleRoute>} />
         <Route path="rfid/simulator" element={<RoleRoute roles={['admin', 'parking_staff']}><RFIDManagement /></RoleRoute>} />
-        <Route path="rfid/monitor" element={<RoleRoute roles={['parking_staff']}><RFIDManagement /></RoleRoute>} />
+        <Route path="rfid/monitor" element={<RoleRoute roles={['admin', 'parking_staff']}><RFIDManagement /></RoleRoute>} />
         <Route path="parking/transactions" element={<RoleRoute roles={['parking_staff']}><ParkingOperations /></RoleRoute>} />
         <Route path="parking/layout" element={<RoleRoute roles={['parking_staff']}><ParkingOperations /></RoleRoute>} />
         <Route path="parking/occupancy" element={<RoleRoute roles={['parking_staff']}><ParkingOperations /></RoleRoute>} />
@@ -119,6 +119,7 @@ function AppRoutes() {
         <Route path="visitors" element={<RoleRoute roles={['admin', 'parking_staff']}><VisitorQR /></RoleRoute>} />
         <Route path="qr-verify" element={<RoleRoute roles={['admin', 'parking_staff']}><VisitorQR /></RoleRoute>} />
         <Route path="reports" element={<RoleRoute roles={['admin']}><Reports /></RoleRoute>} />
+        <Route path="reports/:category" element={<RoleRoute roles={['admin']}><Reports /></RoleRoute>} />
         <Route path="audit" element={<RoleRoute roles={['admin']}><AuditLogs /></RoleRoute>} />
         <Route path="violations" element={<RoleRoute roles={['parking_staff']}><Violations /></RoleRoute>} />
         <Route path="settings/:section" element={<RoleRoute roles={['admin']}><SystemSettings /></RoleRoute>} />

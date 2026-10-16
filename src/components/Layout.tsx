@@ -32,7 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Parking Operations', icon: <ParkingSquare size={18}/>, roles: ['parking_staff'], children: PAGE_SECTIONS.parking.filter(section => section.label !== 'Availability') },
   { label: 'Visitor Requests', icon: <QrCode size={18}/>, roles: ['admin'], children: PAGE_SECTIONS.visitors },
   { label: 'Visitor QR Access', icon: <QrCode size={18}/>, roles: ['parking_staff'], children: PAGE_SECTIONS.visitors },
-  { label: 'Reports & Analytics', icon: <FileBarChart size={18}/>, roles: ['admin'], to: '/app/reports' },
+  { label: 'Reports & Analytics', icon: <FileBarChart size={18}/>, roles: ['admin'], children: PAGE_SECTIONS.reports },
   { label: 'Audit Logs', icon: <ScrollText size={18}/>, roles: ['admin'], to: '/app/audit' },
   { label: 'System Settings', icon: <Settings size={18}/>, roles: ['admin'], children: PAGE_SECTIONS.settings },
   { label: 'Violations', icon: <AlertTriangle size={18}/>, roles: ['parking_staff'], to: '/app/violations' },
