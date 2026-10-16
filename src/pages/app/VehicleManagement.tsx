@@ -123,6 +123,8 @@ function formatDate(value: string | null) {
 }
 
 interface VehicleRow {
+  selectedForUse?: boolean;
+  switchLocked?: boolean;
   id: string;
   plate: string;
   owner: string;
@@ -282,6 +284,7 @@ export default function VehicleManagement() {
     };
   }, [isRegularUser, tab, authSearch, authStatus, authReloadKey]);
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
+  const [switchingVehicle, setSwitchingVehicle] = useState<string | null>(null);
   const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [vehicleError, setVehicleError] = useState('');
   const [vehicleReloadKey, setVehicleReloadKey] = useState(0);
@@ -403,6 +406,29 @@ export default function VehicleManagement() {
 
 
 
+  async function selectVehicleForUse(vehicle: VehicleRow) {
+    if (switchingVehicle) return;
+    setSwitchingVehicle(vehicle.id); setVehicleError('');
+    try {
+      const result = await apiRequest<{ message: string }>(`/api/vehicles/${vehicle.id}/select-for-use`, { method: 'POST' });
+      showToast(result.message);
+      setSelected(null);
+      setVehicleReloadKey(key => key + 1);
+    } catch (error) {
+      setVehicleError(error instanceof Error ? error.message : 'Unable to switch vehicles.');
+      setVehicleReloadKey(key => key + 1);
+      showToast(error instanceof Error ? error.message : 'Unable to switch vehicles.');
+    } finally { setSwitchingVehicle(null); }
+  }
+  function vehicleUseControl(vehicle: VehicleRow) {
+    return <div className="space-y-2" onClick={event => event.stopPropagation()}>
+      <Badge variant={vehicle.selectedForUse ? 'success' : 'default'}>{vehicle.selectedForUse ? 'Selected for use' : 'Inactive for entry'}</Badge>
+      {!vehicle.selectedForUse && <div><Button size="sm" variant="outline" disabled={!!switchingVehicle || vehicle.switchLocked || !vehicle.rfid || vehicle.status !== 'approved' || vehicle.registrationStatus !== 'registered'} onClick={() => selectVehicleForUse(vehicle)}>{switchingVehicle === vehicle.id ? 'Switching…' : 'Use this vehicle'}</Button></div>}
+      {vehicle.switchLocked && <p className="text-xs text-amber-700">Exit first to switch vehicles.</p>}
+      {!vehicle.rfid && <p className="text-xs text-slate-400">Active RFID assignment required.</p>}
+    </div>;
+  }
+
   useEffect(() => {
   let cancelled = false;
 
@@ -468,6 +494,7 @@ export default function VehicleManagement() {
 
       {tab === 'My Vehicles' && (
         <Card>
+          {isRegularUser && <div className="p-5 border-b border-slate-100 bg-slate-50 flex flex-wrap gap-3 justify-between items-center"><div className="text-sm text-slate-600"><p className="font-semibold text-[#080677]">One selected vehicle at a time</p><p className="mt-1 text-xs">Only your selected vehicle can enter. Switching is locked while any of your vehicles is inside. License and authorization checks still apply.</p></div><Button size="sm" variant="outline" onClick={() => setVehicleReloadKey(key => key + 1)}>Refresh status</Button></div>}
           <div className="p-5 border-b border-slate-50">
             <SearchBar value={search} onChange={setSearch} placeholder="Search by plate, owner, or make...">
               <Select value={filterType} onChange={e => setFilterType(e.target.value)}>
@@ -499,6 +526,7 @@ export default function VehicleManagement() {
               { key: 'color', label: 'Color' },
               { key: 'rfid', label: 'RFID', render: v => v.rfid ? <span className="text-xs font-mono text-slate-500">{v.rfid}</span> : <span className="text-xs text-slate-300">Unassigned</span> },
               { key: 'status', label: 'Authorization', render: v => <Badge variant={statusBadge(v.status)}>{v.status}</Badge> },
+              ...(isRegularUser ? [{ key: 'entry_selection', label: 'Entry selection', render: (v: VehicleRow) => vehicleUseControl(v) }] : []),
               { key: 'actions', label: 'Actions', render: v => <Button size="sm" variant="ghost" onClick={() => setSelected(v)}>View</Button> },
             ]}
             data={filtered}
@@ -737,6 +765,7 @@ export default function VehicleManagement() {
                 <span className="font-medium text-slate-700">{v}</span>
               </div>
             ))}
+            {isRegularUser && vehicleUseControl(selected)}
             <VehiclePhotoPanel key={selected.id} id={selected.id} editable={isRegularUser && ['pending', 'rejected'].includes(selected.authorizationStatus || selected.status)} onSaved={() => { setVehicleReloadKey(k => k + 1); setMyReloadKey(k => k + 1); showToast('Photo saved; pending staff review.'); }} />
             <div className="flex gap-3 pt-2">
               <Button variant="outline" onClick={() => setSelected(null)}>Close</Button>
