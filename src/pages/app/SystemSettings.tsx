@@ -1,48 +1,291 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { PageHeader, Card, Button, Tabs, Toggle, Toast, Input, Select } from '../../components/ui';
 import { Settings, Save } from 'lucide-react';
 
-export default function SystemSettings() {
-  const [tab, setTab] = useState('General');
-  const [toast, setToast] = useState('');
-  const [notifEmail, setNotifEmail] = useState(true);
-  const [notifMobile, setNotifMobile] = useState(true);
-  const [notifSecurity, setNotifSecurity] = useState(true);
-  const [twoFactor, setTwoFactor] = useState(false);
+type TabName = 'General' | 'Parking' | 'Access Control' | 'Notifications' | 'Security';
+type SettingsData = {
+  system_name: string;
+  institution_name: string;
+  contact_email: string;
+  contact_phone: string;
+  timezone: string;
+  date_format: string;
+  zone_a_capacity: string;
+  zone_b_capacity: string;
+  zone_c_capacity: string;
+  zone_d_capacity: string;
+  occupancy_warning_threshold: string;
+  max_parking_duration_hours: string;
+  default_slot_type: string;
+  allowed_vehicle_categories: string[];
+  rfid_card_validity_months: string;
+  qr_pass_validity_hours: string;
+  visitor_pass_review: string;
+  notify_email: boolean;
+  notify_mobile: boolean;
+  notify_security: boolean;
+  notification_events: string[];
+  min_password_length: string;
+  session_timeout_minutes: string;
+  max_login_attempts: string;
+  two_factor_required: boolean;
+  force_password_reset_first_login: boolean;
+};
 
-  const save = () => { setToast('Demo only: settings were not persisted.'); setTimeout(() => setToast(''), 3000); };
+const VEHICLE_CATEGORIES = ['Sedan', 'SUV', 'Hatchback', 'Motorcycle', 'Van', 'Pickup'];
+const NOTIFICATION_EVENTS = [
+  'Parking area full',
+  'Unauthorized access attempt',
+  'New registration request',
+  'Expiring vehicle documents',
+  'New violation recorded',
+];
+
+const DEFAULT_SETTINGS: SettingsData = {
+  system_name: 'PASS — Parking Access and Security System',
+  institution_name: "Dr. Yanga's Colleges, Inc.",
+  contact_email: 'parking@dyci.edu.ph',
+  contact_phone: '(02) 8123-4567',
+  timezone: 'Asia/Manila (UTC+8)',
+  date_format: 'MM/DD/YYYY',
+  zone_a_capacity: '50',
+  zone_b_capacity: '40',
+  zone_c_capacity: '60',
+  zone_d_capacity: '30',
+  occupancy_warning_threshold: '80',
+  max_parking_duration_hours: '12',
+  default_slot_type: 'Regular',
+  allowed_vehicle_categories: [...VEHICLE_CATEGORIES],
+  rfid_card_validity_months: '12',
+  qr_pass_validity_hours: '4',
+  visitor_pass_review: 'Parking Staff Review Required',
+  notify_email: true,
+  notify_mobile: true,
+  notify_security: true,
+  notification_events: [...NOTIFICATION_EVENTS],
+  min_password_length: '8',
+  session_timeout_minutes: '30',
+  max_login_attempts: '5',
+  two_factor_required: false,
+  force_password_reset_first_login: false,
+};
+
+const KEYS: Record<TabName, (keyof SettingsData)[]> = {
+  General: ['system_name', 'institution_name', 'contact_email', 'contact_phone', 'timezone', 'date_format'],
+  Parking: [
+    'zone_a_capacity', 'zone_b_capacity', 'zone_c_capacity', 'zone_d_capacity',
+    'occupancy_warning_threshold', 'max_parking_duration_hours', 'default_slot_type',
+    'allowed_vehicle_categories',
+  ],
+  'Access Control': ['rfid_card_validity_months', 'qr_pass_validity_hours', 'visitor_pass_review'],
+  Notifications: ['notify_email', 'notify_mobile', 'notify_security', 'notification_events'],
+  Security: [
+    'min_password_length', 'session_timeout_minutes', 'max_login_attempts',
+    'two_factor_required', 'force_password_reset_first_login',
+  ],
+};
+
+const NUMBER_KEYS: (keyof SettingsData)[] = [
+  'zone_a_capacity', 'zone_b_capacity', 'zone_c_capacity', 'zone_d_capacity',
+  'occupancy_warning_threshold', 'max_parking_duration_hours',
+  'rfid_card_validity_months', 'qr_pass_validity_hours',
+  'min_password_length', 'session_timeout_minutes', 'max_login_attempts',
+];
+
+function normalizeSettings(input: Record<string, unknown>): SettingsData {
+  const next: SettingsData = { ...DEFAULT_SETTINGS };
+  for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof SettingsData)[]) {
+    const value = input[key];
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(DEFAULT_SETTINGS[key])) {
+      if (Array.isArray(value)) (next as any)[key] = value.filter(v => typeof v === 'string');
+    } else if (typeof DEFAULT_SETTINGS[key] === 'boolean') {
+      (next as any)[key] = value === true || value === 'true' || value === 1 || value === '1';
+    } else {
+      (next as any)[key] = String(value);
+    }
+  }
+  return next;
+}
+
+function getAuthToken(): string | null {
+  return localStorage.getItem('pass_auth_token') || sessionStorage.getItem('pass_auth_token');
+}
+
+export default function SystemSettings() {
+  const [tab, setTab] = useState<TabName>('General');
+  const [toast, setToast] = useState('');
+  const [settings, setSettings] = useState<SettingsData>(DEFAULT_SETTINGS);
+  const savedSettings = useRef<SettingsData>(DEFAULT_SETTINGS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const token = getAuthToken();
+        if (!token) throw new Error('No login token found. Please log in again.');
+        const response = await fetch('/api/admin/system-settings', {
+          headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error(`Unable to load system settings (${response.status}).`);
+        const result = await response.json();
+        const normalized = normalizeSettings(result.settings ?? result);
+        if (!cancelled) {
+          setSettings(normalized);
+          savedSettings.current = normalized;
+          setError('');
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load settings.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
+
+  function notify(message: string) {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 3000);
+  }
+
+  function setField<K extends keyof SettingsData>(key: K, value: SettingsData[K]) {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  }
+
+  // Accepts either native input/select events or custom UI component values.
+  const field = (key: keyof SettingsData) => ({
+    value: String(settings[key]),
+    onChange: (eventOrValue: any) => {
+      const next = eventOrValue?.target ? eventOrValue.target.value : eventOrValue;
+      setSettings(prev => ({ ...prev, [key]: String(next) }));
+    },
+  });
+
+  function toggleArray(key: 'allowed_vehicle_categories' | 'notification_events', value: string, checked: boolean) {
+    setSettings(prev => ({
+      ...prev,
+      [key]: checked ? Array.from(new Set([...prev[key], value])) : prev[key].filter(item => item !== value),
+    }));
+  }
+
+  async function save(scope: TabName | 'all' = 'all') {
+    if (loading || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      const token = getAuthToken();
+      if (!token) throw new Error('No login token found. Please log in again.');
+      const names = scope === 'all' ? (Object.keys(settings) as (keyof SettingsData)[]) : KEYS[scope];
+      const body: Record<string, unknown> = {};
+      for (const key of names) {
+        const value = settings[key];
+        // Keep all numeric values numeric for Laravel validation.
+        body[key] = NUMBER_KEYS.includes(key) ? Number(value) : value;
+      }
+      const response = await fetch('/api/admin/system-settings', {
+        method: 'PUT',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const firstError = Object.values(result.errors ?? {}).flat()[0];
+        throw new Error(String(firstError ?? result.message ?? `Saving failed (${response.status}).`));
+      }
+      savedSettings.current = {
+        ...savedSettings.current,
+        ...Object.fromEntries(names.map(key => [key, settings[key]])),
+      } as SettingsData;
+      notify(scope === 'all' ? 'All system settings saved successfully.' : `${scope} settings saved successfully.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to save system settings.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function uploadLogo(file?: File) {
+    if (!file || logoUploading) return;
+    setLogoUploading(true);
+    setError('');
+    try {
+      const token = getAuthToken();
+      if (!token) throw new Error('No login token found. Please log in again.');
+      const body = new FormData();
+      body.append('logo', file);
+      const response = await fetch('/api/admin/system-settings/logo', {
+        method: 'POST',
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+        body,
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || `Logo upload failed (${response.status}).`);
+      notify('System logo uploaded successfully.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to upload logo.');
+    } finally {
+      setLogoUploading(false);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  }
+
+  const isBusy = loading || saving;
 
   return (
     <div className="animate-fadein">
       {toast && <Toast message={toast} onClose={() => setToast('')} />}
       <PageHeader title="System Settings" subtitle="Configure PASS system preferences and parameters"
-        action={<Button onClick={save}><Save size={16} /> Save Changes</Button>}
+        action={<Button onClick={() => void save('all')} disabled={isBusy}><Save size={16} /> {saving ? 'Saving...' : 'Save Changes'}</Button>}
       />
 
-      <Tabs tabs={['General', 'Parking', 'Access Control', 'Notifications', 'Security']} active={tab} onChange={setTab} />
+      <Tabs tabs={['General', 'Parking', 'Access Control', 'Notifications', 'Security']} active={tab} onChange={value => setTab(value as TabName)} />
+
+      {error && <p className="my-3 text-sm text-red-600" role="alert">{error}</p>}
+      {loading && <p className="my-3 text-sm text-slate-500">Loading saved settings...</p>}
 
       {tab === 'General' && (
         <Card className="p-8 space-y-6 max-w-2xl">
           <h3 className="font-semibold text-[#080677] flex items-center gap-2"><Settings size={18} /> General Settings</h3>
-          <Input label="System Name" defaultValue="PASS — Parking Access and Security System" />
-          <Input label="Institution Name" defaultValue="Dr. Yanga's Colleges, Inc." />
-          <Input label="Contact Email" defaultValue="parking@dyci.edu.ph" type="email" />
-          <Input label="Contact Phone" defaultValue="(02) 8123-4567" />
-          <Select label="Time Zone">
+          <Input label="System Name" {...field('system_name')} />
+          <Input label="Institution Name" {...field('institution_name')} />
+          <Input label="Contact Email" type="email" {...field('contact_email')} />
+          <Input label="Contact Phone" {...field('contact_phone')} />
+          <Select label="Time Zone" {...field('timezone')}>
             <option>Asia/Manila (UTC+8)</option>
             <option>UTC</option>
           </Select>
-          <Select label="Date Format">
+          <Select label="Date Format" {...field('date_format')}>
             <option>MM/DD/YYYY</option>
             <option>DD/MM/YYYY</option>
             <option>YYYY-MM-DD</option>
           </Select>
           <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center">
-            <p className="text-sm text-slate-400">Click to upload system logo</p>
+            <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+              onChange={event => void uploadLogo(event.target.files?.[0])} />
+            <button type="button" disabled={logoUploading} className="text-sm text-slate-400 hover:text-blue-600 disabled:opacity-60"
+              onClick={() => logoInputRef.current?.click()}>
+              {logoUploading ? 'Uploading system logo...' : 'Click to upload system logo'}
+            </button>
           </div>
           <div className="flex gap-3">
-            <Button onClick={save}>Save General Settings</Button>
-            <Button variant="outline">Cancel</Button>
+            <Button onClick={() => void save('General')} disabled={isBusy}>Save General Settings</Button>
+            <Button variant="outline" onClick={() => setSettings(prev => ({ ...prev, ...Object.fromEntries(KEYS.General.map(key => [key, savedSettings.current[key]])) }))}>Cancel</Button>
           </div>
         </Card>
       )}
@@ -51,38 +294,39 @@ export default function SystemSettings() {
         <Card className="p-8 space-y-6 max-w-2xl">
           <h3 className="font-semibold text-[#080677]">Parking Settings</h3>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Max Capacity (Zone A)" defaultValue="50" type="number" />
-            <Input label="Max Capacity (Zone B)" defaultValue="40" type="number" />
-            <Input label="Max Capacity (Zone C)" defaultValue="60" type="number" />
-            <Input label="Max Capacity (Zone D)" defaultValue="30" type="number" />
+            <Input label="Max Capacity (Zone A)" type="number" {...field('zone_a_capacity')} />
+            <Input label="Max Capacity (Zone B)" type="number" {...field('zone_b_capacity')} />
+            <Input label="Max Capacity (Zone C)" type="number" {...field('zone_c_capacity')} />
+            <Input label="Max Capacity (Zone D)" type="number" {...field('zone_d_capacity')} />
           </div>
-          <Input label="Occupancy Warning Threshold (%)" defaultValue="80" type="number" />
-          <Input label="Maximum Parking Duration (hours)" defaultValue="12" type="number" />
-          <Select label="Default Slot Type"><option>Regular</option><option>Reserved</option><option>Disabled</option><option>Motorcycle</option></Select>
+          <Input label="Occupancy Warning Threshold (%)" type="number" {...field('occupancy_warning_threshold')} />
+          <Input label="Maximum Parking Duration (hours)" type="number" {...field('max_parking_duration_hours')} />
+          <Select label="Default Slot Type" {...field('default_slot_type')}><option>Regular</option><option>Reserved</option><option>Disabled</option><option>Motorcycle</option></Select>
           <div>
             <label className="text-sm font-medium text-slate-700 mb-2 block">Vehicle Categories Allowed</label>
             <div className="grid grid-cols-3 gap-2">
-              {['Sedan', 'SUV', 'Hatchback', 'Motorcycle', 'Van', 'Pickup'].map(v => (
+              {VEHICLE_CATEGORIES.map(v => (
                 <label key={v} className="flex items-center gap-2 text-sm text-slate-600">
-                  <input type="checkbox" defaultChecked className="rounded" /> {v}
+                  <input type="checkbox" checked={settings.allowed_vehicle_categories.includes(v)}
+                    onChange={event => toggleArray('allowed_vehicle_categories', v, event.target.checked)} className="rounded" /> {v}
                 </label>
               ))}
             </div>
           </div>
-          <Button onClick={save}>Save Parking Settings</Button>
+          <Button onClick={() => void save('Parking')} disabled={isBusy}>Save Parking Settings</Button>
         </Card>
       )}
 
       {tab === 'Access Control' && (
         <Card className="p-8 space-y-6 max-w-2xl">
           <h3 className="font-semibold text-[#080677]">Access Control Settings</h3>
-          <Input label="RFID Card Validity (months)" defaultValue="12" type="number" />
-          <Input label="QR Pass Validity (hours)" defaultValue="4" type="number" />
-          <Select label="Visitor Pass Review">
+          <Input label="RFID Card Validity (months)" type="number" {...field('rfid_card_validity_months')} />
+          <Input label="QR Pass Validity (hours)" type="number" {...field('qr_pass_validity_hours')} />
+          <Select label="Visitor Pass Review" {...field('visitor_pass_review')}>
             <option>Parking Staff Review Required</option>
           </Select>
           <p className="text-sm text-slate-500">RFID remains the regular-user access credential. QR passes are limited to temporary visitors.</p>
-          <Button onClick={save}>Save Access Settings</Button>
+          <Button onClick={() => void save('Access Control')} disabled={isBusy}>Save Access Settings</Button>
         </Card>
       )}
 
@@ -90,51 +334,50 @@ export default function SystemSettings() {
         <Card className="p-8 space-y-6 max-w-2xl">
           <h3 className="font-semibold text-[#080677]">Notification Settings</h3>
           <div className="space-y-4">
-            {[
-              { label: 'Email Notifications', val: notifEmail, set: setNotifEmail },
-              { label: 'Mobile Push Notifications', val: notifMobile, set: setNotifMobile },
-              { label: 'Security Alert Notifications', val: notifSecurity, set: setNotifSecurity },
-            ].map(item => (
+            {([
+              { label: 'Email Notifications', key: 'notify_email' },
+              { label: 'Mobile Push Notifications', key: 'notify_mobile' },
+              { label: 'Security Alert Notifications', key: 'notify_security' },
+            ] as const).map(item => (
               <div key={item.label} className="flex items-center justify-between p-4 rounded-xl bg-slate-50">
                 <span className="text-sm font-medium text-slate-700">{item.label}</span>
-                <Toggle checked={item.val} onChange={item.set} />
+                <Toggle checked={settings[item.key]} onChange={val => setField(item.key, val)} />
               </div>
             ))}
           </div>
           <div>
             <label className="text-sm font-medium text-slate-700 mb-3 block">Notify for Events</label>
             <div className="space-y-2">
-              {['Parking area full', 'Unauthorized access attempt', 'New registration request', 'Expiring vehicle documents', 'New violation recorded'].map(e => (
+              {NOTIFICATION_EVENTS.map(e => (
                 <label key={e} className="flex items-center gap-2 text-sm text-slate-600">
-                  <input type="checkbox" defaultChecked className="rounded" /> {e}
+                  <input type="checkbox" checked={settings.notification_events.includes(e)}
+                    onChange={event => toggleArray('notification_events', e, event.target.checked)} className="rounded" /> {e}
                 </label>
               ))}
             </div>
           </div>
-          <Button onClick={save}>Save Notification Settings</Button>
+          <Button onClick={() => void save('Notifications')} disabled={isBusy}>Save Notification Settings</Button>
         </Card>
       )}
 
       {tab === 'Security' && (
         <Card className="p-8 space-y-6 max-w-2xl">
           <h3 className="font-semibold text-[#080677]">User & Security Settings</h3>
-          <Input label="Minimum Password Length" defaultValue="8" type="number" />
-          <Input label="Session Timeout (minutes)" defaultValue="30" type="number" />
-          <Input label="Max Login Attempts" defaultValue="5" type="number" />
+          <Input label="Minimum Password Length" type="number" {...field('min_password_length')} />
+          <Input label="Session Timeout (minutes)" type="number" {...field('session_timeout_minutes')} />
+          <Input label="Max Login Attempts" type="number" {...field('max_login_attempts')} />
           <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50">
             <div>
               <p className="text-sm font-medium text-slate-700">Two-Factor Authentication</p>
               <p className="text-xs text-slate-400">Require 2FA for all admin accounts</p>
             </div>
-            <Toggle checked={twoFactor} onChange={setTwoFactor} />
+            <Toggle checked={settings.two_factor_required} onChange={val => setField('two_factor_required', val)} />
           </div>
           <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50">
-            <div>
-              <p className="text-sm font-medium text-slate-700">Force Password Reset on First Login</p>
-            </div>
-            <Toggle checked={false} onChange={() => {}} />
+            <div><p className="text-sm font-medium text-slate-700">Force Password Reset on First Login</p></div>
+            <Toggle checked={settings.force_password_reset_first_login} onChange={val => setField('force_password_reset_first_login', val)} />
           </div>
-          <Button onClick={save}>Save Security Settings</Button>
+          <Button onClick={() => void save('Security')} disabled={isBusy}>Save Security Settings</Button>
         </Card>
       )}
     </div>

@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { StatCard, Card } from '../../components/ui';
+import ParkingSlotLayout from '../../components/ParkingSlotLayout';
 
 import {
   Users,
@@ -302,44 +303,8 @@ if (dashboardData) {
         </Card>
 
         <Card className="p-6">
-          <h3 className="font-semibold text-slate-700 mb-4">
-            Parking Occupancy by Zone
-          </h3>
-
-          <div className="space-y-4">
-            {ZONE_CAPACITY.map((zone, index) => {
-              const percentage = Math.round(
-                (zone.occupied / zone.capacity) * 100
-              );
-
-              return (
-                <div key={zone.zone}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>{zone.zone}</span>
-                    <span>{percentage}% occupied</span>
-                  </div>
-
-                  <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${percentage}%`,
-                        backgroundColor: COLORS[index % COLORS.length],
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex justify-between text-xs text-slate-400 mt-1">
-                    <span>{zone.occupied} occupied</span>
-                    <span>
-                      {zone.capacity - zone.occupied} free of {zone.capacity}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
+        <ParkingSlotLayout />
+      </Card>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
