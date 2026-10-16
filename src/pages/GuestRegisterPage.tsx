@@ -15,22 +15,58 @@ export default function GuestRegisterPage() {
 
   const set = (k: string, v: string | boolean) => setForm(f => ({ ...f, [k]: v }));
 
+  const [busy, setBusy] = useState(false);
+  const [serverError, setServerError] = useState('');
+
+  // Same rules as the server (POST /api/guest/register).
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.fullName.trim()) e.fullName = 'Full name is required';
-    if (!form.email || !form.email.includes('@')) e.email = 'Valid email is required';
-    if (!form.phone.trim()) e.phone = 'Contact number is required';
-    if (!form.password || form.password.length < 6) e.password = 'Password must be at least 6 characters';
+    if (!/^\S+(\s+\S+)+$/.test(form.fullName.trim())) e.fullName = 'Enter your first and last name';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = 'Valid email is required';
+    if (!/^(\+63|0)9\d{9}$/.test(form.phone.replace(/[\s-]/g, ''))) e.phone = 'Enter a mobile number like 09171234567';
+    if (form.password.length < 8 || !/[A-Za-z]/.test(form.password) || !/\d/.test(form.password)) e.password = 'Use at least 8 characters with letters and numbers';
     if (form.password !== form.confirmPwd) e.confirmPwd = 'Passwords do not match';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (validate() && form.agree) setSubmitted(true);
-  };
+  const FIELD: Record<string, string> = { full_name: 'fullName', email: 'email', contact_number: 'phone', password: 'password', agree: 'agree' };
 
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setServerError('');
+    if (busy || !form.agree || !validate()) return;
+    setBusy(true);
+    try {
+      const response = await fetch('/api/guest/register', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: form.fullName.trim(),
+          email: form.email.trim(),
+          contact_number: form.phone,
+          password: form.password,
+          password_confirmation: form.confirmPwd,
+          agree: form.agree,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        setSubmitted(true);
+        return;
+      }
+      const fieldErrors: Record<string, string> = {};
+      for (const [field, messages] of Object.entries((data.errors ?? {}) as Record<string, string[]>)) {
+        fieldErrors[FIELD[field] ?? field] = Array.isArray(messages) ? messages[0] : String(messages);
+      }
+      setErrors(fieldErrors);
+      setServerError(Object.keys(fieldErrors).length ? 'Please correct the highlighted fields.' : data.message || 'Registration failed. Please try again.');
+    } catch {
+      setServerError('Cannot reach the server. Please check your connection and try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
   if (submitted) {
     return (
       <div className="min-h-screen bg-[#F4F7FB] flex items-center justify-center p-4">
@@ -39,7 +75,7 @@ export default function GuestRegisterPage() {
             <Check size={36} className="text-green-600" />
           </div>
           <h2 className="text-2xl font-bold text-[#080677] mb-3">Guest Account Created!</h2>
-          <p className="text-slate-500 mb-8">Your guest account has been registered in this prototype. Sign in to submit a visitor parking request with your visit purpose and required vehicle details. A QR pass is not issued until the request is approved.</p>
+          <p className="text-slate-500 mb-8">Your guest account has been registered. Sign in with your email and password to submit a visitor parking request with your visit purpose and required vehicle details. A QR pass is not issued until the request is approved.</p>
           <Link to="/login" className="w-full block py-3 bg-[#2563EB] text-white font-semibold rounded-xl hover:bg-[#1D4ED8] transition-colors">
             Go to Login
           </Link>
@@ -94,7 +130,7 @@ export default function GuestRegisterPage() {
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-1.5">Password <span className="text-red-500">*</span></label>
                 <div className="relative">
-                  <input type={showPwd ? 'text' : 'password'} value={form.password} onChange={e => set('password', e.target.value)} placeholder="Minimum 6 characters"
+                  <input type={showPwd ? 'text' : 'password'} value={form.password} onChange={e => set('password', e.target.value)} placeholder="At least 8 characters, letters and numbers"
                     className={`w-full border ${errors.password ? 'border-red-400' : 'border-slate-200'} rounded-xl px-4 py-3 text-sm pr-12 focus:outline-none focus:ring-2 focus:ring-[#2563EB]`} />
                   <button type="button" onClick={() => setShowPwd(v => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
                     {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -117,10 +153,12 @@ export default function GuestRegisterPage() {
             <span>I agree to the PASS <span className="text-[#2563EB]">Terms and Conditions</span> and <span className="text-[#2563EB]">Privacy Notice</span>. I understand this is a temporary guest account.</span>
           </label>
 
-          <button type="submit" disabled={!form.agree}
+          {errors.agree && <p className="text-xs text-red-500">{errors.agree}</p>}
+          {serverError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3" role="alert">{serverError}</p>}
+          <button type="submit" disabled={!form.agree || busy}
             className="w-full flex items-center justify-center gap-2 py-3 bg-[#2563EB] text-white font-semibold rounded-xl hover:bg-[#1D4ED8] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             <ChevronRight size={18} />
-            Create Guest Account
+            {busy ? 'Creating account…' : 'Create Guest Account'}
           </button>
         </form>
 

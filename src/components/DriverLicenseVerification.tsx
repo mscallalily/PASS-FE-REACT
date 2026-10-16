@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { IdCard, Clock, CheckCircle, AlertTriangle, Send, Loader2, ShieldCheck } from 'lucide-react';
 import FileUpload from './FileUpload';
 import { LICENSE_STATUS_LABEL, LICENSE_TYPE_LABEL, LicenseType, useLicense } from '../context/LicenseContext';
+import { formatCampusDateTime } from '../lib/datetime';
 
 const maskNo = (n: string) => (n.length > 4 ? `•••• ${n.slice(-4)}` : n);
 
-const formatDateTime = (value: string | null) =>
-  value ? new Date(value).toLocaleString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+const formatDateTime = (value: string | null) => formatCampusDateTime(value);
 
 // Maps API field names to this form's fields.
 const FIELD_MAP: Record<string, string> = {

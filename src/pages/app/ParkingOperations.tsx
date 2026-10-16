@@ -1,10 +1,13 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, Card, Badge, Button, Table, SearchBar, Select, Modal, StatCard, Tabs, Toast, Input } from '../../components/ui';
 import { apiRequest } from '../../lib/apiClient';
+import { CAMPUS_TIMEZONE, formatCampusDateTime } from '../../lib/datetime';
+import { useLiveLoad, useLiveSync, POLL_MS, type Topic } from '../../lib/liveSync';
 import ParkingMap, { MapData, MapSlot, slotFill } from '../../components/ParkingMap';
-import { ParkingSquare, Car, CheckCircle, Wrench, AlertTriangle, LogIn, LogOut, RefreshCw, MapPin } from 'lucide-react';
+import ParkingLot3D from '../../components/ParkingLot3D';
+import { ParkingSquare, Car, CheckCircle, Wrench, AlertTriangle, LogIn, LogOut, RefreshCw, MapPin, Box, Map as MapIcon, Bike, Layers } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 // ----------------------------------------------------------------------------- types
@@ -22,7 +25,20 @@ interface AreaStats {
   occupancy_percent: number;
 }
 
+/** Vehicles inside, from active parking transactions (server: ParkingStats::inside). */
+interface Inside {
+  total: number;
+  cars: number;
+  motorcycles: number;
+  visitors: number;
+  awaiting_confirmation: number;
+  with_slot: number;
+  distinct_slots: number;
+  consistent: boolean;
+}
+
 interface Overview {
+  inside?: Inside;
   areas: AreaStats[];
   overall: Omit<AreaStats, 'parking_area_id' | 'area_code' | 'area_name'>;
   hourly: { hour: string; total: number; areas: Record<number, number> }[];
@@ -37,6 +53,7 @@ interface TransactionRow {
   party_type: 'user' | 'visitor';
   party_name: string | null;
   owner_code: string | null;
+  user_category: 'student' | 'faculty' | 'employee' | 'visitor' | string | null;
   slot_id: number | null;
   slot_code: string | null;
   parking_area: string | null;
@@ -60,12 +77,24 @@ type ToastState = { message: string; type: 'success' | 'error' } | null;
 
 // ----------------------------------------------------------------------------- helpers
 
-const POLL_MS = 10000;
+const formatDateTime = (iso: string | null) => formatCampusDateTime(iso);
 
-const formatDateTime = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+const METHOD_LABEL: Record<string, string> = { rfid: 'RFID', qr: 'Visitor QR', manual: 'Staff override' };
 
-const METHOD_LABEL: Record<string, string> = { rfid: 'RFID', qr: 'QR', manual: 'Manual' };
+/** Whether vehicles inside, active parking transactions and held slots agree. */
+function Reconciliation({ inside }: { inside?: Inside }) {
+  if (!inside) return null;
+  return inside.consistent ? (
+    <p className="text-xs text-slate-500 flex items-center gap-1.5"><CheckCircle size={13} className="text-green-600" />
+      Records agree: {inside.total} vehicle{inside.total === 1 ? '' : 's'} inside = {inside.total} active parking transaction{inside.total === 1 ? '' : 's'} = {inside.distinct_slots} distinct slot{inside.distinct_slots === 1 ? '' : 's'} held.
+      {inside.awaiting_confirmation > 0 && `  ${inside.awaiting_confirmation} assigned slot(s) are not yet confirmed by staff but stay unavailable.`}
+    </p>
+  ) : (
+    <p className="text-xs text-red-600 flex items-center gap-1.5"><AlertTriangle size={13} />
+      Records do not agree: {inside.total} active transactions, {inside.with_slot} with a slot, {inside.distinct_slots} distinct slots. Check Entry &amp; Exit Records.
+    </p>
+  );
+}
 
 const STATUS_BADGE: Record<TransactionRow['transaction_status'], 'warning' | 'success' | 'default' | 'danger'> = {
   active: 'warning',
@@ -74,27 +103,17 @@ const STATUS_BADGE: Record<TransactionRow['transaction_status'], 'warning' | 'su
   cancelled: 'danger',
 };
 
-/** Load data now and then every `interval` ms; returns a manual refresh. */
-function usePolling<T>(load: () => Promise<T>, onData: (d: T) => void, onError: (m: string) => void, interval = POLL_MS) {
-  const run = useCallback(async () => {
-    try {
-      onData(await load());
-      onError('');
-    } catch (err) {
-      onError(err instanceof Error ? err.message : 'Unable to load data.');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load]);
+/**
+ * Load data now, and again whenever one of `topics` changes anywhere (shared
+ * refresh, see lib/liveSync). The returned function reloads this data and
+ * asks every other open screen to check for changes, for use after an action.
+ */
+function usePolling<T>(load: () => Promise<T>, onData: (d: T) => void, onError: (m: string) => void, topics: Topic[] = ['parking', 'violations']) {
+  const run = useLiveLoad(load, topics, onData, onError);
+  const { refreshNow } = useLiveSync();
 
-  useEffect(() => {
-    run();
-    const timer = setInterval(run, interval);
-    return () => clearInterval(timer);
-  }, [run, interval]);
-
-  return run;
+  return useCallback(() => { void run(); refreshNow(); }, [run, refreshNow]);
 }
-
 function ErrorBox({ message }: { message: string }) {
   return (
     <div className="rounded-xl border border-red-200 bg-red-50 p-4">
@@ -151,9 +170,9 @@ function GateModal({ open, direction, onClose, onDone, onShowOnMap }: {
             : 'The active parking session is closed and its slot becomes available.'}
         </p>
         <Select label="Identify vehicle by" value={method} onChange={e => setMethod(e.target.value as typeof method)} disabled={busy}>
-          <option value="rfid_tag_uid">RFID tag</option>
-          <option value="qr_pass_code">Visitor QR pass code</option>
-          <option value="plate_number">Plate number (manual)</option>
+          <option value="rfid_tag_uid">RFID tag (students, faculty, employees)</option>
+          <option value="qr_pass_code">Visitor QR pass code (visitors)</option>
+          <option value="plate_number">Plate number (Parking Staff override)</option>
         </Select>
         <Input
           label={method === 'rfid_tag_uid' ? 'RFID tag UID' : method === 'qr_pass_code' ? 'QR pass code' : 'Plate number'}
@@ -181,7 +200,10 @@ function GateModal({ open, direction, onClose, onDone, onShowOnMap }: {
             )}
           </div>
         )}
-        <p className="text-xs text-slate-400">All vehicles use the shared Main Entrance / Exit gate.</p>
+        <p className="text-xs text-slate-400">
+          All vehicles use the shared Main Entrance / Exit gate. Campus users must use RFID and visitors their QR pass; a plate number is recorded as a Parking Staff override.
+          Campus users also need a verified driver's license.
+        </p>
         <div className="flex gap-3 justify-end">
           <Button variant="outline" onClick={onClose} disabled={busy}>Close</Button>
           <Button variant={direction === 'entry' ? 'success' : 'primary'} onClick={submit} disabled={busy}>
@@ -247,6 +269,66 @@ function ReportSlotModal({ transaction, presetSlot, onClose, onDone }: {
 
 // ------------------------------------------------------------- entry & exit records
 
+interface DeniedEvent {
+  event_id: number;
+  event_datetime: string | null;
+  direction: 'in' | 'out';
+  access_method: 'rfid' | 'qr' | 'manual';
+  denial_reason: string | null;
+  plate_number: string | null;
+  party_name: string | null;
+  party_type: 'user' | 'visitor' | null;
+  user_type: string | null;
+  rfid_tag: string | null;
+  qr_pass_code: string | null;
+  presented_credential: string | null;
+  source: string | null;
+}
+
+/** Denied gate attempts (access_events). They never create a parking transaction. */
+function DeniedAttempts() {
+  const [rows, setRows] = useState<DeniedEvent[] | null>(null);
+  const [error, setError] = useState('');
+  const [date, setDate] = useState('today');
+
+  const load = useCallback(() => {
+    const params = new URLSearchParams({ result: 'denied' });
+    if (date) params.set('date', date);
+    return apiRequest<{ data: DeniedEvent[] }>(`/api/access-events?${params}`).then(r => r.data);
+  }, [date]);
+
+  usePolling(load, setRows, setError, ['parking']);
+
+  return (
+    <div>
+      <div className="px-5 pt-4 flex flex-wrap items-center gap-3">
+        <Select value={date} onChange={e => setDate(e.target.value)} aria-label="Date">
+          <option value="today">Today</option>
+          <option value="">All dates</option>
+        </Select>
+        <p className="text-xs text-slate-400">Refused at the Main Entrance / Exit. No slot was assigned and no parking transaction was created.</p>
+      </div>
+      {error && <div className="mx-5 mt-4"><ErrorBox message={`Unable to load denied attempts: ${error}`} /></div>}
+      {rows === null && !error ? <p className="py-16 text-center text-sm text-slate-400">Loading denied attempts...</p> : (
+        <Table
+          columns={[
+            { key: 'time', label: 'Date & Time', render: (e: DeniedEvent) => <div><p className="text-sm whitespace-nowrap">{formatDateTime(e.event_datetime)}</p><p className="text-[10px] text-slate-400">#{e.event_id}</p></div> },
+            { key: 'dir', label: 'Gate', render: (e: DeniedEvent) => <Badge variant={e.direction === 'in' ? 'info' : 'default'}>{e.direction === 'in' ? 'Entry' : 'Exit'}</Badge> },
+            { key: 'vehicle', label: 'Vehicle', render: (e: DeniedEvent) => e.plate_number ? <span className="font-mono font-bold text-[#080677]">{e.plate_number}</span> : <span className="text-xs text-slate-400">Not identified</span> },
+            { key: 'who', label: 'Driver / Visitor', render: (e: DeniedEvent) => e.party_type ? <div><p>{e.party_name ?? '—'}</p><p className="text-xs text-slate-400 capitalize">{e.party_type === 'visitor' ? 'Visitor' : e.user_type}</p></div> : '—' },
+            { key: 'cred', label: 'Credential', render: (e: DeniedEvent) => (
+              <div><p className="text-xs font-medium">{METHOD_LABEL[e.access_method]}</p>
+                <p className="font-mono text-[11px] text-slate-500">{e.rfid_tag ?? (e.qr_pass_code ? `${e.qr_pass_code.slice(0, 8)}…` : e.presented_credential)}</p></div>
+            )},
+            { key: 'reason', label: 'Reason', render: (e: DeniedEvent) => <span className="text-sm text-red-600">{e.denial_reason}</span> },
+          ]}
+          data={rows ?? []}
+        />
+      )}
+    </div>
+  );
+}
+
 function EntryExitRecords({ areas, notify, onShowOnMap }: {
   areas: AreaStats[];
   notify: (m: string, t?: 'success' | 'error') => void;
@@ -258,6 +340,9 @@ function EntryExitRecords({ areas, notify, onShowOnMap }: {
   const [area, setArea] = useState('');
   const [status, setStatus] = useState('');
   const [date, setDate] = useState('');
+  const [method, setMethod] = useState('');
+  const [category, setCategory] = useState('');
+  const [view, setView] = useState<'transactions' | 'denied'>('transactions');
   const [gate, setGate] = useState<'entry' | 'exit' | null>(null);
   const [reportFor, setReportFor] = useState<TransactionRow | null>(null);
   const [debounced, setDebounced] = useState('');
@@ -270,8 +355,10 @@ function EntryExitRecords({ areas, notify, onShowOnMap }: {
     if (area) params.set('area', area);
     if (status) params.set('status', status);
     if (date) params.set('date', date);
+    if (method) params.set('method', method);
+    if (category) params.set('category', category);
     return apiRequest<{ data: TransactionRow[] }>(`/api/parking/transactions?${params}`).then(r => r.data);
-  }, [debounced, area, status, date]);
+  }, [debounced, area, status, date, method, category]);
 
   const refresh = usePolling(load, setRows, setError);
 
@@ -282,7 +369,13 @@ function EntryExitRecords({ areas, notify, onShowOnMap }: {
           <Button size="sm" variant="success" onClick={() => setGate('entry')}><LogIn size={14} /> Record Entry</Button>
           <Button size="sm" variant="primary" onClick={() => setGate('exit')}><LogOut size={14} /> Record Exit</Button>
         </div>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search by plate, driver, visitor, slot, or ticket...">
+        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="Records">
+          {([['transactions', 'Parking transactions'], ['denied', 'Denied gate attempts']] as const).map(([v, label]) => (
+            <button key={v} type="button" onClick={() => setView(v)} aria-pressed={view === v}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md ${view === v ? 'bg-[#080677] text-white' : 'text-slate-600 hover:bg-blue-50'}`}>{label}</button>
+          ))}
+        </div>
+        {view === 'transactions' && <SearchBar value={search} onChange={setSearch} placeholder="Search by plate, driver, visitor, slot, or ticket...">
           <Select value={area} onChange={e => setArea(e.target.value)}>
             <option value="">All Areas</option>
             {areas.map(a => <option key={a.parking_area_id} value={a.parking_area_id}>{a.area_name}</option>)}
@@ -296,8 +389,23 @@ function EntryExitRecords({ areas, notify, onShowOnMap }: {
             <option value="">All Dates</option>
             <option value="today">Today</option>
           </Select>
-        </SearchBar>
+          <Select value={method} onChange={e => setMethod(e.target.value)} aria-label="Access method">
+            <option value="">All Methods</option>
+            <option value="rfid">RFID</option>
+            <option value="qr">Visitor QR</option>
+            <option value="manual">Staff override</option>
+          </Select>
+          <Select value={category} onChange={e => setCategory(e.target.value)} aria-label="User category">
+            <option value="">All Users</option>
+            <option value="student">Students</option>
+            <option value="faculty">Faculty</option>
+            <option value="employee">Employees</option>
+            <option value="visitor">Visitors</option>
+          </Select>
+        </SearchBar>}
       </div>
+      {view === 'denied' && <DeniedAttempts />}
+      {view === 'transactions' && <>
       {error && <div className="mx-5 mt-4"><ErrorBox message={`Unable to load parking transactions: ${error}`} /></div>}
       {rows === null && !error ? (
         <p className="py-16 text-center text-sm text-slate-400">Loading parking transactions...</p>
@@ -319,7 +427,7 @@ function EntryExitRecords({ areas, notify, onShowOnMap }: {
             { key: 'party', label: 'Driver / Visitor', render: (t: TransactionRow) => (
               <div>
                 <p>{t.party_name ?? '—'}</p>
-                <p className="text-xs text-slate-400">{t.party_type === 'visitor' ? 'Visitor' : t.owner_code}</p>
+                <p className="text-xs text-slate-400">{t.party_type === 'visitor' ? 'Visitor' : <><span className="capitalize">{t.user_category ?? 'User'}</span>{t.owner_code ? ` · ${t.owner_code}` : ''}</>}</p>
               </div>
             )},
             { key: 'slot', label: 'Slot', render: (t: TransactionRow) => (
@@ -348,6 +456,7 @@ function EntryExitRecords({ areas, notify, onShowOnMap }: {
           data={rows ?? []}
         />
       )}
+      </>}
 
       <GateModal open={!!gate} direction={gate ?? 'entry'} onClose={() => setGate(null)} onDone={() => refresh()}
         onShowOnMap={code => { setGate(null); onShowOnMap(code); }} />
@@ -420,12 +529,16 @@ function OccupancyMonitor({ overview, error }: { overview: Overview | null; erro
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Total Capacity" value={o.capacity} icon={<ParkingSquare size={18} />} color="navy" />
-        <StatCard label="Occupied" value={o.occupied} icon={<Car size={18} />} color="red" sub={`${o.occupancy_percent}% overall`} />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <StatCard label="Total Capacity" value={o.capacity} icon={<ParkingSquare size={18} />} color="navy" sub="55 car · 84 motorcycle" />
+        <StatCard label="Vehicles Inside" value={overview.inside?.total ?? o.occupied} icon={<Car size={18} />} color="sky"
+          sub={overview.inside ? `${overview.inside.cars} cars · ${overview.inside.motorcycles} motorcycles` : undefined} />
+        <StatCard label="Occupied Slots" value={o.occupied} icon={<Car size={18} />} color="red" sub={`${o.occupancy_percent}% overall`} />
         <StatCard label="Available" value={o.available} icon={<CheckCircle size={18} />} color="green" />
         <StatCard label="Maintenance" value={o.maintenance} icon={<Wrench size={18} />} color="blue" />
       </div>
+
+      <Reconciliation inside={overview.inside} />
 
       <div className="grid lg:grid-cols-2 gap-6">
         {overview.areas.map(a => <AreaCard key={a.parking_area_id} area={a} />)}
@@ -476,10 +589,88 @@ function OccupancyMonitor({ overview, error }: { overview: Overview | null; erro
 // ------------------------------------------------------------- parking layout
 
 interface MapResponse extends MapData {
+  inside?: Inside;
   areas: AreaStats[];
+  overall: Overview['overall'];
   ambiguities: string[];
   corrections: string[];
   gate: { gate_id: number; gate_code: string; gate_name: string; gate_status: string } | null;
+}
+
+/**
+ * Live occupancy below the parking layout, from the same /api/parking/map
+ * response as the 3D view (so the figures always match what is drawn).
+ */
+function OccupancyPanel({ areas, overall, inside }: { areas: AreaStats[]; overall: Overview['overall']; inside?: Inside }) {
+  const cards = [
+    ...['MC', 'CAR'].flatMap(code => areas.filter(a => a.area_code === code)).map(a => ({
+      key: a.area_code,
+      title: a.area_code === 'MC' ? 'Motorcycle Parking' : a.area_code === 'CAR' ? 'Car Parking' : a.area_name,
+      icon: a.area_code === 'MC' ? <Bike size={18} /> : <Car size={18} />,
+      stats: a,
+    })),
+    { key: 'ALL', title: 'Overall Parking', icon: <Layers size={18} />, stats: overall },
+  ];
+
+  return (
+    <div className="grid md:grid-cols-3 gap-4">
+      {cards.map(({ key, title, icon, stats }) => {
+        const pct = (n: number) => (stats.capacity ? (n / stats.capacity) * 100 : 0);
+        const sumOk = stats.available + stats.occupied + stats.maintenance === stats.capacity;
+        return (
+          <div key={key} className={`rounded-2xl border p-4 space-y-3 ${key === 'ALL' ? 'border-[#080677]/15 bg-gradient-to-br from-[#080677]/[0.04] to-[#2563EB]/[0.06]' : 'border-slate-100 bg-white'}`}>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#2563EB] text-white flex items-center justify-center shrink-0">{icon}</div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[#080677] truncate">{title}</p>
+                <p className="text-xs text-slate-400">{stats.capacity} total slots</p>
+              </div>
+              <span className="ml-auto text-right">
+                <span className="block text-lg font-bold text-[#080677] leading-tight">{stats.occupancy_percent}%</span>
+                <span className="block text-[10px] text-slate-400">occupied</span>
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {([['Available', stats.available, 'text-green-600 bg-green-50'], ['Occupied', stats.occupied, 'text-red-600 bg-red-50'], ['Maintenance', stats.maintenance, 'text-gray-600 bg-gray-100']] as const).map(([label, value, tone]) => (
+                <div key={label} className={`rounded-xl py-2 ${tone}`}>
+                  <p className="text-xl font-bold leading-tight">{value}</p>
+                  <p className="text-[10px] font-medium opacity-80">{label}</p>
+                </div>
+              ))}
+            </div>
+            <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden flex" role="img"
+              aria-label={`${stats.available} available, ${stats.occupied} occupied, ${stats.maintenance} under maintenance of ${stats.capacity}`}>
+              <div className="h-full bg-green-500" style={{ width: `${pct(stats.available)}%` }} />
+              <div className="h-full bg-red-500" style={{ width: `${pct(stats.occupied)}%` }} />
+              <div className="h-full bg-gray-400" style={{ width: `${pct(stats.maintenance)}%` }} />
+            </div>
+            <p className="text-xs text-slate-600">
+              {key === 'ALL' ? 'Vehicles inside' : key === 'MC' ? 'Motorcycles inside' : 'Cars inside'}: <strong>{key === 'ALL' ? (inside?.total ?? stats.occupied) : stats.occupied}</strong>
+              {!!stats.awaiting_confirmation && <span className="text-amber-700"> · {stats.awaiting_confirmation} not yet confirmed</span>}
+            </p>
+            {!sumOk && <p className="text-[11px] text-amber-600">Counts do not add up to capacity; refresh to reload.</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const VIEW_KEY = 'pass_parking_layout_view';
+
+function savedView(): '3d' | 'plan' {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'plan' ? 'plan' : '3d';
+  } catch {
+    return '3d';
+  }
+}
+
+/** Slots whose status or occupant changed between two polls. */
+function changedSlots(previous: MapSlot[] | undefined, next: MapSlot[]) {
+  if (!previous) return new Set<number>();
+  const before = new Map(previous.map(s => [s.slot_id, `${s.status}:${s.occupant?.transaction_id ?? ''}`]));
+  return new Set(next.filter(s => before.has(s.slot_id) && before.get(s.slot_id) !== `${s.status}:${s.occupant?.transaction_id ?? ''}`).map(s => s.slot_id));
 }
 
 function ParkingLayout({ notify, highlight, onHighlight }: {
@@ -497,9 +688,31 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
   const [otherTxn, setOtherTxn] = useState('');
   const [maintenanceReason, setMaintenanceReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<'3d' | 'plan'>(savedView);
+  const [gateMenu, setGateMenu] = useState(false);
+  const [recent, setRecent] = useState<Set<number>>(() => new Set());
+  const previous = useRef<MapSlot[] | undefined>(undefined);
 
   const load = useCallback(() => apiRequest<MapResponse>('/api/parking/map'), []);
-  const refresh = usePolling(load, setData, setError);
+  const onData = useCallback((d: MapResponse) => {
+    setRecent(changedSlots(previous.current, d.slots));
+    previous.current = d.slots;
+    setData(d);
+  }, []);
+  const refresh = usePolling(load, onData, setError);
+
+  // Changed slots flash briefly. Clear them afterwards: the map only reloads when
+  // something changes, and while slots are marked the 3D view renders every frame.
+  useEffect(() => {
+    if (recent.size === 0) return;
+    const timer = setTimeout(() => setRecent(new Set()), 5000);
+    return () => clearTimeout(timer);
+  }, [recent]);
+
+  const chooseView = (v: '3d' | 'plan') => {
+    setView(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* preference only */ }
+  };
 
   const selected = data?.slots.find(s => s.slot_id === selectedId) ?? null;
 
@@ -543,35 +756,36 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
 
   const legend: [React.CSSProperties, string][] = [
     [{ background: '#22C55E' }, 'Available'],
-    [{ background: '#EF4444' }, 'Occupied (confirmed)'],
-    [{ background: '#FCA5A5', border: '1px dashed #DC2626' }, 'Assigned, not yet confirmed'],
+    [{ background: '#EF4444' }, 'Occupied'],
     [{ background: '#9CA3AF' }, 'Maintenance / disabled'],
-    [{ background: '#FFFFFF', border: '1px dashed #CBD5E1' }, 'Painted bay, not a PASS slot'],
+    [{ background: '#EF4444', outline: '1.5px dashed #FFFFFF', outlineOffset: -3 }, 'Occupied, location not yet confirmed'],
+    [{ background: '#FFFFFF', border: '1px dashed #94A3B8' }, 'Painted bay, not a PASS slot'],
   ];
-  const unplaced = data?.slots.filter(s => !s.placed) ?? [];
+  // The 3D view shows unprinted slots in in-scene trays; list only any it cannot place.
+  const trayAreas = new Set((data?.geometry.trays ?? []).map(t => t.area));
+  const unplaced = (data?.slots.filter(s => !s.placed) ?? []).filter(s => view === 'plan' || !trayAreas.has(s.area_code));
   const others = activeVehicles.filter(t => t.transaction_id !== selected?.occupant?.transaction_id);
   const colors = selected ? slotFill(selected) : null;
+  const gateOnline = (data?.gate?.gate_status ?? 'online') === 'online';
+  const segment = (active: boolean) =>
+    `px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${active ? 'bg-[#080677] text-white' : 'text-slate-600 hover:bg-blue-50'}`;
 
   return (
     <div className="space-y-5">
       <Card className="p-4 sm:p-6 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="Map view">
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="Map style">
+            <button type="button" onClick={() => chooseView('3d')} className={segment(view === '3d')} aria-pressed={view === '3d'}><Box size={13} /> 3D view</button>
+            <button type="button" onClick={() => chooseView('plan')} className={segment(view === 'plan')} aria-pressed={view === 'plan'}><MapIcon size={13} /> Plan view</button>
+          </div>
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="Map area">
             {[['ALL', 'Whole site'], ['MC', 'Motorcycle Parking'], ['CAR', 'Car Parking']].map(([code, label]) => (
               <button key={code} type="button" onClick={() => setFocus({ code, key: Date.now() })}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${focus?.code === code || (!focus && code === 'ALL') ? 'bg-[#080677] text-white' : 'text-slate-600 hover:bg-blue-50'}`}>
+                className={segment(focus?.code === code || (!focus && code === 'ALL'))}>
                 {label}
               </button>
             ))}
           </div>
-          {data?.areas.map(a => (
-            <span key={a.parking_area_id} className="text-xs text-slate-500">
-              <span className="font-semibold text-slate-700">{a.area_name}:</span>{' '}
-              <span className="text-red-600 font-semibold">{a.occupied}</span> occupied ·{' '}
-              <span className="text-green-600 font-semibold">{a.available}</span> available ·{' '}
-              <span className="text-gray-500 font-semibold">{a.maintenance}</span> maintenance
-            </span>
-          ))}
           <div className="flex gap-2 ml-auto">
             <Button size="sm" variant="success" onClick={() => setGate('entry')}><LogIn size={14} /> Record Entry</Button>
             <Button size="sm" variant="primary" onClick={() => setGate('exit')}><LogOut size={14} /> Record Exit</Button>
@@ -594,10 +808,21 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
           !error && <p className="py-16 text-center text-sm text-slate-400">Loading parking map...</p>
         ) : (
           <>
-            <ParkingMap data={data} highlight={highlight} focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} />
-            <p className="text-xs text-slate-400">Drag to pan · scroll, pinch or use the buttons to zoom · select a slot for details. {highlight && (
-              <button type="button" className="text-[#2563EB] hover:underline" onClick={() => onHighlight(null)}>Clear highlight of {highlight}</button>
-            )}</p>
+            {view === '3d' ? (
+              <ParkingLot3D data={data} highlight={highlight} selectedId={selectedId} recent={recent} gateOnline={gateOnline}
+                focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} onGate={() => setGateMenu(true)} />
+            ) : (
+              <ParkingMap data={data} highlight={highlight} focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} />
+            )}
+            <p className="text-xs text-slate-400">
+              Drag to pan · scroll, pinch or use the buttons to zoom · select a slot for details{view === '3d' ? ' · select the Main Entrance / Exit to record an entry or exit' : ''}. Updates automatically: checks for changes every {POLL_MS / 1000} seconds while this tab is open.{' '}
+              {highlight && (
+                <button type="button" className="text-[#2563EB] hover:underline" onClick={() => onHighlight(null)}>Clear highlight of {highlight}</button>
+              )}
+            </p>
+
+            <OccupancyPanel areas={data.areas} overall={data.overall} inside={data.inside} />
+            <Reconciliation inside={data.inside} />
 
             {unplaced.length > 0 && (
               <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
@@ -654,19 +879,31 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
             <div className="w-full h-20 rounded-xl flex flex-col items-center justify-center"
               style={{ background: colors.fill, color: colors.text, border: `2px ${colors.dash ? 'dashed' : 'solid'} ${colors.stroke}` }}>
               <p className="font-bold text-2xl">{selected.slot_code}</p>
-              <p className="text-xs capitalize">{selected.status === 'occupied' && !selected.occupant?.confirmed ? 'Assigned · not yet confirmed' : selected.status}</p>
+              <p className="text-xs capitalize">{selected.status === 'occupied' && !selected.occupant?.confirmed ? 'Occupied · location not yet confirmed' : selected.status}</p>
             </div>
 
             <div className="space-y-2">
               {[
+                ['Slot number', selected.slot_code],
                 ['Parking area', selected.area_name],
+                ['Slot status', selected.status === 'occupied' ? 'Occupied' : selected.status === 'maintenance' ? 'Maintenance / disabled' : 'Available'],
+                ...(selected.accessible ? [['Slot type', 'Accessible (PWD)']] : []),
                 ['Map position', selected.placed ? 'Shown on the DYCI layout' : 'Not printed on the reference drawing'],
                 ...(selected.occupant ? [
-                  ['Vehicle', `${selected.occupant.plate_number}${selected.occupant.vehicle_type ? ` (${selected.occupant.vehicle_type})` : ''}`],
+                  ['Plate number', selected.occupant.plate_number],
+                  ['Vehicle type', selected.occupant.vehicle_type ?? '—'],
                   [selected.occupant.party_type === 'visitor' ? 'Visitor' : 'Owner', `${selected.occupant.party_name ?? '—'}${selected.occupant.owner_code ? ` · ${selected.occupant.owner_code}` : ''}`],
                   ['Entry time', formatDateTime(selected.occupant.entry_datetime)],
                   ['Access method', `${METHOD_LABEL[selected.occupant.access_method] ?? selected.occupant.access_method} · Main Entrance / Exit`],
-                  ['Location', selected.occupant.confirmed ? `Confirmed ${formatDateTime(selected.occupant.confirmed_at)}` : 'Assigned at entry, not yet confirmed'],
+                  ['Parking transaction', `#${selected.occupant.transaction_id} · active (vehicle inside)`],
+                  ['Assigned slot', selected.slot_code],
+                  ['Actual slot', selected.incident?.role === 'assigned_here' && selected.incident.observed_slot
+                    ? `Reported at ${selected.incident.observed_slot}`
+                    : selected.occupant.confirmed ? `Confirmed here · ${formatDateTime(selected.occupant.confirmed_at)}` : 'Not yet confirmed by staff'],
+                ] : []),
+                ...(selected.incident?.role === 'observed_here' ? [
+                  ['Vehicle reported here', selected.incident.plate_number ?? '—'],
+                  ['Its assigned slot', selected.incident.assigned_slot ?? '—'],
                 ] : []),
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4 text-sm border-b border-slate-50 pb-2">
@@ -737,6 +974,28 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
         onDone={(message, type) => { setReportFor(null); setSelectedId(null); notify(message, type); refresh(); }}
       />
 
+      <Modal open={gateMenu} onClose={() => setGateMenu(false)} title={data?.gate?.gate_name ?? 'Main Entrance / Exit'} size="sm">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            {[
+              ['Gate', `${data?.gate?.gate_code ?? 'MAIN-GATE'} · shared by cars and motorcycles`],
+              ['Status', data?.gate ? data.gate.gate_status : 'Not configured'],
+              ['Accepted credentials', 'RFID (campus users) · Visitor QR (visitors) · Plate number (staff override)'],
+            ].map(([k, v]) => (
+              <div key={k} className="flex justify-between gap-4 text-sm border-b border-slate-50 pb-2">
+                <span className="text-slate-400">{k}</span>
+                <span className="font-medium text-right">{v}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-slate-500">After entering, cars follow the blue route to the Car Parking Area and motorcycles to the Motorcycle Parking Area. A slot in the correct area is assigned automatically.</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="success" className="justify-center" onClick={() => { setGateMenu(false); setGate('entry'); }}><LogIn size={14} /> Record Entry</Button>
+            <Button variant="primary" className="justify-center" onClick={() => { setGateMenu(false); setGate('exit'); }}><LogOut size={14} /> Record Exit</Button>
+          </div>
+        </div>
+      </Modal>
+
       <GateModal open={!!gate} direction={gate ?? 'entry'} onClose={() => setGate(null)}
         onDone={r => {
           refresh();
@@ -759,7 +1018,7 @@ function Availability() {
     apiRequest<{ data: typeof sessions }>('/api/parking/my-session'),
   ]), []);
 
-  usePolling(load, ([availability, mine]) => { setData(availability); setSessions(mine.data); setUpdated(new Date()); }, setError, 30000);
+  usePolling(load, ([availability, mine]) => { setData(availability); setSessions(mine.data); setUpdated(new Date()); }, setError, ['parking']);
 
   if (!data) return error ? <ErrorBox message={`Unable to load parking availability: ${error}`} /> : <p className="py-16 text-center text-sm text-slate-400">Loading availability...</p>;
 
@@ -780,7 +1039,7 @@ function Availability() {
         <p className="text-blue-200 font-medium mb-2">Available Parking Spaces Right Now</p>
         <p className="text-7xl font-bold text-[#38BDF8]">{data.overall.available}</p>
         <p className="text-blue-200 mt-2">of {data.overall.capacity} total slots</p>
-        <p className="text-xs text-blue-300 mt-3">Last updated: {updated ? updated.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) : '—'}</p>
+        <p className="text-xs text-blue-300 mt-3">Last updated: {updated ? updated.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', timeZone: CAMPUS_TIMEZONE }) : '—'}</p>
       </div>
       <div className="grid sm:grid-cols-2 gap-4">
         {data.areas.map(a => {

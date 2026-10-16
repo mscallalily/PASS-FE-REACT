@@ -34,6 +34,8 @@ interface AuthContextType {
   ) => Promise<{ success: boolean; role: UserRole }>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
+  /** False until a saved session has been checked; guards wait for it. */
+  ready: boolean;
 }
 
 interface ApiUser {
@@ -134,6 +136,9 @@ async function readResponse(response: Response): Promise<ApiResponse> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  // With a saved token, routes wait until the session is restored instead of
+  // redirecting to /login (e.g. when a page is refreshed or opened directly).
+  const [ready, setReady] = useState(() => !getStoredToken());
 
   useEffect(() => {
     let cancelled = false;
@@ -164,6 +169,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(restoredUser);
       } catch {
         clearStoredToken();
+      } finally {
+        if (!cancelled) setReady(true);
       }
     }
 
@@ -240,6 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         isAuthenticated: !!user,
+        ready,
       }}
     >
       {children}
