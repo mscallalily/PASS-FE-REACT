@@ -123,6 +123,7 @@ function formatDate(value: string | null) {
 }
 
 interface VehicleRow {
+  hasPhoto?: boolean;
   selectedForUse?: boolean;
   switchLocked?: boolean;
   id: string;
@@ -169,7 +170,7 @@ async function fetchVehicles(): Promise<VehicleRow[]> {
   return data.vehicles ?? [];
 }
 
-function VehiclePhotoPanel({ id, editable, onSaved }: { id: string | number; editable: boolean; onSaved: () => void }) {
+function VehiclePhotoPanel({ id, editable, onSaved, hasPhoto }: { id: string | number; editable: boolean; onSaved: () => void; hasPhoto?: boolean }) {
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -179,11 +180,12 @@ function VehiclePhotoPanel({ id, editable, onSaved }: { id: string | number; edi
     let cancelled = false;
     let objectUrl = '';
     setUrl(''); setError('');
+    if (hasPhoto === false && version === 0) return () => { cancelled = true; };
     apiBlob(`/api/vehicles/${id}/photo`).then(blob => {
       if (!cancelled) { objectUrl = URL.createObjectURL(blob); setUrl(objectUrl); }
     }).catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : 'Unable to load photo.'); });
     return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [id, version]);
+  }, [id, version, hasPhoto]);
   async function save() {
     if (!file || busy) return;
     setBusy(true); setError('');
@@ -195,6 +197,7 @@ function VehiclePhotoPanel({ id, editable, onSaved }: { id: string | number; edi
     finally { setBusy(false); }
   }
   return <div className="space-y-3">
+    {hasPhoto === false && version === 0 && <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">No vehicle photo on file.</p>}
     {url && <img src={url} alt="Submitted vehicle photo for plate comparison" className="max-h-80 w-full rounded-xl object-contain bg-slate-50" />}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     {editable && <>
@@ -779,11 +782,11 @@ export default function VehicleManagement() {
             {[['Owner', selected.owner], ['Vehicle Type', selected.type], ['Color', selected.color], ['RFID Tag', selected.rfid || 'Not assigned'], ['Registration Status', selected.registrationStatus || 'registered'], ['Authorization Status', selected.authorizationStatus || selected.status]].map(([k, v]) => (
               <div key={k} className="flex justify-between text-sm border-b border-slate-50 pb-2">
                 <span className="text-slate-400">{k}</span>
-                <span className="font-medium text-slate-700">{v}</span>
+                <span className="font-medium text-slate-700">{v || '—'}</span>
               </div>
             ))}
             {isRegularUser && vehicleUseControl(selected)}
-            <VehiclePhotoPanel key={selected.id} id={selected.id} editable={isRegularUser && ['pending', 'rejected'].includes(selected.authorizationStatus || selected.status)} onSaved={() => { setVehicleReloadKey(k => k + 1); setMyReloadKey(k => k + 1); showToast('Photo saved; pending staff review.'); }} />
+            <VehiclePhotoPanel key={selected.id} id={selected.id} hasPhoto={selected.hasPhoto} editable={isRegularUser && ['pending', 'rejected'].includes(selected.authorizationStatus || selected.status)} onSaved={() => { setVehicleReloadKey(k => k + 1); setMyReloadKey(k => k + 1); showToast('Photo saved; pending staff review.'); }} />
             <div className="flex gap-3 pt-2">
               <Button variant="outline" onClick={() => setSelected(null)}>Close</Button>
             </div>
