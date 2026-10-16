@@ -194,8 +194,6 @@ if (dashboardData) {
       </div>
 
       {/* Summary Cards */}
-
-      {/* Summary Cards */}
       {dashboardError && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {dashboardError}
@@ -244,8 +242,13 @@ if (dashboardData) {
       {/* Charts */}
       <div className="grid lg:grid-cols-2 gap-6">
         <Card className="p-6">
-          <h3 className="font-semibold text-slate-700 mb-1">Entry & Exit Activity</h3>
-          <p className="text-xs text-slate-400 mb-5">Today's hourly traffic</p>
+          <h3 className="font-semibold text-slate-700 mb-1">
+            Entry & Exit Activity
+          </h3>
+          <p className="text-xs text-slate-400 mb-5">
+            Today's total entries and exits
+          </p>
+
           <ResponsiveContainer width="100%" height={200}>
             <BarChart
   data={[

@@ -1,5 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { PageHeader, Card, Button, Tabs, Toggle, Toast, Input, Select } from '../../components/ui';
+import { useLocation } from 'react-router-dom';
+import { PAGE_SECTIONS, selectedSection } from '../../lib/pageSections';
+import React, { useState } from 'react';
+import { PageHeader, Card, Button,  Toggle, Toast, Input, Select } from '../../components/ui';
 import { Settings, Save } from 'lucide-react';
 
 type TabName = 'General' | 'Parking' | 'Access Control' | 'Notifications' | 'Security';
@@ -113,7 +115,8 @@ function getAuthToken(): string | null {
 }
 
 export default function SystemSettings() {
-  const [tab, setTab] = useState<TabName>('General');
+  const { pathname } = useLocation();
+  const tab = selectedSection(PAGE_SECTIONS.settings, pathname);
   const [toast, setToast] = useState('');
   const [settings, setSettings] = useState<SettingsData>(DEFAULT_SETTINGS);
   const savedSettings = useRef<SettingsData>(DEFAULT_SETTINGS);
@@ -250,14 +253,11 @@ export default function SystemSettings() {
   return (
     <div className="animate-fadein">
       {toast && <Toast message={toast} onClose={() => setToast('')} />}
-      <PageHeader title="System Settings" subtitle="Configure PASS system preferences and parameters"
-        action={<Button onClick={() => void save('all')} disabled={isBusy}><Save size={16} /> {saving ? 'Saving...' : 'Save Changes'}</Button>}
+      <PageHeader title={tab === 'General' ? 'System Settings' : `System Settings · ${tab}`} subtitle="Configure PASS system preferences and parameters"
+        action={<Button onClick={save}><Save size={16} /> Save Changes</Button>}
       />
 
-      <Tabs tabs={['General', 'Parking', 'Access Control', 'Notifications', 'Security']} active={tab} onChange={value => setTab(value as TabName)} />
 
-      {error && <p className="my-3 text-sm text-red-600" role="alert">{error}</p>}
-      {loading && <p className="my-3 text-sm text-slate-500">Loading saved settings...</p>}
 
       {tab === 'General' && (
         <Card className="p-8 space-y-6 max-w-2xl">

@@ -1,7 +1,8 @@
+import { PAGE_SECTIONS, selectedSection } from '../../lib/pageSections';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { PageHeader, Card, Badge, Table, SearchBar, Tabs, StatCard, Select } from '../../components/ui';
+import { PageHeader, Card, Badge, Table, SearchBar, StatCard, Select, Input, Button } from '../../components/ui';
 import { apiRequest } from '../../lib/apiClient';
 import { useTopicVersion, useLiveSync } from '../../lib/liveSync';
 import { formatCampusDateTime } from '../../lib/datetime';
@@ -190,22 +191,75 @@ function AccessRecords({ reloadKey }: { reloadKey: number }) {
 }
 
 function RfidCredentials() {
+  const { user } = useAuth();
+  const admin = user?.role === 'admin';
+  const [vehicles, setVehicles] = useState<{ id: string; plate: string; owner: string; authorizationStatus?: string; rfid?: string | null }[]>([]);
+  const [vehicleId, setVehicleId] = useState('');
+  const [tagUid, setTagUid] = useState('');
+  const [validUntil, setValidUntil] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    if (!admin) return;
+    let cancelled = false;
+    apiRequest<{ vehicles: typeof vehicles }>('/api/vehicles').then(r => {
+      if (!cancelled) setVehicles(r.vehicles.filter(v => v.authorizationStatus === 'approved' && !v.rfid));
+    }).catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : 'Cannot load vehicles.'); });
+    return () => { cancelled = true; };
+  }, [admin, revision]);
+
+  async function assign() {
+    if (busy) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const r = await apiRequest<{ message: string }>('/api/rfid/assignments', { method: 'POST', body: { vehicle_id: Number(vehicleId), tag_uid: tagUid.trim(), valid_until: validUntil || null } });
+      setMessage(r.message); setVehicleId(''); setTagUid(''); setValidUntil(''); setRevision(v => v + 1);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Assignment failed.'); }
+    finally { setBusy(false); }
+  }
+
+  async function revoke(row: RfidCredential) {
+    if (!row.assignment_id || busy || !window.confirm(`Revoke RFID ${row.tag_uid}? Future entry will be denied.`)) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const r = await apiRequest<{ message: string }>(`/api/rfid/assignments/${row.assignment_id}/revoke`, { method: 'PATCH' });
+      setMessage(r.message); setRevision(v => v + 1);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Revocation failed.'); }
+    finally { setBusy(false); }
+  }
+
   const [rows, setRows] = useState<RfidCredential[] | null>(null);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    apiRequest<{ data: RfidCredential[] }>('/api/rfid/assignments').then(r => setRows(r.data)).catch(err => setError(err instanceof Error ? err.message : 'Unable to load RFID tags.'));
-  }, []);
+    let cancelled = false;
+    apiRequest<{ data: RfidCredential[] }>('/api/rfid/assignments').then(r => { if (!cancelled) setRows(r.data); }).catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load RFID tags.'); });
+    return () => { cancelled = true; };
+  }, [revision]);
 
   const q = search.toLowerCase();
   const filtered = (rows ?? []).filter(r => !q || [r.tag_uid, r.user_code, r.user_name, r.plate_number].some(v => v?.toLowerCase().includes(q)));
 
   return (
     <Card>
+      {admin && <div className="m-5 space-y-3 rounded-xl border border-slate-200 p-4">
+        <h3 className="font-semibold">Assign RFID to approved vehicle</h3>
+        <Select label="Vehicle" value={vehicleId} onChange={e => setVehicleId(e.target.value)} disabled={busy}>
+          <option value="">Select an approved vehicle</option>
+          {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} — {v.owner}</option>)}
+        </Select>
+        <Input label="Tag UID" placeholder="For local simulator: TEST-ABC4321-001" maxLength={50} value={tagUid} onChange={e => setTagUid(e.target.value)} disabled={busy} />
+        <Input label="Valid until (optional)" type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} disabled={busy} />
+        <p className="text-xs text-slate-500">For hardware, enter the exact UID read from the issued tag. Assignment does not record parking entry.</p>
+        <Button onClick={assign} disabled={busy || !vehicleId || !tagUid.trim()}>{busy ? 'Saving…' : 'Assign RFID'}</Button>
+      </div>}
+      {message && <p role="status" className="mx-5 mb-3 text-sm text-green-700">{message}</p>}
       <div className="px-5 pt-5 pb-3">
         <SearchBar value={search} onChange={setSearch} placeholder="Search by tag, user, or plate..." />
-        <p className="text-xs text-slate-400 mt-2">Issued RFID tags and their current assignment. Issuing, reassigning and revoking tags is not available in PASS yet.</p>
+        <p className="text-xs text-slate-400 mt-2">Issued RFID tags and their current assignment. Administrators can assign a new or available tag to an approved vehicle and revoke active assignments.</p>
       </div>
       {error && <div className="mx-5 mb-4"><ErrorBox message={error} /></div>}
       {rows === null && !error ? <p className="py-16 text-center text-sm text-slate-400">Loading RFID tags...</p> : (
@@ -226,6 +280,7 @@ function RfidCredentials() {
                 {r.assignment_status && r.assignment_status !== 'active' && <p className="text-[10px] text-slate-400">assignment {r.assignment_status}</p>}
               </div>
             )},
+            ...(admin ? [{ key: 'actions', label: 'Actions', render: (r: RfidCredential) => r.assignment_status === 'active' ? <Button size="sm" variant="danger" disabled={busy} onClick={() => revoke(r)}>Revoke</Button> : null }] : []),
             { key: 'last', label: 'Last Used', render: (r: RfidCredential) => <span className="text-xs text-slate-500">{formatCampusDateTime(r.last_used)}</span> },
           ]}
           data={filtered}
@@ -239,21 +294,17 @@ export default function RFIDManagement() {
   const { user } = useAuth();
   const { pathname } = useLocation();
   const simulator = useSimulatorAvailable();
-  const [tab, setTab] = useState('Access Records');
+  const tab = selectedSection(PAGE_SECTIONS.rfid, pathname, user?.role === 'admin' ? 'RFID Credentials' : 'Access Records');
   const [reloadKey, setReloadKey] = useState(0);
 
-  useEffect(() => {
-    setTab(pathname.endsWith('/monitor') || user?.role !== 'admin' ? 'Access Records' : 'RFID Credentials');
-  }, [pathname, user?.role]);
-
-  const tabs = ['Access Records', 'RFID Credentials', ...(simulator ? ['Gate Simulator'] : [])];
 
   return (
     <div className="animate-fadein">
-      <PageHeader backToDashboard title="RFID Access Records" subtitle="Entry and exit records at the shared Main Entrance / Exit, from the PASS database" />
-      <Tabs tabs={tabs} active={tab} onChange={setTab} />
+      <PageHeader backToDashboard title={tab === 'Access Records' ? 'RFID Access Records' : tab} subtitle="Entry and exit records at the shared Main Entrance / Exit, from the PASS database" />
+
       {tab === 'Access Records' && <AccessRecords reloadKey={reloadKey} />}
       {tab === 'RFID Credentials' && <RfidCredentials />}
+      {tab === 'Gate Simulator' && simulator === false && <p role="alert" className="text-sm text-slate-500">The development gate simulator is not available for this account.</p>}
       {tab === 'Gate Simulator' && simulator && <GateSimulator onScanned={() => setReloadKey(k => k + 1)} />}
     </div>
   );

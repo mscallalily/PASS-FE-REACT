@@ -1,7 +1,8 @@
+import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { PageHeader, Card, Badge, Button, Table, SearchBar, Select, Modal, StatCard, Tabs, Toast, Input } from '../../components/ui';
+import { PageHeader, Card, Badge, Button, Table, SearchBar, Select, Modal, StatCard, Toast, Input } from '../../components/ui';
 import { apiRequest } from '../../lib/apiClient';
 import { CAMPUS_TIMEZONE, formatCampusDateTime } from '../../lib/datetime';
 import { useLiveLoad, useLiveSync, POLL_MS, type Topic } from '../../lib/liveSync';
@@ -1067,19 +1068,16 @@ export default function ParkingOperations() {
   const { user } = useAuth();
   const { pathname } = useLocation();
   const isRegularUser = ['student', 'faculty', 'employee'].includes(user?.role ?? '');
-  const [tab, setTab] = useState(isRegularUser ? 'Availability' : 'Entry & Exit Records');
+  const navigate = useNavigate();
+  const tab = selectedSection(PAGE_SECTIONS.parking, pathname, isRegularUser ? 'Availability' : 'Entry & Exit Records');
+  const setTab = (label: string) => navigate(sectionPath(PAGE_SECTIONS.parking, label));
   const [overview, setOverview] = useState<Overview | null>(null);
   const [overviewError, setOverviewError] = useState('');
   const [toast, setToast] = useState<ToastState>(null);
   // Slot to highlight on the parking map (e.g. the one just assigned at the gate).
   const [highlight, setHighlight] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (pathname.endsWith('/layout')) setTab('Parking Layout');
-    else if (pathname.endsWith('/occupancy')) setTab('Occupancy Monitor');
-    else if (pathname.endsWith('/availability')) setTab('Availability');
-    else setTab('Entry & Exit Records');
-  }, [pathname]);
+
 
   const loadOverview = useCallback(
     () => (isRegularUser ? Promise.resolve(null) : apiRequest<Overview>('/api/parking/overview')),
@@ -1099,11 +1097,11 @@ export default function ParkingOperations() {
     <div className="animate-fadein">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       <PageHeader backToDashboard
-        title={isRegularUser ? 'Parking Information' : 'Parking Operations'}
+        title={isRegularUser ? 'Parking Information' : tab}
         subtitle={isRegularUser ? 'View current campus parking availability' : 'Review access records, occupancy, and the parking layout'}
         action={!isRegularUser ? <Button size="sm" variant="ghost" onClick={refreshOverview}><RefreshCw size={14} /> Refresh</Button> : undefined}
       />
-      <Tabs tabs={isRegularUser ? ['Availability'] : ['Entry & Exit Records', 'Occupancy Monitor', 'Parking Layout']} active={tab} onChange={setTab} />
+
 
       {tab === 'Entry & Exit Records' && !isRegularUser && (
         <EntryExitRecords areas={areas} notify={notify} onShowOnMap={code => { setHighlight(code); setTab('Parking Layout'); }} />

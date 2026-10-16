@@ -65,7 +65,7 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
   const tone = {
     not_submitted: { box: 'bg-slate-50 border-slate-200', text: 'text-slate-700', icon: <IdCard size={22} className="text-slate-500" />, msg: "No driver's license on file. Submit it to register a vehicle." },
     processing: { box: 'bg-blue-50 border-blue-200', text: 'text-blue-800', icon: <Loader2 size={22} className="text-blue-600 animate-spin" />, msg: 'Checking your document. This usually takes a few seconds.' },
-    pending_review: { box: 'bg-amber-50 border-amber-200', text: 'text-amber-800', icon: <Clock size={22} className="text-amber-600" />, msg: 'Your license passed the preliminary document check and is waiting for review by PASS staff.' },
+    pending_review: { box: 'bg-amber-50 border-amber-200', text: 'text-amber-800', icon: <Clock size={22} className="text-amber-600" />, msg: 'Your submission is waiting for review by PASS staff. Pending review does not mean the automatic document check passed.' },
     verified: { box: 'bg-green-50 border-green-200', text: 'text-green-800', icon: <CheckCircle size={22} className="text-green-600" />, msg: 'Your driver’s license has been verified by PASS staff.' },
     needs_correction: {
       box: 'bg-red-50 border-red-200', text: 'text-red-800', icon: <AlertTriangle size={22} className="text-red-600" />,
@@ -136,6 +136,7 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
           <FileUpload label="Driver's License (front)" file={file} error={errors.file}
             onChange={f => { setFile(f); setErrors(e => ({ ...e, file: '' })); }}
             onError={msg => setErrors(e => ({ ...e, file: msg }))} />
+          
           <p className="text-xs text-slate-500">Use a clear, well-lit photo or scan of the front side with all text readable. The name must match your registered name.</p>
           {formMessage && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">{formMessage}</p>}
           <div className="flex gap-3">
