@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { REGULAR_USER_ROLES, useAuth } from '../../context/AuthContext';
 import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input, Tabs, Toast } from '../../components/ui';
@@ -27,14 +27,6 @@ interface VehiclesApiResponse {
   vehicles?: VehicleRow[];
   message?: string;
 }
-
-function getToken(): string | null {
-  return (
-    localStorage.getItem('pass_auth_token') ||
-    sessionStorage.getItem('pass_auth_token')
-  );
-}
-
 async function fetchVehicles(): Promise<VehicleRow[]> {
   const token = getToken();
 
@@ -148,7 +140,7 @@ export default function VehicleManagement() {
       {tab === 'My Vehicles' && isRegularUser && !licenseOnFile && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <AlertTriangle size={18} className="text-amber-600 shrink-0" />
-          <p className="flex-1 min-w-[200px] text-sm text-amber-800">Submit your driver’s license before registering a vehicle.</p>
+          <p className="flex-1 min-w-[200px] text-sm text-amber-800">Submit your driverâ€™s license before registering a vehicle.</p>
           <Button size="sm" onClick={() => setTab('Driver & License')}>Submit License</Button>
         </div>
       )}
@@ -203,7 +195,7 @@ export default function VehicleManagement() {
             </div>
             <Select label="Registered vehicle" value={requestVehicle} onChange={e => setRequestVehicle(e.target.value)}>
               <option value="">Select a vehicle</option>
-              {roleScopedVehicles.map(v => <option key={v.id} value={v.plate}>{v.plate} — {v.make} {v.model}</option>)}
+              {roleScopedVehicles.map(v => <option key={v.id} value={v.plate}>{v.plate} â€” {v.make} {v.model}</option>)}
             </Select>
             <Button disabled={!requestVehicle || rfidRequests.some(r => r.plate === requestVehicle)} onClick={() => {
               setRfidRequests(prev => [...prev, { plate: requestVehicle, status: 'Pending Admin Processing', submitted: new Date().toLocaleDateString() }]);
@@ -289,7 +281,7 @@ export default function VehicleManagement() {
           <div className="space-y-4">
             <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-              <p>A driver’s license is required before you can register a vehicle. Submit it first; you can register the vehicle while it is waiting for review.</p>
+              <p>A driverâ€™s license is required before you can register a vehicle. Submit it first; you can register the vehicle while it is waiting for review.</p>
             </div>
             <div className="flex gap-3">
               <Button onClick={() => { setShowRegister(false); setTab('Driver & License'); }}>Go to Driver & License</Button>
@@ -321,3 +313,4 @@ export default function VehicleManagement() {
     </div>
   );
 }
+
