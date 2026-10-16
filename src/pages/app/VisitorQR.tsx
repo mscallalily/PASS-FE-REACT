@@ -263,8 +263,8 @@ function Requests({ notify, onShowPass, reloadKey, onChanged }: { notify: Notify
   const [reviewError, setReviewError] = useState('');
   const [documentsReviewed, setDocumentsReviewed] = useState(false);
   const [photosReady, setPhotosReady] = useState(false);
-  const [documentRequest, setDocumentRequest] = useState<number | null>(null);
-  useEffect(() => { setDocumentsReviewed(false); setPhotosReady(false); }, [review?.row.request_id, review?.action]);
+  useEffect(() => { setDocumentsReviewed(false); }, [review?.row.request_id, review?.action]);
+  useEffect(() => { setPhotosReady(false); }, [review?.row.request_id]);
 
   useEffect(() => { const t = setTimeout(() => setDebounced(search), 300); return () => clearTimeout(t); }, [search]);
 
@@ -331,9 +331,6 @@ function Requests({ notify, onShowPass, reloadKey, onChanged }: { notify: Notify
               </div>
             )},
             { key: 'vehicle', label: 'Vehicle', render: (r: VisitorRequest) => <div><span className="font-mono font-bold text-[#080677]">{r.vehicle.plate_number ?? '—'}</span><p className="text-xs text-slate-400">{r.vehicle.vehicle_type} · {r.vehicle.area_name}</p></div> },
-            { key: 'driver', label: 'Declared driver', render: (r: VisitorRequest) => r.driver ? <div className="text-xs"><p className="font-semibold">{r.driver.name}</p><p>{r.driver.is_requester ? 'Requester is driver' : 'Separate driver'}</p><p>License {r.driver.license_reference}</p><p>Expires {r.driver.license_expiry}</p><p>{r.driver.passenger_count} passenger(s)</p><p className="text-amber-700">Check physical license at gate</p></div> : <span className="text-xs text-amber-700">No declared driver details</span> },
-            { key: 'documents', label: 'Photos', render: (r: VisitorRequest) => r.documents?.license_available && r.documents?.vehicle_available ? <Button size="sm" variant="outline" onClick={() => setDocumentRequest(r.request_id)}>Review photos</Button> : <span className="text-xs text-amber-700">Photos required · resubmit request</span> },
-            { key: 'purpose', label: 'Purpose', render: (r: VisitorRequest) => <span className="text-sm">{r.purpose}</span> },
             { key: 'window', label: 'Visit Window (Manila)', render: (r: VisitorRequest) => <span className={`text-xs ${r.window_ended ? 'text-slate-400' : ''}`}>{window_(r.valid_from, r.valid_until)}{r.window_ended ? ' · ended' : ''}</span> },
             { key: 'status', label: 'Status', render: (r: VisitorRequest) => (
               <div className="space-y-1">
@@ -345,13 +342,7 @@ function Requests({ notify, onShowPass, reloadKey, onChanged }: { notify: Notify
             )},
             { key: 'actions', label: 'Actions', render: (r: VisitorRequest) => (
               <div className="flex flex-wrap gap-2">
-                {r.request_status === 'pending' && !isAdmin && <span className="text-xs text-amber-700">Awaiting Admin approval</span>}
-                {isAdmin && r.request_status === 'pending' && !r.window_ended && (
-                  <Button size="sm" variant="success" onClick={() => { setReview({ row: r, action: 'approve' }); setRemarks(''); setReviewError(''); }}><Check size={12} /> Approve</Button>
-                )}
-                {isAdmin && r.request_status === 'pending' && (
-                  <Button size="sm" variant="danger" onClick={() => { setReview({ row: r, action: 'reject' }); setRemarks(''); setReviewError(''); }}><X size={12} /> Reject</Button>
-                )}
+                <Button size="sm" variant="outline" onClick={() => { setReview({ row: r, action: 'approve' }); setRemarks(''); setReviewError(''); }}>View request</Button>
                 {r.pass && <Button size="sm" variant="outline" onClick={() => onShowPass(r.pass!)}><QrCode size={12} /> Pass</Button>}
               </div>
             )},
@@ -360,27 +351,45 @@ function Requests({ notify, onShowPass, reloadKey, onChanged }: { notify: Notify
         />
       )}
 
-      <Modal open={documentRequest !== null} onClose={() => setDocumentRequest(null)} title="Private visitor request photos" size="lg">{documentRequest !== null && <VisitorDocuments requestId={documentRequest}/>}</Modal>
-      <Modal open={!!review} onClose={() => !busy && setReview(null)} title={review?.action === 'approve' ? 'Review & approve visitor request' : 'Reject Visitor Request'} size="lg">
+      <Modal open={!!review} onClose={() => !busy && setReview(null)} title="Visitor Request Review" size="xl">
         {review && (
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">
-              <span className="font-semibold">{review.row.visitor.name}</span> · <span className="font-mono">{review.row.vehicle.plate_number}</span><br />
-              {window_(review.row.valid_from, review.row.valid_until)}
-            </p>
-            <VisitorDocuments requestId={review.row.request_id} onReady={setPhotosReady}/>
-            {review.action === 'approve' && <label className="flex gap-3 items-start rounded-xl bg-blue-50 border border-blue-100 p-4 text-sm"><input type="checkbox" checked={documentsReviewed} onChange={event => setDocumentsReviewed(event.target.checked)} disabled={busy || !photosReady} className="mt-1"/><span>I reviewed both photos and matched the driver’s name, photo, license details and vehicle plate against this request. This review does not confirm official license authenticity; gate staff must match the arriving driver.</span></label>}
-            {review.row.driver && <p className="text-sm bg-amber-50 p-3 rounded-xl mb-3">Declared driver: {review.row.driver.name}. License {review.row.driver.license_reference}, expires {review.row.driver.license_expiry}. Passengers: {review.row.driver.passenger_count}. These details are not identity verification; staff must inspect the physical license at the gate.</p>}
+          <div className="grid min-w-0 gap-6 md:grid-cols-2">
+            <div className="min-w-0 space-y-5">
+              <VisitorDocuments requestId={review.row.request_id} onReady={setPhotosReady} stacked />
+            </div>
+            <div className="min-w-0 space-y-4">
+              <Badge variant={REQUEST_BADGE[review.row.request_status]}>{review.row.request_status}</Badge>
+              <h3 className="text-lg font-semibold text-[#080677]">{review.row.visitor.name}</h3>
+              <dl className="text-sm divide-y divide-slate-100">
+                {[
+                  ['Contact', review.row.visitor.contact_number],
+                  ['Vehicle', `${review.row.vehicle.plate_number ?? '—'} · ${review.row.vehicle.vehicle_type ?? '—'}`],
+                  ['Parking area', review.row.vehicle.area_name],
+                  ['Purpose', review.row.purpose],
+                  ['Arrival (Manila)', formatCampusDateTime(review.row.valid_from)],
+                  ['Departure (Manila)', formatCampusDateTime(review.row.valid_until)],
+                  ['Actual driver', review.row.driver?.name],
+                  ['License reference', review.row.driver?.license_reference],
+                  ['License expiry', review.row.driver?.license_expiry],
+                  ['Passengers', review.row.driver?.passenger_count],
+                ].map(([label, value]) => <div key={String(label)} className="flex justify-between gap-4 py-2.5"><dt className="text-slate-400 shrink-0">{label}</dt><dd className="text-right text-slate-700 break-words min-w-0">{value ?? '—'}</dd></div>)}
+              </dl>
+              {review.row.review_remarks && <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{review.row.review_remarks}</p>}
+              {isAdmin && review.row.request_status === 'pending' && <>
+            {review.action === 'approve' && !review.row.window_ended && <label className="flex gap-3 items-start rounded-xl bg-blue-50 border border-blue-100 p-4 text-sm"><input type="checkbox" checked={documentsReviewed} onChange={event => setDocumentsReviewed(event.target.checked)} disabled={busy || !photosReady} className="mt-1"/><span>I reviewed both photos and matched the driver’s name, photo, license details and vehicle plate against this request. This review does not confirm official license authenticity; gate staff must match the arriving driver.</span></label>}
             {review.action === 'approve'
               ? <p className="text-sm text-slate-500">Approving issues one Visitor QR pass for this vehicle and visit window (one entry and one exit). A guest with an account is notified and sees the pass in their account.</p>
               : <p className="text-sm text-slate-500">No QR pass is issued for a rejected request.</p>}
             <Input label={review.action === 'reject' ? 'Reason for rejecting *' : 'Remarks (optional)'} value={remarks} onChange={e => setRemarks(e.target.value)} disabled={busy} />
             {reviewError && <ErrorBox message={reviewError} />}
-            <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setReview(null)} disabled={busy}>Cancel</Button>
-              <Button variant={review.action === 'approve' ? 'success' : 'danger'} onClick={submitReview} disabled={busy || (review.action === 'approve' && (!documentsReviewed || !photosReady)) || (review.action === 'reject' && !remarks.trim())}>
+            <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+              <Button variant="outline" onClick={() => { setReview({ ...review, action: review.action === 'approve' ? 'reject' : 'approve' }); setReviewError(''); }} disabled={busy}>{review.action === 'approve' ? 'Reject instead' : 'Back to approval'}</Button>
+              <Button variant={review.action === 'approve' ? 'success' : 'danger'} onClick={submitReview} disabled={busy || (review.action === 'approve' && (review.row.window_ended || !documentsReviewed || !photosReady)) || (review.action === 'reject' && !remarks.trim())}>
                 {busy ? 'Saving...' : review.action === 'approve' ? 'Approve & Issue Pass' : 'Reject Request'}
               </Button>
+            </div>
+              </>}
+              <p className="text-xs leading-relaxed text-slate-400">Photos support staff review. Gate staff must match the arriving driver and inspect the physical license.</p>
             </div>
           </div>
         )}
