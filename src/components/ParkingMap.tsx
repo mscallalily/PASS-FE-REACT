@@ -76,9 +76,13 @@ export interface MapGeometry {
   gate: { at: Point; angle: number; label: string; sublabel: string; label_at: Point };
   lanes: { points: Point[]; kind: 'road_in' | 'road_out' | 'to_area' | 'lane'; reverse?: boolean; label?: string; label_at?: Point; label_angle?: number }[];
   dimensions: { id?: string; text: string; description?: string; at: Point; angle: number; from?: Point; to?: Point }[];
+  circulation?: { polygon: Point[]; kind: string; width_m: number }[];
   proposed_slot_codes?: string[];
   measurement_basis?: {
     survey_verified: boolean; scale: string; source_image: string; note: string; pathway_note: string;
+    car_source_image?: string; car_edges_m?: number[]; units_per_metre?: number;
+    motorcycle_proposal?: string; car_proposal?: string;
+    inventory?: { motorcycle_configured: number; motorcycle_drawn: number; car_configured: number; car_drawn: number };
     standards: { type: string; label: string; width_m: number; length_m: number; basis: string; source: string; url: string }[];
   };
   trays?: MapTray[];
@@ -94,8 +98,8 @@ export interface MapData {
 // ----------------------------------------------------------------------------- helpers
 
 const FOCUS: Record<string, ViewBox> = {
-  MC: [50, 18, 340, 270],
-  CAR: [300, 20, 460, 320],
+  MC: [40, 0, 320, 240],
+  CAR: [290, 0, 460, 330],
 };
 
 /** Keep text close to upright: rotate along the bay's long axis. */
@@ -223,6 +227,8 @@ export default function ParkingMap({ data, highlight, onSelect, focusArea, showM
             <polygon points={pts(a.polygon)} fill="none" stroke="#FFFFFF" strokeWidth={0.5} strokeLinejoin="round" />
           </g>
         ))}
+
+        {g.circulation?.map((clearance, index) => <polygon key={`clearance-${index}`} points={pts(clearance.polygon)} fill={clearance.kind === 'walkway' ? '#BFDBFE' : '#CBD5E1'} fillOpacity={0.55} stroke="#94A3B8" strokeWidth={0.3} />)}
 
         {/* Shared IN/OUT road */}
         <polygon points={pts(g.road.polygon)} fill="#FACC15" stroke="#A16207" strokeWidth={0.6} />

@@ -824,8 +824,8 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
               <details className="rounded-xl border border-slate-200 p-4 space-y-3">
                 <summary className="cursor-pointer text-sm font-medium text-slate-600">Unmapped slot inventory ({unplaced.length})</summary>
                 <div>
-                  <p className="text-sm font-semibold text-amber-800">Slots not shown on the reference drawing ({unplaced.length})</p>
-                  <p className="text-xs text-amber-700">These PASS slots exist and are tracked, but the DYCI layout drawing does not print their position. They are assigned only after all mapped bays in their area are taken. Verify their physical location before use.</p>
+                  <p className="text-sm font-semibold text-amber-800">Inventory without a proposed map position ({unplaced.length})</p>
+                  <p className="text-xs text-amber-700">These inventory records are retained without positions in this proposal. The current assignment rules give them out after mapped bays; this drawing does not confirm that the configured capacity physically fits. Resolve the campus layout and capacity before physical use.</p>
                 </div>
                 {data.areas.map(a => {
                   const list = unplaced.filter(s => s.parking_area_id === a.parking_area_id);
@@ -853,7 +853,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
             )}
 
             <details className="rounded-xl border border-slate-100 p-4 text-sm">
-              <summary className="cursor-pointer font-medium text-slate-600">About this map: how the reference drawing was interpreted</summary>
+              <summary className="cursor-pointer font-medium text-slate-600">About this proposed layout</summary>
               <ul className="mt-3 list-disc pl-5 space-y-1 text-slate-500 text-xs">
                 {data.ambiguities.map(a => <li key={a}>{a}</li>)}
               </ul>
@@ -885,7 +885,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
                 ['Parking area', selected.area_name],
                 ['Slot status', selected.status === 'occupied' ? 'Occupied' : selected.status === 'maintenance' ? 'Maintenance / disabled' : 'Available'],
                 ...(selected.accessible ? [['Slot type', 'Accessible (PWD)']] : []),
-                ['Map position', data?.geometry.proposed_slot_codes?.includes(selected.slot_code) ? 'Proposed west-bank position · campus confirmation pending' : selected.placed ? 'Mapped on the schematic layout' : 'Not printed on the reference drawing'],
+                ['Map position', data?.geometry.proposed_slot_codes?.includes(selected.slot_code) ? 'Proposed position · campus confirmation pending' : selected.placed ? 'Mapped on the proposed layout' : 'No confirmed map position'],
                 ...(selected.occupant ? [
                   ['Plate number', selected.occupant.plate_number],
                   ['Vehicle type', selected.occupant.vehicle_type ?? '—'],

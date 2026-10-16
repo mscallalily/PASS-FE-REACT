@@ -404,9 +404,7 @@ const Site = memo(function Site({ g, trays, onGate, gateOnline }: { g: MapGeomet
     }
     for (const a of g.areas) faint.dashed(a.polygon, 0.55, 5, 2.5, true);
     yellow.outline(g.road.polygon, 0.6);
-    const [p0, p1, p2, p3] = g.road.polygon;
-    yellow.dashed([offset([(p0[0] + p3[0]) / 2, (p0[1] + p3[1]) / 2], g.gate.angle, 14), [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2]], 0.55, 4, 3);
-    white.poly(arrowShape(offset(g.gate.at, g.gate.angle, 10, -5.2), offset(g.gate.at, g.gate.angle, 24, -5.2), 1.5, 4.6, 4.6));
+    // A 3.06 m shared road has no painted median or separate full-width car lanes.
     for (const t of trays) amber.dashed(t.footprint, 0.6, 2, 1.4, true);
 
     return {
@@ -425,7 +423,6 @@ const Site = memo(function Site({ g, trays, onGate, gateOnline }: { g: MapGeomet
   const soil = std('#5B7F43', { roughness: 1 });
 
   const trees = useMemo(() => [...plantTrees(g, trays), ...groveTrees(g, trays)], [g, trays]);
-  const gateAt = g.gate.at, roadDeg = g.gate.angle;
 
   return (
     <group>
@@ -439,8 +436,7 @@ const Site = memo(function Site({ g, trays, onGate, gateOnline }: { g: MapGeomet
       <mesh geometry={parts.blue} material={paintMat('#2563EB')} />
 
       <GroundText text={g.road.label} at={g.road.label_at} h={5} deg={g.road.label_angle} />
-      <GroundText text="IN" at={offset(gateAt, roadDeg, 31, -5.2)} h={3.6} deg={roadDeg} />
-      <GroundText text="OUT" at={offset(gateAt, roadDeg, 14, 5.2)} h={3.6} deg={roadDeg} />
+      {g.circulation?.map((clearance, index) => <mesh key={`clearance-${index}`} geometry={flat(clearance.polygon, PAINT - 0.03)} material={paintMat(clearance.kind === 'walkway' ? '#93C5FD' : '#94A3B8', 0.35)} />)}
 
       {parts.islands.map((island, i) => {
         const c = island.polygon.reduce<Point>(([x, y], p) => [x + p[0] / island.polygon.length, y + p[1] / island.polygon.length], [0, 0]);
@@ -478,24 +474,12 @@ function Gate({ g, onGate, online }: { g: MapGeometry; onGate: (e: ThreeEvent<Mo
       <Box size={[9, 9, 7.5]} at={[0, 4.5 - PAVE, -22]} color="#F1F5F9" />
       <Box size={[9.2, 2.4, 7.7]} at={[0, 6, -22]} color="#1E3A8A" extra={{ metalness: 0.5, roughness: 0.2 }} />
       <Box size={[11, 1.2, 9.5]} at={[0, 9.6 - PAVE, -22]} color="#080677" />
-      {/* Median with RFID / QR readers */}
-      <Box size={[16, 0.8, 2.4]} at={[2, 0.4, 0]} color="#E2E8F0" />
-      {[-4, 6].map(u => (
-        <group key={u}>
-          <Box size={[1.4, 4.2, 1.4]} at={[u, 2.9, 0]} color="#1E3A8A" />
-          <Box size={[1.5, 1.2, 1.5]} at={[u, 4.6, 0]} color="#2563EB" extra={{ emissive: '#1D4ED8', emissiveIntensity: 0.4 }} cast={false} />
-        </group>
-      ))}
-      {/* Barriers: entry lane (north) and exit lane (south) */}
-      {[[-1, -12.6, 1], [5, 12.6, -1]].map(([u, v, dir]) => (
-        <group key={v}>
-          <Box size={[2.4, 7, 2.4]} at={[u, 3.5, v]} color="#FACC15" />
-          <mesh geometry={CANOPY} material={std(light, { emissive: light, emissiveIntensity: 1 })} position={[u, 7.3, v]} scale={0.7} />
-          {Array.from({ length: 4 }, (_, k) => (
-            <Box key={k} size={[0.8, 0.8, 2.65]} at={[u, 6.4, v + dir * (1.6 + 2.65 * k + 1.3)]} color={k % 2 ? '#FFFFFF' : '#DC2626'} />
-          ))}
-        </group>
-      ))}
+      {/* Shared controlled lane: readers and one boom stand outside the clear road. */}
+      <Box size={[1.4, 4.2, 1.4]} at={[6, 2.9, -14]} color="#1E3A8A" />
+      <Box size={[1.5, 1.2, 1.5]} at={[6, 4.6, -14]} color="#2563EB" cast={false} />
+      <Box size={[2.4, 7, 2.4]} at={[0, 3.5, -14]} color="#FACC15" />
+      <mesh geometry={CANOPY} material={std(light, { emissive: light, emissiveIntensity: 1 })} position={[0, 7.3, -14]} scale={0.7} />
+      {Array.from({ length: 8 }, (_, k) => <Box key={k} size={[0.8, 0.8, 2.8]} at={[0, 6.4, -11.8 + 2.8 * k]} color={k % 2 ? '#FFFFFF' : '#DC2626'} />)}
       {/* Canopy */}
       {[[-5, -15], [9, -15], [-5, 15], [9, 15]].map(([u, v]) => (
         <Box key={`${u}${v}`} size={[1.4, 15, 1.4]} at={[u, 7.5, v]} color="#CBD5E1" />
@@ -641,7 +625,9 @@ function Signs({ g, areas, trays }: { g: MapGeometry; areas: { area_code: string
         const at = a.sign_at ?? a.label_at;
         const st = areas.find(x => x.area_code === a.area);
         const title = a.area === 'MC' ? 'MOTORCYCLE PARKING' : a.area === 'CAR' ? 'CAR PARKING' : a.label;
-        const tex = badge([title, st ? `${st.capacity} SLOTS · ${st.available} AVAILABLE` : ''], '#1D4ED8', { icon: 'P', size: 30 });
+        const inventory = g.measurement_basis?.inventory;
+        const proposed = inventory ? `${a.area === 'MC' ? inventory.motorcycle_drawn : inventory.car_drawn} PROPOSED BAYS` : st ? `${st.capacity} SLOTS · ${st.available} AVAILABLE` : '';
+        const tex = badge([title, proposed], '#1D4ED8', { icon: 'P', size: 30 });
         return (
           <group key={a.area}>
             <Box size={[0.9, 12, 0.9]} at={[at[0], 6, at[1]]} color="#64748B" />
@@ -824,11 +810,12 @@ export default function ParkingLot3D(props: Props) {
   </div>;
   return <div className="space-y-3 min-w-0">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-xs text-slate-500">Schematic campus layout</p>
+      <p className="text-xs text-slate-500">Proposed campus parking layout</p>
       <button type="button" aria-pressed={showMeasurements} onClick={() => setShowMeasurements(value => !value)} className={`min-h-11 rounded-lg border px-3 py-2 text-xs font-semibold inline-flex items-center gap-2 ${showMeasurements ? 'border-[#080677] bg-blue-50 text-[#080677]' : 'border-slate-200 text-slate-600 hover:bg-blue-50'}`}><Ruler size={16} />{showMeasurements ? 'Hide measurements' : 'Show measurements'}</button>
     </div>
-    {!!props.data.geometry.proposed_slot_codes?.length && <p className="text-xs text-slate-500">M-23–M-42: proposed west-bank positions; follow parking staff directions until the campus placement is confirmed.</p>}
-    {showMeasurements && <p className="text-xs text-blue-800">D1–D9 are labels from the supplied image. The site diagram is not to scale; these are not verified survey measurements.</p>}
+    {!!props.data.geometry.proposed_slot_codes?.length && <p className="text-xs text-slate-500">Proposed positions: follow parking staff directions until the campus layout is confirmed.</p>}
+    {props.data.geometry.measurement_basis?.inventory && <div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900"><strong>Layout under review:</strong> {props.data.geometry.measurement_basis.inventory.motorcycle_drawn} compact motorcycle bays and {props.data.geometry.measurement_basis.inventory.car_drawn} car bays are shown. The configured {props.data.geometry.measurement_basis.inventory.car_configured} car records remain in the system; fitting all of them has not been confirmed. See Measurements & design basis.</div>}
+    {showMeasurements && <p className="text-xs text-blue-800">One metric scale for bays and boundaries. Car bearings are assumed; measurements do not certify physical capacity.</p>}
     {supported ? <WebGLBoundary fallback={fallback}><Lot {...props} showMeasurements={showMeasurements} /></WebGLBoundary> : fallback}
     <ParkingMeasurements geometry={props.data.geometry} />
   </div>;

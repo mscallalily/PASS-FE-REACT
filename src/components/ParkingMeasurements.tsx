@@ -21,6 +21,10 @@ export default function ParkingMeasurements({ geometry }: { geometry: MapGeometr
     <summary className="cursor-pointer text-sm font-semibold text-[#080677] flex items-center gap-2"><Ruler size={16} />Measurements & design basis</summary>
     <div className="space-y-5 mt-4">
       <p className="text-sm text-slate-600">{basis.note}</p>
+      {basis.inventory && <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-blue-100 bg-blue-50 p-4"><h3 className="text-sm font-bold text-[#080677]">Motorcycle proposal</h3><p className="my-2 text-2xl font-bold text-[#080677]">{basis.inventory.motorcycle_drawn} compact bays</p><p className="text-xs leading-relaxed text-slate-600">{basis.motorcycle_proposal}</p></div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-sm font-bold text-amber-900">Car fit still under review</h3><p className="my-2 text-2xl font-bold text-amber-900">{basis.inventory.car_drawn} drawn / {basis.inventory.car_configured} configured</p><p className="text-xs leading-relaxed text-amber-900">{basis.car_proposal}</p></div>
+      </div>}
       <div className="grid gap-3 sm:grid-cols-3">
         {basis.standards.map(standard => <div key={standard.type} className="min-w-0 rounded-xl border border-blue-100 bg-slate-50 p-3">
           <h3 className="text-xs font-bold text-[#080677]">{standard.label}</h3>
@@ -35,10 +39,16 @@ export default function ParkingMeasurements({ geometry }: { geometry: MapGeometr
         <p className="mt-2">Bay dimensions do not establish the required total number of accessible spaces, accessible routes, drainage, slope or turning clearance. Confirm these against the applicable rules and the campus plan before physical marking.</p>
       </div>
       <div className="grid lg:grid-cols-2 gap-5 items-start">
-        <figure className="min-w-0"><a href={basis.source_image} target="_blank" rel="noopener noreferrer"><img src={basis.source_image} alt="Owner-supplied aerial image with boundary length annotations" className="w-full rounded-xl border border-slate-200" loading="lazy" /></a><figcaption className="mt-2 text-xs text-slate-500">Supplied boundary reference. Open the image to inspect the original labels; no values have been rescaled.</figcaption></figure>
-        <div className="min-w-0"><h3 className="text-sm font-semibold text-[#080677] mb-2">Source image labels</h3><div className="space-y-2">{geometry.dimensions.map(dimension => <div key={dimension.id ?? dimension.text} className="flex flex-wrap justify-between gap-2 text-xs border-b border-slate-100 pb-2"><span className="text-slate-600"><strong className="text-[#080677]">{dimension.id}</strong> · {dimension.description}</span><span className="font-semibold text-slate-800">{dimension.text}</span></div>)}</div></div>
+        <div className="min-w-0 space-y-4">
+          <figure><a href={basis.source_image} target="_blank" rel="noopener noreferrer"><img src={basis.source_image} alt="Owner-supplied motorcycle parcel and separate access road" className="w-full rounded-xl border border-slate-200" loading="lazy" /></a><figcaption className="mt-2 text-xs text-slate-500">Motorcycle reference. Use the owner-reported 30.96 × 8.80 m parcel and separate 3.06 m road width. Intermediate ruler marks in this image are cumulative distances.</figcaption></figure>
+          {basis.car_source_image && <figure><a href={basis.car_source_image} target="_blank" rel="noopener noreferrer"><img src={basis.car_source_image} alt="Owner-supplied irregular car parking boundary" className="w-full rounded-xl border border-slate-200" loading="lazy" /></a><figcaption className="mt-2 text-xs text-slate-500">Car reference. Boundary angles are estimated for this proposal; campus confirmation is pending.</figcaption></figure>}
+        </div>
+        <div className="min-w-0 space-y-5">
+          <div><h3 className="text-sm font-semibold text-[#080677] mb-2">Owner-reported dimensions</h3><div className="space-y-2">{geometry.dimensions.filter(d => !d.id?.startsWith('C')).map(dimension => <div key={dimension.id} className="flex flex-wrap justify-between gap-2 text-xs border-b border-slate-100 pb-2"><span className="text-slate-600">{dimension.description}</span><span className="font-semibold text-slate-800">{dimension.text}</span></div>)}</div></div>
+          {!!basis.car_edges_m?.length && <div><h3 className="text-sm font-semibold text-[#080677] mb-2">Car boundary · supplied sequence</h3><p className="text-xs text-slate-500 mb-3">C1 starts at the right edge, continuing around the notch and back along C8. This mapping is assumed from the image, not a survey.</p><div className="grid grid-cols-2 gap-x-4 gap-y-2">{basis.car_edges_m.map((length, index) => <div key={index} className="flex justify-between gap-2 text-xs border-b border-slate-100 pb-2"><span className="text-slate-600">C{index+1}</span><strong className="text-slate-800">{length.toFixed(2)} m</strong></div>)}</div></div>}
+          <p className="text-xs leading-relaxed text-slate-600">The drawing uses the same scale for every parcel, bay and aisle. The retained inventory is not a certified physical capacity. Follow campus parking directions until the layout is checked on site.</p>
+        </div>
       </div>
-      {!!geometry.proposed_slot_codes?.length && <p className="text-xs text-slate-600"><strong>M-23–M-42:</strong> proposed placement along the west bank, inside the motorcycle area. Their actual campus positions remain unverified. The existing pathway has been retained.</p>}
     </div>
   </details>;
 }
