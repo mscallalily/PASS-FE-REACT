@@ -83,7 +83,7 @@ export default function ParkingAvailabilityMap() {
       <div className="grid sm:grid-cols-2 gap-3">{data.areas.map(area => <Card key={area.area_code} className="p-4 flex items-center justify-between gap-3"><span className="text-sm font-semibold text-[#080677]">{area.area_name}</span><span className="text-sm text-slate-600"><strong className="text-green-700">{area.available}</strong> / {area.capacity} available</span></Card>)}</div>
     </>}
     <Modal open={!!selected} onClose={() => setSelectedId(null)} title={`Slot ${selected?.slot_code ?? ''}`} size="sm">
-      {selected && <div className="space-y-3 text-sm"><p className="font-semibold text-[#080677]">{selected.area_name}</p><p className="capitalize">{selected.status}</p>{selected.accessible && <p>Accessible / PWD bay</p>}<p className="text-slate-500">Availability can change before you arrive. Follow the parking staff’s directions.</p><Button onClick={() => setSelectedId(null)}>Close</Button></div>}
+      {selected && <div className="space-y-3 text-sm"><p className="font-semibold text-[#080677]">{selected.area_name}</p><p className="capitalize">{selected.status}</p>{selected.accessible && <p>Accessible / PWD bay</p>}{data?.geometry.proposed_slot_codes?.includes(selected.slot_code) && <p className="text-amber-800">Proposed map position; campus confirmation is pending.</p>}<p className="text-slate-500">Availability can change before you arrive. Follow the parking staff’s directions.</p><Button onClick={() => setSelectedId(null)}>Close</Button></div>}
     </Modal>
   </div>;
 }

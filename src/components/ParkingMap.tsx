@@ -75,7 +75,12 @@ export interface MapGeometry {
   road: { polygon: Point[]; label: string; label_at: Point; label_angle: number };
   gate: { at: Point; angle: number; label: string; sublabel: string; label_at: Point };
   lanes: { points: Point[]; kind: 'road_in' | 'road_out' | 'to_area' | 'lane'; reverse?: boolean; label?: string; label_at?: Point; label_angle?: number }[];
-  dimensions: { text: string; at: Point; angle: number }[];
+  dimensions: { id?: string; text: string; description?: string; at: Point; angle: number; from?: Point; to?: Point }[];
+  proposed_slot_codes?: string[];
+  measurement_basis?: {
+    survey_verified: boolean; scale: string; source_image: string; note: string; pathway_note: string;
+    standards: { type: string; label: string; width_m: number; length_m: number; basis: string; source: string; url: string }[];
+  };
   trays?: MapTray[];
 }
 
@@ -149,13 +154,14 @@ export function ZoomControls({ onZoomIn, onZoomOut, onReset, children }: {
 // ----------------------------------------------------------------------------- component
 
 /** Flat 2D plan of the DYCI layout; also the fallback for the 3D-style view. */
-export default function ParkingMap({ data, highlight, onSelect, focusArea }: {
+export default function ParkingMap({ data, highlight, onSelect, focusArea, showMeasurements = false }: {
+  showMeasurements?: boolean;
   data: MapData;
   highlight?: string | null;
   onSelect: (slot: MapSlot) => void;
   focusArea?: { code: string; key: number } | null;
 }) {
-  const home = useMemo<ViewBox>(() => [...data.view_box] as ViewBox, [data.view_box]);
+  const home = useMemo<ViewBox>(() => showMeasurements ? [25, -40, 795, 425] : [...data.view_box] as ViewBox, [data.view_box, showMeasurements]);
   const svgRef = useRef<SVGSVGElement>(null);
   const { view, zoomScale, zoomCenter, focus, reset, suppressClick, handlers } = usePanZoom(svgRef, home);
 
@@ -242,14 +248,15 @@ export default function ParkingMap({ data, highlight, onSelect, focusArea }: {
           );
         })}
 
+        {showMeasurements && g.dimensions.filter(d => d.from && d.to).map(d => <line key={`dim-${d.id}`} x1={d.from![0]} y1={d.from![1]} x2={d.to![0]} y2={d.to![1]} stroke="#1D4ED8" strokeWidth={0.7} />)}
         {/* Area titles and dimensions */}
         {g.areas.map(a => (
           <text key={a.area} transform={`translate(${a.label_at[0]} ${a.label_at[1]}) rotate(${a.label_angle})`}
             textAnchor="middle" fontSize={6.5} fontWeight={800} fill="#080677" stroke="#FFFFFF" strokeWidth={1.6} paintOrder="stroke">{a.label}</text>
         ))}
-        {g.dimensions.map(d => (
+        {showMeasurements && g.dimensions.map(d => (
           <text key={d.text} transform={`translate(${d.at[0]} ${d.at[1]}) rotate(${d.angle})`}
-            textAnchor="middle" fontSize={5} fill="#94A3B8">{d.text}</text>
+            textAnchor="middle" fontSize={5} fill="#1D4ED8">{d.id ? `${d.id}: ` : ''}{d.text}</text>
         ))}
 
         {/* Painted bays that are not PASS slots */}

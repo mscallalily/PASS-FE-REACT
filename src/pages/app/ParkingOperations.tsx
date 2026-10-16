@@ -885,7 +885,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
                 ['Parking area', selected.area_name],
                 ['Slot status', selected.status === 'occupied' ? 'Occupied' : selected.status === 'maintenance' ? 'Maintenance / disabled' : 'Available'],
                 ...(selected.accessible ? [['Slot type', 'Accessible (PWD)']] : []),
-                ['Map position', selected.placed ? 'Shown on the DYCI layout' : 'Not printed on the reference drawing'],
+                ['Map position', data?.geometry.proposed_slot_codes?.includes(selected.slot_code) ? 'Proposed west-bank position · campus confirmation pending' : selected.placed ? 'Mapped on the schematic layout' : 'Not printed on the reference drawing'],
                 ...(selected.occupant ? [
                   ['Plate number', selected.occupant.plate_number],
                   ['Vehicle type', selected.occupant.vehicle_type ?? '—'],

@@ -7,13 +7,15 @@ import {
   arrowShape, bayAxis, before, bodyColor, carSize, isMotorcycle, layoutSlots, motoSize, offset, plantTrees, rect,
   type SceneSlot, type TrayPanel,
 } from './ParkingScene3D';
+import { Ruler } from 'lucide-react';
+import ParkingMeasurements from './ParkingMeasurements';
 import type { Point } from './usePanZoom';
 
 // WebGL (Three.js) view of the DYCI parking layout.
 //
 // World axes: x = drawing x, z = drawing y (south, towards the camera), y up.
-// One unit is one drawing px (about 0.2 m), so every bay keeps the position,
-// size and diagonal orientation measured from the DYCI drawing. A fixed
+// Drawing units are schematic. Bay templates use proportional nominal
+// dimensions; the site boundaries are not survey-calibrated. A fixed
 // elevated perspective camera looks north; the user can pan and zoom but not
 // rotate. Slots, vehicles and the gate are clickable meshes driven by the
 // live /api/parking/map data. Without WebGL the SVG view is shown instead.
@@ -659,6 +661,24 @@ function Signs({ g, areas, trays }: { g: MapGeometry; areas: { area_code: string
   );
 }
 
+/** Reference callouts share the same coordinates in both camera views. */
+function Measurements({ geometry }: { geometry: MapGeometry }) {
+  const lines = useMemo(() => {
+    const paint = new Paint(PAINT + 0.1);
+    for (const dimension of geometry.dimensions) {
+      if (!dimension.from || !dimension.to) continue;
+      paint.line(dimension.from, dimension.to, 0.7);
+      const angle = Math.atan2(dimension.to[1] - dimension.from[1], dimension.to[0] - dimension.from[0]) * 180 / Math.PI;
+      for (const end of [dimension.from, dimension.to]) paint.line(offset(end, angle + 45, -3), offset(end, angle + 45, 3), 0.7);
+    }
+    return paint.build();
+  }, [geometry]);
+  return <group>
+    <mesh geometry={lines} material={paintMat('#2563EB')} />
+    {geometry.dimensions.map(dimension => <Billboard key={dimension.id ?? dimension.text} tex={badge([`${dimension.id ?? ''}: ${dimension.text}`], '#EFF6FF', { fg: '#1E3A8A', border: '#93C5FD', size: 28 })} at={[dimension.at[0], 5, dimension.at[1]]} h={16} />)}
+  </group>;
+}
+
 // ----------------------------------------------------------------- camera
 
 export interface CameraApi { zoom: (f: number) => void; reset: () => void; focus: (box: THREE.Box2, minDistance?: number) => void }
@@ -784,6 +804,7 @@ function webglAvailable() {
 
 type Props = {
   viewMode?: '3d' | 'plan';
+  showMeasurements?: boolean;
   data: MapData & { areas?: { area_code: string; capacity: number; available: number }[] };
   highlight: string | null;
   selectedId: number | null;
@@ -796,17 +817,24 @@ type Props = {
 
 export default function ParkingLot3D(props: Props) {
   const [supported] = useState(webglAvailable);
-  const fallback = (
-    <div className="space-y-2">
-      <p className="text-xs text-amber-700">This browser is showing the simplified plan. Slot positions and availability are unchanged.</p>
-      <ParkingMap data={props.data} highlight={props.highlight} onSelect={props.onSelect} focusArea={props.focusArea} />
+  const [showMeasurements, setShowMeasurements] = useState(false);
+  const fallback = <div className="space-y-2">
+    <p className="text-xs text-amber-700">This browser is showing the simplified plan. Slot positions and availability are unchanged.</p>
+    <ParkingMap data={props.data} highlight={props.highlight} onSelect={props.onSelect} focusArea={props.focusArea} showMeasurements={showMeasurements} />
+  </div>;
+  return <div className="space-y-3 min-w-0">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-xs text-slate-500">Schematic campus layout</p>
+      <button type="button" aria-pressed={showMeasurements} onClick={() => setShowMeasurements(value => !value)} className={`min-h-11 rounded-lg border px-3 py-2 text-xs font-semibold inline-flex items-center gap-2 ${showMeasurements ? 'border-[#080677] bg-blue-50 text-[#080677]' : 'border-slate-200 text-slate-600 hover:bg-blue-50'}`}><Ruler size={16} />{showMeasurements ? 'Hide measurements' : 'Show measurements'}</button>
     </div>
-  );
-  if (!supported) return fallback;
-  return <WebGLBoundary fallback={fallback}><Lot {...props} /></WebGLBoundary>;
+    {!!props.data.geometry.proposed_slot_codes?.length && <p className="text-xs text-slate-500">M-23–M-42: proposed west-bank positions; follow parking staff directions until the campus placement is confirmed.</p>}
+    {showMeasurements && <p className="text-xs text-blue-800">D1–D9 are labels from the supplied image. The site diagram is not to scale; these are not verified survey measurements.</p>}
+    {supported ? <WebGLBoundary fallback={fallback}><Lot {...props} showMeasurements={showMeasurements} /></WebGLBoundary> : fallback}
+    <ParkingMeasurements geometry={props.data.geometry} />
+  </div>;
 }
 
-function Lot({ viewMode = '3d', data, highlight, selectedId, recent, gateOnline, onSelect, onGate, focusArea }: Props) {
+function Lot({ viewMode = '3d', showMeasurements = false, data, highlight, selectedId, recent, gateOnline, onSelect, onGate, focusArea }: Props) {
   // Static geometry only changes when the layout itself changes, not on every poll.
   const geometryKey = JSON.stringify(data.geometry);
   const g = useMemo(() => data.geometry, [geometryKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -816,7 +844,7 @@ function Lot({ viewMode = '3d', data, highlight, selectedId, recent, gateOnline,
   const rig = useRef<CameraApi>(null);
 
   // Default framing: the paved areas, road and slot pads (the planted border may crop slightly).
-  const home = useMemo(() => bbox([...g.areas.flatMap(a => a.polygon), ...g.road.polygon, ...stableTrays.flatMap(t => t.footprint), g.gate.at]).expandByScalar(6), [g, stableTrays]);
+  const home = useMemo(() => bbox([...g.areas.flatMap(a => a.polygon), ...g.road.polygon, ...stableTrays.flatMap(t => t.footprint), g.gate.at, ...(showMeasurements ? g.dimensions.flatMap(d => [d.at, ...(d.from ? [d.from] : []), ...(d.to ? [d.to] : [])]) : [])]).expandByScalar(showMeasurements ? 24 : 6), [g, stableTrays, showMeasurements]);
   const areaBox = useCallback((code: string) => {
     const a = g.areas.find(x => x.area === code);
     const t = stableTrays.find(x => x.area === code);
@@ -892,6 +920,7 @@ function Lot({ viewMode = '3d', data, highlight, selectedId, recent, gateOnline,
         <Site g={g} trays={stableTrays} onGate={gate} gateOnline={gateOnline} />
         <Slots slots={slots} extra={data.extra_bays} selectedId={selectedId} closeUp={closeUp} onSelect={select} />
         <Signs g={g} areas={data.areas ?? []} trays={stableTrays} />
+        {showMeasurements && <Measurements geometry={g} />}
         <Markers slots={slots} highlight={highlight} recent={recent} />
       </Canvas>
       </div>
