@@ -48,10 +48,9 @@ const COLORS = ['#2563EB', '#38BDF8', '#10B981', '#F59E0B'];
 function AdminDashboard() {
   const [dashboardData, setDashboardData] =
     useState<DashboardData | null>(null);
-    const [occupancyData, setOccupancyData] = useState<any>(null);
-    const [occupancyError, setOccupancyError] = useState('');
     const [dashboardError, setDashboardError] = useState('');
     const [recentLogs, setRecentLogs] = useState<any[]>([]);
+    const [recentLogsError, setRecentLogsError] = useState('');
 
   console.log('AdminDashboard rendered');
 
@@ -106,33 +105,6 @@ const loadDashboard = async () => {
 
 loadDashboard();
 
-const loadOccupancy = async () => {
-  try {
-    const response = await fetch('/api/admin/parking/occupancy', {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Occupancy API failed (${response.status})`);
-    }
-
-    const data = await response.json();
-    console.log('Occupancy data:', data);
-    setOccupancyData(data);
-  } catch (error) {
-    setOccupancyError(
-      error instanceof Error
-        ? error.message
-        : 'Unable to load parking occupancy.'
-    );
-  }
-};
-
-loadOccupancy();
 const loadRecentLogs = async () => {
   try {
     const response = await fetch('/api/admin/audit-logs?page=1', {
@@ -149,14 +121,14 @@ const loadRecentLogs = async () => {
     const result = await response.json();
     setRecentLogs((result.data ?? []).slice(0, 5));
   } catch (error) {
-    console.error('Failed to load recent audit logs:', error);
+    setRecentLogsError(error instanceof Error ? error.message : 'Unable to load recent administrative activity.');
   }
 };
 
 loadRecentLogs();
 }, []);
 
-const activeAlerts = [];
+const activeAlerts: { type: string; msg: string }[] = [];
 
 if (dashboardData) {
   const pending = dashboardData.summary.pending_approvals;
@@ -269,10 +241,10 @@ if (dashboardData) {
         </Card>
 
         <Card className="p-6">
-          <h3 className="font-semibold text-slate-700 mb-1">Parking Occupancy by Zone</h3>
+          <h3 className="font-semibold text-slate-700 mb-1">Parking Occupancy by Area</h3>
           <p className="text-xs text-slate-400 mb-4">Current capacity utilization</p>
           <div className="space-y-4">
-            {ZONE_CAPACITY.map((z, i) => {
+            {(dashboardData?.parking_occupancy ?? []).map((z, i) => {
               const pct = Math.round((z.occupied / z.capacity) * 100);
               return (
                 <div key={z.zone}>
@@ -302,24 +274,14 @@ if (dashboardData) {
             <Link to="/app/audit" className="text-xs text-[#2563EB] hover:underline flex items-center gap-1">View audit log <ArrowRight size={12} /></Link>
           </div>
           <div className="space-y-3">
-            {MOCK_AUDIT_LOGS.slice(0, 5).map(event => (
-              <div key={event.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-blue-50/50 transition-colors">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${event.status === 'success' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
-                  {event.status === 'success' ? 'OK' : '!'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-700 truncate">{event.action} — {event.user}</p>
-                  <p className="text-xs text-slate-400">{event.module} · {event.timestamp}</p>
-                </div>
+            {recentLogsError && <p role="alert" className="text-sm text-red-700">{recentLogsError}</p>}
+            {recentLogs.length === 0 ? <p className="text-sm text-slate-400">No administrative activity yet.</p> : recentLogs.map(event => (
+              <div key={event.log_id} className="flex items-start gap-3 p-3 rounded-xl bg-slate-50">
+                <Activity size={18} className="text-blue-600 shrink-0 mt-1"/>
+                <div className="min-w-0"><p className="text-sm font-medium text-slate-700 break-words">{event.action}</p><p className="text-xs text-slate-500">{event.actor_label || 'System'} · {formatCampusDateTime(event.created_at)}</p></div>
               </div>
             ))}
           </div>
-        </div>
-      );
-    })
-  )}
-</div>
-
         </Card>
 
         <Card className="p-6">
@@ -346,11 +308,7 @@ if (dashboardData) {
       <Card className="p-6">
         <h3 className="font-semibold text-slate-700 mb-4 flex items-center gap-2"><Bell size={18} /> Active Alerts</h3>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {[
-            { type: 'warning', msg: 'Zone B at 95% capacity (38/40 slots occupied)' },
-            { type: 'danger', msg: '3 open parking violations require review' },
-            { type: 'info', msg: '7 user registration requests pending approval' },
-          ].map((a, i) => (
+          {activeAlerts.map((a, i) => (
             <div key={i} className={`flex gap-3 p-4 rounded-xl border ${
               a.type === 'warning' ? 'bg-amber-50 border-amber-200' :
               a.type === 'danger' ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200'

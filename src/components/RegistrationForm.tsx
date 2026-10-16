@@ -508,8 +508,6 @@ export default function RegistrationForm({
       }
 
       setEmailVerificationSent(result.email_verification_sent === true);
-      setResendMessage('');
-      setResendError('');
       setSubmitted(true);
     } catch (error) {
       console.error('REGISTRATION ERROR:', error);
