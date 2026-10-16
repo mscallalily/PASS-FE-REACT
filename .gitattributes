@@ -151,3 +151,4 @@
 # Small layout evidence/preview images must travel inside offline Git bundles.
 /public/references/*.png -filter -diff -merge -text
 /docs/parking-fit-plan-preview.png -filter -diff -merge -text
+/public/parking-layout-empty.png -filter -diff -merge -text
