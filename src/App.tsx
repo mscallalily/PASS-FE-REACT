@@ -85,6 +85,7 @@ function AppRoutes() {
       {/* Guest dashboard (separate from regular user) */}
       <Route element={<GuestRoute />}>
         <Route path="/guest-dashboard" element={<GuestDashboardPage />} />
+        <Route path="/guest-dashboard/:section" element={<GuestDashboardPage />} />
       </Route>
 
       {/* Protected app routes */}

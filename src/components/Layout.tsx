@@ -74,7 +74,7 @@ function SidebarItem({ item, collapsed }: { item: NavItem; collapsed: boolean })
     );
   }
   return (
-    <NavLink to={item.to!}
+    <NavLink end={item.to?.startsWith('/guest-dashboard')} to={item.to!}
       className={({ isActive }) =>
         `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isActive ? 'bg-white/15 text-white border-l-2 border-[#D4A72C]' : 'text-blue-100 hover:bg-white/10 hover:text-white'}`
       }
@@ -85,7 +85,7 @@ function SidebarItem({ item, collapsed }: { item: NavItem; collapsed: boolean })
   );
 }
 
-export default function Layout({ children }: { children: ReactNode }) {
+export default function Layout({ children, navigation, profileTo = '/app/profile', notificationsTo = '/app/notifications' }: { children: ReactNode; navigation?: NavItem[]; profileTo?: string; notificationsTo?: string }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -93,6 +93,13 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [logoutModal, setLogoutModal] = useState(false);
   const [unread, setUnread] = useState(0);
   const { pathname } = useLocation();
+  useEffect(() => { setSidebarOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setSidebarOpen(false); };
+    document.addEventListener('keydown', close);
+    return () => document.removeEventListener('keydown', close);
+  }, [sidebarOpen]);
 
   // Unread notification count from the API; refreshed when notifications change and on navigation.
   const notificationsVersion = useTopicVersion(['notifications']);
@@ -106,7 +113,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   }, [pathname, notificationsVersion]);
 
   const role = user?.role ?? 'student';
-  const visibleNav = NAV_ITEMS.filter(item => !item.roles || item.roles.includes(role));
+  const visibleNav = (navigation ?? NAV_ITEMS).filter(item => !item.roles || item.roles.includes(role));
 
   const handleLogout = () => {
     logout();
@@ -139,7 +146,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       )}
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto sidebar-scrollbar px-2 py-3 space-y-0.5">
+      <nav aria-label="Main navigation" onClick={event => { if ((event.target as Element).closest('a')) setSidebarOpen(false); }} className="flex-1 overflow-y-auto sidebar-scrollbar px-2 py-3 space-y-0.5">
         {visibleNav.map((item, i) => (
           <SidebarItem key={i} item={item} collapsed={collapsed} />
         ))}
@@ -174,19 +181,19 @@ export default function Layout({ children }: { children: ReactNode }) {
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-[#080677] z-50">
+          <button type="button" aria-label="Close navigation" className="absolute inset-0 w-full h-full bg-black/50" onClick={() => setSidebarOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] bg-[#080677] z-50">
             {sidebarContent}
           </aside>
         </div>
       )}
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Top bar */}
         <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(o => !o)} className="lg:hidden p-1.5 rounded-lg hover:bg-blue-50">
+            <button type="button" aria-label="Open navigation" aria-expanded={sidebarOpen} onClick={() => { setCollapsed(false); setSidebarOpen(o => !o); }} className="lg:hidden min-w-11 min-h-11 inline-flex items-center justify-center p-1.5 rounded-lg hover:bg-blue-50">
               <Menu size={20} className="text-[#080677]" />
             </button>
             <div className="lg:hidden flex items-center gap-2">
@@ -196,7 +203,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <p className="hidden lg:block text-xs text-slate-500">Dr. Yanga&apos;s Colleges, Inc. · Parking Access and Space Management System</p>
           </div>
           <div className="flex items-center gap-2">
-            <NavLink to="/app/notifications" aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'} className="relative p-2 rounded-lg hover:bg-blue-50 text-slate-500 hover:text-[#2563EB] transition-colors">
+            <NavLink to={notificationsTo} aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'} className="relative p-2 rounded-lg hover:bg-blue-50 text-slate-500 hover:text-[#2563EB] transition-colors">
               <Bell size={18} />
               {unread > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
@@ -204,7 +211,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 </span>
               )}
             </NavLink>
-            <NavLink to="/app/profile" className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">
+            <NavLink aria-label="Profile" to={profileTo} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">
               <div className="w-7 h-7 rounded-full bg-[#080677] text-white text-xs flex items-center justify-center font-semibold">
                 {user?.name?.[0] ?? 'U'}
               </div>
@@ -214,7 +221,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+        <main className="flex-1 min-w-0 overflow-y-auto p-4 lg:p-6">
           {children}
         </main>
       </div>

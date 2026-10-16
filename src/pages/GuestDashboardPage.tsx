@@ -1,11 +1,12 @@
 import '../styles/guest-portal.css';
 import VisitorDocuments from '../components/VisitorDocuments';
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { DyciLogo } from '../components/Brand';
-import { Shield, CarFront, ClipboardList, LogOut, Info, CheckCircle2, Clock3, AlertCircle, QrCode, Bell, User, History, Plus, X, Maximize2, Menu, ArrowRight, UploadCloud, CalendarDays, ChevronRight } from 'lucide-react';
+import { Shield, CarFront, ClipboardList, Info, CheckCircle2, Clock3, AlertCircle, QrCode, Bell, User, History, Plus, X, Maximize2, ArrowRight, UploadCloud } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Modal, Button } from '../components/ui';
+import Layout from '../components/Layout';
+import { Modal, Button, Card as SharedCard, PageHeader, StatCard } from '../components/ui';
 import QrCodeImage from '../components/QrCode';
 import { apiRequest, ApiError } from '../lib/apiClient';
 import { useTopicVersion } from '../lib/liveSync';
@@ -67,13 +68,13 @@ const PASS_TONE: Record<PassStatus, string> = {
 const REQUEST_LABEL = { pending: 'Pending approval', approved: 'Approved', rejected: 'Not approved', cancelled: 'Cancelled', expired: 'Expired' } as const;
 
 const SECTIONS: { id: Section; label: string; icon: React.ReactNode }[] = [
-  { id: 'overview', label: 'Overview', icon: <Shield size={15} /> },
-  { id: 'request', label: 'New Request', icon: <ClipboardList size={15} /> },
-  { id: 'passes', label: 'My QR Passes', icon: <QrCode size={15} /> },
-  { id: 'vehicles', label: 'My Vehicles', icon: <CarFront size={15} /> },
-  { id: 'visits', label: 'Visit History', icon: <History size={15} /> },
-  { id: 'notifications', label: 'Notifications', icon: <Bell size={15} /> },
-  { id: 'profile', label: 'Profile', icon: <User size={15} /> },
+  { id: 'overview', label: 'Overview', icon: <Shield size={18} /> },
+  { id: 'request', label: 'New Request', icon: <ClipboardList size={18} /> },
+  { id: 'passes', label: 'My QR Passes', icon: <QrCode size={18} /> },
+  { id: 'vehicles', label: 'My Vehicles', icon: <CarFront size={18} /> },
+  { id: 'visits', label: 'Visit History', icon: <History size={18} /> },
+  { id: 'notifications', label: 'Notifications', icon: <Bell size={18} /> },
+  { id: 'profile', label: 'Profile', icon: <User size={18} /> },
 ];
 
 /** Today's date in campus time, for the date picker minimum. */
@@ -89,7 +90,7 @@ function FieldError({ message }: { message?: string }) {
 }
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <section className={`guest-panel bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-7 ${className}`}>{children}</section>;
+  return <SharedCard className={`guest-panel p-5 sm:p-6 ${className}`}>{children}</SharedCard>;
 }
 
 function SectionTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle?: string }) {
@@ -106,8 +107,8 @@ function SectionTitle({ icon, title, subtitle }: { icon: React.ReactNode; title:
 function PassCard({ pass, onOpen }: { pass: Pass; onOpen: () => void }) {
   const usable = pass.status === 'active' || pass.status === 'scheduled';
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-      <div className="bg-gradient-to-br from-[#080677] to-[#2563EB] text-white p-5 flex items-start justify-between gap-3">
+    <div className="rounded-xl border border-blue-100 bg-white overflow-hidden">
+      <div className="bg-[#080677] text-white p-5 flex items-start justify-between gap-3">
         <div>
           <p className="text-xs text-blue-200">PASS — Visitor QR Access Pass</p>
           <p className="text-lg font-bold mt-1">{pass.plate_number ?? '—'}</p>
@@ -161,36 +162,18 @@ function FullScreenPass({ pass, name, onClose }: { pass: Pass; name: string; onC
 // ----------------------------------------------------------------- page
 
 export default function GuestDashboardPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const [logoutModal, setLogoutModal] = useState(false);
-  const [mobileMenu, setMobileMenu] = useState(false);
+  const route = useParams();
+  const section: Section = SECTIONS.some(item => item.id === route.section) ? route.section as Section : 'overview';
+  const setSection = (next: Section) => navigate(next === 'overview' ? '/guest-dashboard' : `/guest-dashboard/${next}`);
   const [documentRequest, setDocumentRequest] = useState<number | null>(null);
-  useEffect(() => {
-    if (!mobileMenu) return;
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const close = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMobileMenu(false);
-      if (event.key === 'Tab') {
-        const buttons = document.querySelectorAll<HTMLButtonElement>('.guest-sidebar button');
-        const first = buttons[0], last = buttons[buttons.length - 1];
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-      }
-    };
-    document.querySelector<HTMLButtonElement>('.guest-sidebar .guest-menu-toggle')?.focus();
-    document.addEventListener('keydown', close);
-    const previous = document.body.style.overflow; document.body.style.overflow = 'hidden';
-    return () => { document.removeEventListener('keydown', close); document.body.style.overflow = previous; previousFocus?.focus(); };
-  }, [mobileMenu]);
-  const [section, setSection] = useState<Section>('overview');
   const [requests, setRequests] = useState<GuestRequest[] | null>(null);
   const [passes, setPasses] = useState<Pass[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [types, setTypes] = useState<VehicleType[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
-  const [unread, setUnread] = useState(0);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loadError, setLoadError] = useState('');
   const [flash, setFlash] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -217,7 +200,6 @@ export default function GuestDashboardPage() {
       setTypes(v.vehicle_types);
       setVisits(h.data);
       setNotices(n.data);
-      setUnread(n.unread_count);
       setProfile(pr);
       setLoadError('');
     } catch (err) {
@@ -230,34 +212,25 @@ export default function GuestDashboardPage() {
   const version = useTopicVersion(['visitors', 'parking', 'notifications']);
   useEffect(() => { load(); }, [load, version]);
 
-  const handleLogout = async () => { await logout(); navigate('/login'); };
 
   const latest = requests?.[0] ?? null;
   const usablePasses = passes.filter(p => p.status === 'active' || p.status === 'scheduled');
   const name = profile?.full_name || user?.name || 'Guest';
 
+  const navigation = SECTIONS.filter(item => !['profile', 'notifications'].includes(item.id)).map(item => ({
+    label: item.id === 'overview' ? 'Dashboard' : item.label,
+    icon: item.icon,
+    to: item.id === 'overview' ? '/guest-dashboard' : `/guest-dashboard/${item.id}`,
+  }));
   return (
-    <div className="guest-portal min-h-screen font-['Inter']">
-      <a className="guest-skip" href="#guest-content">Skip to content</a>
-      <header className="guest-header">
-        <div className="guest-header-inner">
-          <button type="button" className="guest-brand" onClick={() => setSection('overview')} aria-label="PASS guest home"><DyciLogo onDark className="h-9"/><span/><div><strong>PASS</strong><small>VISITOR PORTAL</small></div></button>
-          <div className="guest-header-actions"><span className="guest-account-badge"><span/>Verified guest</span><button type="button" onClick={() => setSection('notifications')} aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} className="guest-icon-button"><Bell size={20}/>{unread > 0 && <b>{unread}</b>}</button><button type="button" onClick={() => setLogoutModal(true)} className="guest-icon-button" aria-label="Sign out"><LogOut size={19}/></button><button type="button" className="guest-menu-toggle guest-icon-button" onClick={() => setMobileMenu(true)} aria-label="Open navigation" aria-expanded={mobileMenu}><Menu size={21}/></button></div>
-        </div>
-      </header>
-      {mobileMenu && <button type="button" className="guest-menu-backdrop" onClick={() => setMobileMenu(false)} aria-label="Close navigation"/>}
-      <div className="guest-workspace">
-        <aside role={mobileMenu ? 'dialog' : undefined} aria-modal={mobileMenu || undefined} aria-label="Guest navigation" className={`guest-sidebar ${mobileMenu ? 'is-open' : ''}`}>
-          <div className="guest-sidebar-heading"><span className="guest-eyebrow">YOUR VISIT, SIMPLIFIED</span><button type="button" className="guest-menu-toggle guest-icon-button" onClick={() => setMobileMenu(false)} aria-label="Close navigation"><X size={21}/></button></div>
-          <nav aria-label="Guest sections">{SECTIONS.map(item => <button key={item.id} type="button" onClick={() => { setSection(item.id); setMobileMenu(false); }} aria-current={section === item.id ? 'page' : undefined} className={section === item.id ? 'is-active' : ''}>{item.icon}<span>{item.label}</span>{item.id === 'notifications' && unread > 0 ? <b>{unread}</b> : <ChevronRight size={14}/>}</button>)}</nav>
-          <div className="guest-sidebar-note"><Shield size={22}/><strong>Plan ahead. Arrive ready.</strong><p>Apply from tomorrow onwards. Bring your approved QR pass and physical driver’s license.</p><span>DYCI · Marciano Campus</span></div>
-        </aside>
-        <main id="guest-content" className="guest-main">
-          {section === 'overview' && <>
-          <section className="guest-hero"><div className="guest-hero-copy"><span className="guest-eyebrow">WELCOME TO DYCI</span><h1>Hello, {name.split(' ')[0]}<span>.</span></h1><p>Your campus visit starts here. Plan ahead, follow your request, and keep your pass close.</p><button type="button" className="guest-hero-action" onClick={() => setSection(vehicles.length ? 'request' : 'vehicles')}>{vehicles.length ? 'Plan a visit' : 'Add your first vehicle'}<ArrowRight size={17}/></button></div><div className="guest-hero-label"><CalendarDays size={26}/><span>VISITS BY APPROVAL</span><strong>Tomorrow<br/>onwards.</strong><small>All schedules in Manila time</small></div></section>
-          <div className="guest-stats" aria-label="Your visitor account summary">{[{ label: 'Registered vehicles', value: vehicles.length, detail: 'Ready for your next visit', target: 'vehicles' as Section, icon: <CarFront size={21}/> }, { label: 'Awaiting review', value: requests?.filter(request => request.request_status === 'pending' && !request.window_ended).length ?? 0, detail: 'We’ll notify you of a decision', target: 'overview' as Section, icon: <Clock3 size={21}/> }, { label: 'Upcoming / active passes', value: usablePasses.length, detail: 'Keep your QR ready', target: 'passes' as Section, icon: <QrCode size={21}/> }].map(stat => <button key={stat.label} type="button" className="guest-stat" onClick={() => setSection(stat.target)}><span className="guest-stat-icon">{stat.icon}</span><div><span>{stat.label}</span><strong>{stat.value}</strong><small>{stat.detail}</small></div><ArrowRight size={15}/></button>)}</div>
-          </>}
-          <div className="guest-content-heading"><div><span className="guest-eyebrow">GUEST WORKSPACE</span><h2>{SECTIONS.find(item => item.id === section)?.label}</h2></div>{section === 'overview' && <button type="button" className="guest-text-button" onClick={() => setSection('visits')}>Visit history<ArrowRight size={15}/></button>}</div>
+    <Layout navigation={navigation} profileTo="/guest-dashboard/profile" notificationsTo="/guest-dashboard/notifications">
+      <div className="guest-portal animate-fadein">
+        <PageHeader title={section === 'overview' ? 'Guest Dashboard' : SECTIONS.find(item => item.id === section)?.label ?? 'Guest Dashboard'} subtitle={section === 'overview' ? `Welcome, ${name}. Manage your visitor requests and parking passes.` : 'Plan your campus visit and follow your approval status.'} action={section === 'overview' ? <Button onClick={() => setSection(vehicles.length ? 'request' : 'vehicles')}><Plus size={16}/>{vehicles.length ? 'New Request' : 'Register Vehicle'}</Button> : undefined}/>
+        {section === 'overview' && <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <StatCard label="My Vehicles" value={vehicles.length} icon={<CarFront size={20}/>} color="blue"/>
+          <StatCard label="Pending Requests" value={requests?.filter(request => request.request_status === 'pending' && !request.window_ended).length ?? 0} icon={<Clock3 size={20}/>} color="amber"/>
+          <StatCard label="QR Passes" value={usablePasses.length} icon={<QrCode size={20}/>} color="green" sub="Upcoming and active"/>
+        </div>}
         {flash && <div role="status" className={`mb-5 rounded-xl border p-4 text-sm ${flash.type === 'success' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-700'}`}>{flash.message}</div>}
         {loadError && <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</div>}
 
@@ -286,7 +259,7 @@ export default function GuestDashboardPage() {
                     <p className="text-sm text-slate-600 mt-1">Status: <span className={`font-semibold ${latest.request_status === 'approved' ? 'text-green-700' : latest.request_status === 'pending' ? 'text-amber-700' : 'text-red-700'}`}>{REQUEST_LABEL[latest.request_status]}</span></p>
                   </div>
                 </div>
-                {latest.documents && <button type="button" className="guest-text-button mb-4" onClick={() => setDocumentRequest(latest.request_id)}>View submitted photos<ArrowRight size={15}/></button>}
+                {latest.documents && <button type="button" className="guest-text-button mb-4" onClick={() => setDocumentRequest(latest.request_id)}>View submitted photos<ArrowRight size={18}/></button>}
                 {latest.request_status === 'pending' && <p className="text-sm text-slate-600 mb-5">An Administrator will review your request. No QR pass is issued until it is approved; you will be notified here.</p>}
                 {latest.request_status === 'rejected' && latest.review_remarks && <p className="text-sm text-red-700 mb-5">Reason: {latest.review_remarks}</p>}
                 <div className="grid sm:grid-cols-2 gap-3 text-sm">
@@ -345,16 +318,12 @@ export default function GuestDashboardPage() {
 
         {section === 'notifications' && <Notifications notices={notices} onChanged={load} />}
         {section === 'profile' && profile && <ProfileForm profile={profile} onSaved={message => { notify(message); load(); }} />}
-        <footer className="guest-footer"><span>DR. YANGA’S COLLEGES, INC.</span><span>Marciano Campus · Visitor parking access</span></footer>
-      </main>
-      </div>
-      <nav className="guest-bottom-nav" aria-label="Quick navigation">{SECTIONS.filter(item => ['overview', 'request', 'passes', 'vehicles'].includes(item.id)).map(item => <button key={item.id} type="button" onClick={() => setSection(item.id)} aria-current={section === item.id ? 'page' : undefined} className={section === item.id ? 'is-active' : ''}>{item.icon}<span>{item.id === 'overview' ? 'Home' : item.id === 'request' ? 'Request' : item.id === 'passes' ? 'QR passes' : 'Vehicles'}</span></button>)}<button type="button" onClick={() => setMobileMenu(true)} aria-label="More sections" aria-expanded={mobileMenu}><Menu size={20}/><span>More</span></button></nav>
       <Modal open={documentRequest !== null} onClose={() => setDocumentRequest(null)} title="Your submitted photos" size="lg">{documentRequest !== null && <VisitorDocuments requestId={documentRequest}/>}</Modal>
 
       {openPass && <FullScreenPass pass={openPass} name={name} onClose={() => setOpenPass(null)} />}
 
-      <Modal open={logoutModal} onClose={() => setLogoutModal(false)} title="Confirm Logout" size="sm"><p className="text-sm text-slate-600 mb-6">Are you sure you want to log out of PASS?</p><div className="flex gap-3 justify-end"><Button variant="outline" onClick={() => setLogoutModal(false)}>Cancel</Button><Button variant="danger" onClick={handleLogout}>Yes, Logout</Button></div></Modal>
-    </div>
+      </div>
+    </Layout>
   );
 }
 
