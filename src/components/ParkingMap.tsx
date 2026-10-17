@@ -76,7 +76,7 @@ export interface MapGeometry {
   gate: { at: Point; angle: number; label: string; sublabel: string; label_at: Point };
   lanes: { points: Point[]; kind: 'road_in' | 'road_out' | 'to_area' | 'lane'; reverse?: boolean; label?: string; label_at?: Point; label_angle?: number }[];
   dimensions: { id?: string; text: string; description?: string; at: Point; angle: number; from?: Point; to?: Point }[];
-  circulation?: { polygon: Point[]; kind: string; width_m: number }[];
+  circulation?: { polygon: Point[]; kind: string; width_m?: number }[];
   proposed_slot_codes?: string[];
   measurement_basis?: {
     survey_verified: boolean; scale: string; source_image: string; note: string; pathway_note: string;
@@ -92,6 +92,7 @@ export interface MapData {
   view_box: [number, number, number, number];
   geometry: MapGeometry;
   slots: MapSlot[];
+  measured_layout?: { geometry: MapGeometry; positions: Record<string, { x: number; y: number; w: number; h: number; rotation: number }> };
   extra_bays: MapBay[];
 }
 

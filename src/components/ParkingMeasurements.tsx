@@ -17,13 +17,14 @@ function BayTemplate({ width, length, label }: { width: number; length: number; 
 export default function ParkingMeasurements({ geometry }: { geometry: MapGeometry }) {
   const basis = geometry.measurement_basis;
   if (!basis) return null;
+  const diagram = basis.scale === 'slot_diagram';
   return <details className="rounded-xl border border-slate-200 bg-white p-4 min-w-0">
     <summary className="cursor-pointer text-sm font-semibold text-[#080677] flex items-center gap-2"><Ruler size={16} />Measurements & design basis</summary>
     <div className="space-y-5 mt-4">
       <p className="text-sm text-slate-600">{basis.note}</p>
       {basis.inventory && <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4"><h3 className="text-sm font-bold text-[#080677]">Motorcycle proposal</h3><p className="my-2 text-2xl font-bold text-[#080677]">{basis.inventory.motorcycle_drawn} compact bays</p><p className="text-xs leading-relaxed text-slate-600">{basis.motorcycle_proposal}</p></div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-sm font-bold text-amber-900">Car fit still under review</h3><p className="my-2 text-2xl font-bold text-amber-900">{basis.inventory.car_drawn} drawn / {basis.inventory.car_configured} configured</p><p className="text-xs leading-relaxed text-amber-900">{basis.car_proposal}</p></div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-sm font-bold text-amber-900">{diagram ? 'Complete car slot map' : 'Car fit still under review'}</h3><p className="my-2 text-2xl font-bold text-amber-900">{basis.inventory.car_drawn} {diagram ? 'mapped' : 'drawn'} / {basis.inventory.car_configured} configured</p><p className="text-xs leading-relaxed text-amber-900">{basis.car_proposal}</p></div>
       </div>}
       <div className="grid gap-3 sm:grid-cols-3">
         {basis.standards.map(standard => <div key={standard.type} className="min-w-0 rounded-xl border border-blue-100 bg-slate-50 p-3">
@@ -46,7 +47,7 @@ export default function ParkingMeasurements({ geometry }: { geometry: MapGeometr
         <div className="min-w-0 space-y-5">
           <div><h3 className="text-sm font-semibold text-[#080677] mb-2">Owner-reported dimensions</h3><div className="space-y-2">{geometry.dimensions.filter(d => !d.id?.startsWith('C')).map(dimension => <div key={dimension.id} className="flex flex-wrap justify-between gap-2 text-xs border-b border-slate-100 pb-2"><span className="text-slate-600">{dimension.description}</span><span className="font-semibold text-slate-800">{dimension.text}</span></div>)}</div></div>
           {!!basis.car_edges_m?.length && <div><h3 className="text-sm font-semibold text-[#080677] mb-2">Car boundary · supplied sequence</h3><p className="text-xs text-slate-500 mb-3">C1 starts at the right edge, continuing around the notch and back along C8. This mapping is assumed from the image, not a survey.</p><div className="grid grid-cols-2 gap-x-4 gap-y-2">{basis.car_edges_m.map((length, index) => <div key={index} className="flex justify-between gap-2 text-xs border-b border-slate-100 pb-2"><span className="text-slate-600">C{index+1}</span><strong className="text-slate-800">{length.toFixed(2)} m</strong></div>)}</div></div>}
-          <p className="text-xs leading-relaxed text-slate-600">The drawing uses the same scale for every parcel, bay and aisle. The retained inventory is not a certified physical capacity. Follow campus parking directions until the layout is checked on site.</p>
+          <p className="text-xs leading-relaxed text-slate-600">{diagram ? 'The complete slot map uses schematic car symbols. Reference dimensions below are physical design references; they do not describe the symbol size. The Measured proposal view uses one scale for parcels, bays and aisles.' : 'The measured proposal uses the same scale for every parcel, bay and aisle. The retained inventory is not a certified physical capacity.'} Follow campus parking directions until the layout is checked on site.</p>
         </div>
       </div>
     </div>
