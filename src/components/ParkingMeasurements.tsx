@@ -24,7 +24,15 @@ export default function ParkingMeasurements({ geometry }: { geometry: MapGeometr
       <p className="text-sm text-slate-600">{basis.note}</p>
       {basis.inventory && <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4"><h3 className="text-sm font-bold text-[#080677]">Motorcycle proposal</h3><p className="my-2 text-2xl font-bold text-[#080677]">{basis.inventory.motorcycle_drawn} compact bays</p><p className="text-xs leading-relaxed text-slate-600">{basis.motorcycle_proposal}</p></div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-sm font-bold text-amber-900">{diagram ? 'Complete car slot map' : 'Car fit still under review'}</h3><p className="my-2 text-2xl font-bold text-amber-900">{basis.inventory.car_drawn} {diagram ? 'mapped' : 'drawn'} / {basis.inventory.car_configured} configured</p><p className="text-xs leading-relaxed text-amber-900">{basis.car_proposal}</p></div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-sm font-bold text-amber-900">{diagram ? 'Complete car slot map' : 'Car perimeter arrangement'}</h3><p className="my-2 text-2xl font-bold text-amber-900">{basis.inventory.car_drawn} {diagram ? 'mapped' : 'drawn'} / {basis.inventory.car_configured} configured</p><p className="text-xs leading-relaxed text-amber-900">{basis.car_proposal}</p></div>
+      </div>}
+      {basis.vehicle_measurements && <div className="rounded-xl border border-slate-200 p-4 space-y-2">
+        <h3 className="text-sm font-semibold text-[#080677]">Measured vehicle reference</h3>
+        <div className="grid gap-2 sm:grid-cols-2 text-xs text-slate-700">
+          <p><strong>Car:</strong> {basis.vehicle_measurements.car_width_m.toFixed(3)} m body width × {basis.vehicle_measurements.car_length_m.toFixed(3)} m length. Mirrors are not included.</p>
+          <p><strong>Motorcycle:</strong> {basis.vehicle_measurements.motorcycle_width_m.toFixed(3)} m width × {basis.vehicle_measurements.motorcycle_length_m.toFixed(3)} m length.</p>
+        </div>
+        <p className="text-xs leading-relaxed text-slate-500">{basis.vehicle_measurements.note}</p>
       </div>}
       <div className="grid gap-3 sm:grid-cols-3">
         {basis.standards.map(standard => <div key={standard.type} className="min-w-0 rounded-xl border border-blue-100 bg-slate-50 p-3">
@@ -37,6 +45,7 @@ export default function ParkingMeasurements({ geometry }: { geometry: MapGeometr
       </div>
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
         <p>{basis.pathway_note}</p>
+        {basis.circulation_note && <p className="mt-2">{basis.circulation_note}</p>}
         <p className="mt-2">Bay dimensions do not establish the required total number of accessible spaces, accessible routes, drainage, slope or turning clearance. Confirm these against the applicable rules and the campus plan before physical marking.</p>
       </div>
       <div className="grid lg:grid-cols-2 gap-5 items-start">

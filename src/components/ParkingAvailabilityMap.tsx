@@ -56,7 +56,7 @@ export default function ParkingAvailabilityMap() {
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         <StatCard label="Available" value={data.overall.available} icon={<ParkingSquare size={18} />} color="green" />
         <StatCard label="Occupied" value={data.overall.occupied} icon={<ParkingSquare size={18} />} color="blue" />
-        <StatCard label="Capacity" value={data.overall.capacity} icon={<ParkingSquare size={18} />} color="sky" />
+        <StatCard label="Configured Slots" value={data.overall.capacity} icon={<ParkingSquare size={18} />} color="sky" />
         <StatCard label="Maintenance" value={data.overall.maintenance} icon={<ParkingSquare size={18} />} color="amber" />
       </div>
       <Card className="p-3 sm:p-5 space-y-4">
@@ -76,7 +76,7 @@ export default function ParkingAvailabilityMap() {
         </div>
         <ParkingLot3D data={data} viewMode={view} highlight={null} selectedId={selectedId} recent={NO_CHANGES} gateOnline={false} onSelect={choose} onGate={() => {}} focusArea={focus} />
         <p className="text-xs text-slate-500">Drag to move · pinch or use +/− to zoom · select a slot for availability.</p>
-        <p className="text-xs text-slate-500">Based on recorded entries and exits; physical slot sensors are not connected. Availability does not reserve a space.</p>
+        <p className="text-xs text-slate-500">Counts follow the configured slot inventory and recorded entries/exits. The parking layout is a proposal; physical slot sensors are not connected. Availability does not reserve a space.</p>
         {unplaced > 0 && <p className="text-xs text-slate-500">Totals include {unplaced} configured slots awaiting map positions. Only mapped bays appear on this layout.</p>}
         <p className="text-xs text-slate-400">Updated {formatCampusDateTime(data.generated_at)} · Checks every {POLL_MS / 1000} seconds while visible</p>
       </Card>

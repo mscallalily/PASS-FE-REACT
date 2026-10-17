@@ -77,11 +77,13 @@ export interface MapGeometry {
   lanes: { points: Point[]; kind: 'road_in' | 'road_out' | 'to_area' | 'lane'; reverse?: boolean; label?: string; label_at?: Point; label_angle?: number }[];
   dimensions: { id?: string; text: string; description?: string; at: Point; angle: number; from?: Point; to?: Point }[];
   circulation?: { polygon: Point[]; kind: string; width_m?: number }[];
+  circulation_labels?: { text: string; at: Point; angle: number }[];
   proposed_slot_codes?: string[];
   measurement_basis?: {
     survey_verified: boolean; scale: string; source_image: string; note: string; pathway_note: string;
     car_source_image?: string; car_edges_m?: number[]; units_per_metre?: number;
-    motorcycle_proposal?: string; car_proposal?: string;
+    motorcycle_proposal?: string; car_proposal?: string; circulation_note?: string;
+    vehicle_measurements?: { car_width_m: number; car_length_m: number; car_mirrors_included: boolean; motorcycle_width_m: number; motorcycle_length_m: number; note: string };
     inventory?: { motorcycle_configured: number; motorcycle_drawn: number; car_configured: number; car_drawn: number };
     standards: { type: string; label: string; width_m: number; length_m: number; basis: string; source: string; url: string }[];
   };
@@ -229,7 +231,9 @@ export default function ParkingMap({ data, highlight, onSelect, focusArea, showM
           </g>
         ))}
 
-        {g.circulation?.map((clearance, index) => <polygon key={`clearance-${index}`} points={pts(clearance.polygon)} fill={clearance.kind === 'walkway' ? '#BFDBFE' : '#CBD5E1'} fillOpacity={0.55} stroke="#94A3B8" strokeWidth={0.3} />)}
+        {g.circulation?.map((clearance, index) => <polygon key={`clearance-${index}`} points={pts(clearance.polygon)} fill={clearance.kind === 'walkway' ? '#BFDBFE' : clearance.kind === 'car_approach' ? '#FDE68A' : '#CBD5E1'} fillOpacity={clearance.kind === 'car_approach' ? 0.7 : 1} stroke="#94A3B8" strokeWidth={0.3} />)}
+
+        {g.circulation_labels?.map(label => <text key={label.text} transform={`translate(${label.at[0]} ${label.at[1]}) rotate(${label.angle})`} textAnchor="middle" fontSize={5} fontWeight={700} fill="#475569">{label.text}</text>)}
 
         {/* Shared IN/OUT road */}
         <polygon points={pts(g.road.polygon)} fill="#FACC15" stroke="#A16207" strokeWidth={0.6} />

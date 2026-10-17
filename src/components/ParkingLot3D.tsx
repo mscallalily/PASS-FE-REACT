@@ -436,7 +436,8 @@ const Site = memo(function Site({ g, trays, onGate, gateOnline }: { g: MapGeomet
       <mesh geometry={parts.blue} material={paintMat('#2563EB')} />
 
       <GroundText text={g.road.label} at={g.road.label_at} h={5} deg={g.road.label_angle} />
-      {g.circulation?.map((clearance, index) => <mesh key={`clearance-${index}`} geometry={flat(clearance.polygon, PAINT - 0.03)} material={paintMat(clearance.kind === 'walkway' ? '#93C5FD' : '#94A3B8', 0.35)} />)}
+      {g.circulation?.map((clearance, index) => <mesh key={`clearance-${index}`} geometry={flat(clearance.polygon, PAINT - 0.03)} material={paintMat(clearance.kind === 'walkway' ? '#93C5FD' : clearance.kind === 'car_approach' ? '#EAB308' : '#4B5563', clearance.kind === 'car_approach' ? 0.6 : 1)} />)}
+      {g.circulation_labels?.map(label => <GroundText key={label.text} text={label.text} at={label.at} h={4.4} deg={label.angle} />)}
 
       {parts.islands.map((island, i) => {
         const c = island.polygon.reduce<Point>(([x, y], p) => [x + p[0] / island.polygon.length, y + p[1] / island.polygon.length], [0, 0]);
@@ -803,7 +804,7 @@ type Props = {
 
 export default function ParkingLot3D(props: Props) {
   const [supported] = useState(webglAvailable);
-  const [measured, setMeasured] = useState(false);
+  const [measured, setMeasured] = useState(true);
   const [showMeasurements, setShowMeasurements] = useState(false);
   const activeData = useMemo(() => {
     const alternative = props.data.measured_layout;
@@ -817,7 +818,7 @@ export default function ParkingLot3D(props: Props) {
       }),
     };
   }, [props.data, measured]);
-  const chooseLayout = (value: boolean) => { setMeasured(value); setShowMeasurements(value); };
+  const chooseLayout = (value: boolean) => { setMeasured(value); setShowMeasurements(false); };
   const inventory = activeData.geometry.measurement_basis?.inventory;
   const fallback = <div className="space-y-2">
     <p className="text-xs text-amber-700">This browser is showing the simplified plan. Slot positions and availability are unchanged.</p>
@@ -826,11 +827,11 @@ export default function ParkingLot3D(props: Props) {
   return <div className="space-y-3 min-w-0">
     <div className="flex flex-wrap items-center justify-between gap-2">
       {props.data.measured_layout ? <div role="group" aria-label="Layout basis" className="flex flex-wrap gap-2">
-        {[{ value: false, label: 'Slot map · 55 cars' }, { value: true, label: 'Measured proposal' }].map(option => <button key={option.label} type="button" aria-pressed={measured === option.value} onClick={() => chooseLayout(option.value)} className={`min-h-11 rounded-lg border px-3 py-2 text-xs font-semibold ${measured === option.value ? 'border-[#080677] bg-[#080677] text-white' : 'border-slate-200 text-slate-600 hover:bg-blue-50'}`}>{option.label}</button>)}
+        {[{ value: true, label: 'Parking layout' }, { value: false, label: 'Inventory diagram' }].map(option => <button key={option.label} type="button" aria-pressed={measured === option.value} onClick={() => chooseLayout(option.value)} className={`min-h-11 rounded-lg border px-3 py-2 text-xs font-semibold ${measured === option.value ? 'border-[#080677] bg-[#080677] text-white' : 'border-slate-200 text-slate-600 hover:bg-blue-50'}`}>{option.label}</button>)}
       </div> : <p className="text-xs text-slate-500">Proposed campus parking layout</p>}
       {(measured || !props.data.measured_layout) && <button type="button" aria-pressed={showMeasurements} onClick={() => { if (!showMeasurements) setMeasured(true); setShowMeasurements(value => !value); }} className={`min-h-11 rounded-lg border px-3 py-2 text-xs font-semibold inline-flex items-center gap-2 ${showMeasurements ? 'border-[#080677] bg-blue-50 text-[#080677]' : 'border-slate-200 text-slate-600 hover:bg-blue-50'}`}><Ruler size={16} />{showMeasurements ? 'Hide measurements' : 'Show measurements'}</button>}
     </div>
-    {inventory && (measured ? <div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900"><strong>Measured proposal:</strong> {inventory.car_drawn} car bays are drawn with metre-sized bay templates. Physical fit for all {inventory.car_configured} cars is still unverified. Return to Slot map to see every live slot.</div> : <p role="note" className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-relaxed text-blue-900"><strong>Complete slot map:</strong> {inventory.car_drawn} car slots and {inventory.motorcycle_drawn} motorcycle slots. Car bay symbols are schematic, not to scale. Follow parking staff directions.</p>)}
+    {inventory && (measured ? <div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900"><strong>Parking layout:</strong> {inventory.car_drawn} full-size car bays arranged around the perimeter. The centre is reserved for access and manoeuvring. Proposed positions require campus confirmation.</div> : <p role="note" className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-relaxed text-blue-900"><strong>Inventory diagram:</strong> {inventory.car_drawn} car slots and {inventory.motorcycle_drawn} motorcycle slots. Car bay symbols are schematic, not to scale. Follow parking staff directions.</p>)}
     {showMeasurements && <p className="text-xs text-blue-800">One metric scale in the measured proposal. Car bearings are assumed; measurements do not certify physical capacity.</p>}
     {supported ? <WebGLBoundary fallback={fallback}><Lot {...props} data={activeData} showMeasurements={showMeasurements} /></WebGLBoundary> : fallback}
     <ParkingMeasurements geometry={activeData.geometry} />
