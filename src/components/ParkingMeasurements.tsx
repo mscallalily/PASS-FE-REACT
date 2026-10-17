@@ -1,6 +1,6 @@
 import React from 'react';
 import { ExternalLink, Ruler } from 'lucide-react';
-import type { MapGeometry } from './ParkingMap';
+import type { MapGeometry, MapSlot } from './ParkingMap';
 
 function BayTemplate({ width, length, label }: { width: number; length: number; label: string }) {
   const scale = 20;
@@ -14,7 +14,7 @@ function BayTemplate({ width, length, label }: { width: number; length: number; 
   </svg>;
 }
 
-export default function ParkingMeasurements({ geometry }: { geometry: MapGeometry }) {
+export default function ParkingMeasurements({ geometry, slots = [] }: { geometry: MapGeometry; slots?: MapSlot[] }) {
   const basis = geometry.measurement_basis;
   if (!basis) return null;
   const diagram = basis.scale === 'slot_diagram';
@@ -22,9 +22,18 @@ export default function ParkingMeasurements({ geometry }: { geometry: MapGeometr
     <summary className="cursor-pointer text-sm font-semibold text-[#080677] flex items-center gap-2"><Ruler size={16} />Measurements & design basis</summary>
     <div className="space-y-5 mt-4">
       <p className="text-sm text-slate-600">{basis.note}</p>
+      {!diagram && <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-[#080677]">Individual slot measurements</h3>
+        <p className="text-xs text-slate-500">Proposed clear bay dimensions, width × length. These are not vehicle body dimensions.</p>
+        <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
+          <table className="w-full text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-slate-600"><tr><th className="p-3">Slot</th><th className="p-3">Width</th><th className="p-3">Length</th><th className="p-3">Type</th></tr></thead>
+            <tbody>{slots.filter(s => s.placed && s.w && s.h).sort((a, b) => a.slot_code.localeCompare(b.slot_code, undefined, { numeric: true })).map(s => <tr key={s.slot_id} className="border-t border-slate-100"><td className="p-3 font-semibold text-[#080677]">{s.slot_code}</td><td className="p-3 whitespace-nowrap">{(Math.min(s.w!, s.h!) / (basis.units_per_metre || 8)).toFixed(2)} m</td><td className="p-3 whitespace-nowrap">{(Math.max(s.w!, s.h!) / (basis.units_per_metre || 8)).toFixed(2)} m</td><td className="p-3">{s.accessible ? 'Accessible' : s.area_code === 'MC' ? 'Motorcycle' : Math.min(s.w!, s.h!) / (basis.units_per_metre || 8) < 2.5 ? 'Parallel' : 'Car'}</td></tr>)}</tbody>
+          </table>
+        </div>
+      </div>}
       {basis.inventory && <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4"><h3 className="text-sm font-bold text-[#080677]">Motorcycle proposal</h3><p className="my-2 text-2xl font-bold text-[#080677]">{basis.inventory.motorcycle_drawn} compact bays</p><p className="text-xs leading-relaxed text-slate-600">{basis.motorcycle_proposal}</p></div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-sm font-bold text-amber-900">{diagram ? 'Complete car slot map' : 'Car perimeter arrangement'}</h3><p className="my-2 text-2xl font-bold text-amber-900">{basis.inventory.car_drawn} {diagram ? 'mapped' : 'drawn'} / {basis.inventory.car_configured} configured</p><p className="text-xs leading-relaxed text-amber-900">{basis.car_proposal}</p></div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-sm font-bold text-amber-900">{diagram ? 'Complete car slot map' : 'Car parking arrangement'}</h3><p className="my-2 text-2xl font-bold text-amber-900">{basis.inventory.car_drawn} {diagram ? 'mapped' : 'proposed'} / {basis.inventory.car_configured} configured</p><p className="text-xs leading-relaxed text-amber-900">{basis.car_proposal}</p></div>
       </div>}
       {basis.vehicle_measurements && <div className="rounded-xl border border-slate-200 p-4 space-y-2">
         <h3 className="text-sm font-semibold text-[#080677]">Measured vehicle reference</h3>

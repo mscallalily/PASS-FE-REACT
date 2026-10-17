@@ -374,7 +374,7 @@ function edgeDistance(p: Point, points: Point[]) {
 
 // ----------------------------------------------------------------- static site
 
-const Site = memo(function Site({ g, trays, onGate, gateOnline }: { g: MapGeometry; trays: TrayPanel[]; onGate: (e: ThreeEvent<MouseEvent>) => void; gateOnline: boolean }) {
+const Site = memo(function Site({ g, trays, onGate, gateOnline, showMeasurements }: { g: MapGeometry; trays: TrayPanel[]; onGate: (e: ThreeEvent<MouseEvent>) => void; gateOnline: boolean; showMeasurements: boolean }) {
   const parts = useMemo(() => {
     const asphalt = noiseTexture('#30353E', ['#1F242B', '#454B55', '#3A4049'], 40);
     const grass = noiseTexture('#7FB262', ['#6A9C50', '#93C477', '#5E8E46'], 30);
@@ -436,7 +436,7 @@ const Site = memo(function Site({ g, trays, onGate, gateOnline }: { g: MapGeomet
       <mesh geometry={parts.blue} material={paintMat('#2563EB')} />
 
       <GroundText text={g.road.label} at={g.road.label_at} h={5} deg={g.road.label_angle} />
-      {g.circulation?.map((clearance, index) => <mesh key={`clearance-${index}`} geometry={flat(clearance.polygon, PAINT - 0.03)} material={paintMat(clearance.kind === 'walkway' ? '#93C5FD' : clearance.kind === 'car_approach' ? '#EAB308' : '#4B5563', clearance.kind === 'car_approach' ? 0.6 : 1)} />)}
+      {g.circulation?.filter(c => showMeasurements || ['walkway', 'car_approach'].includes(c.kind)).map((clearance, index) => <mesh key={`clearance-${index}`} geometry={flat(clearance.polygon, PAINT - 0.03)} material={paintMat(clearance.kind === 'walkway' ? '#93C5FD' : clearance.kind === 'car_approach' ? '#EAB308' : '#4B5563', clearance.kind === 'car_approach' ? 0.6 : 1)} />)}
       {g.circulation_labels?.map(label => <GroundText key={label.text} text={label.text} at={label.at} h={4.4} deg={label.angle} />)}
 
       {parts.islands.map((island, i) => {
@@ -506,11 +506,12 @@ function Stall({ s, selected, onSelect }: { s: SceneSlot; selected: boolean; onS
   );
 }
 
-const Slots = memo(function Slots({ slots, extra, selectedId, closeUp, onSelect }: {
+const Slots = memo(function Slots({ slots, extra, selectedId, closeUp, onSelect, measurementUnit }: {
   slots: SceneSlot[];
   extra: MapData['extra_bays'];
   selectedId: number | null;
   closeUp: boolean;
+  measurementUnit?: number;
   onSelect: (s: MapSlot, e: ThreeEvent<MouseEvent>) => void;
 }) {
   // Stall lines, unconfirmed-location dashes, and painted stalls that are not PASS slots.
@@ -541,7 +542,8 @@ const Slots = memo(function Slots({ slots, extra, selectedId, closeUp, onSelect 
         const h = Math.max(3, Math.min(s.area_code === 'MC' ? 4.4 : 6, short * 0.55));
         if (s.status === 'occupied') {
           const top = isMotorcycle(s) ? 7 : 9.5;
-          const tex = badge(closeUp && s.occupant ? [label, s.occupant.plate_number] : [label], '#DC2626', { size: 30 });
+          const dimensions = measurementUnit ? `${(Math.min(s.gw, s.gh) / measurementUnit).toFixed(2)} × ${(Math.max(s.gw, s.gh) / measurementUnit).toFixed(2)} m` : null;
+          const tex = badge([label, ...(closeUp && s.occupant ? [s.occupant.plate_number] : []), ...(dimensions ? [dimensions] : [])], '#DC2626', { size: 30 });
           return <Billboard key={`n${s.slot_id}`} tex={tex} at={[s.gx, PAVE + top + h * 0.7, s.gy]} h={closeUp ? h * 1.6 : h * 1.15} />;
         }
         return (
@@ -552,6 +554,21 @@ const Slots = memo(function Slots({ slots, extra, selectedId, closeUp, onSelect 
             )}
           </React.Fragment>
         );
+      })}
+
+      {!!measurementUnit && slots.filter(s => s.status !== 'occupied').map(s => {
+        const r = THREE.MathUtils.degToRad(s.rot);
+        const horizontal = s.gw > s.gh;
+        const long = Math.max(s.gw, s.gh);
+        const short = Math.min(s.gw, s.gh);
+        const direction = horizontal ? [Math.cos(r), Math.sin(r)] : [-Math.sin(r), Math.cos(r)];
+        let angle = s.rot + (horizontal ? 90 : 0);
+        while (angle > 90) angle -= 180;
+        while (angle < -90) angle += 180;
+        return <React.Fragment key={`dimension-${s.slot_id}`}>
+          {[{ label: `W ${(short / measurementUnit).toFixed(2)}m`, offset: s.accessible ? 0.24 : 0.20 }, { label: `L ${(long / measurementUnit).toFixed(2)}m`, offset: s.accessible ? 0.39 : 0.35 }].map(d => <GroundText key={d.label} text={d.label}
+            at={[s.gx + direction[0] * long * d.offset, s.gy + direction[1] * long * d.offset]} h={short * 0.20} deg={angle} color="#F8FAFC" />)}
+        </React.Fragment>;
       })}
 
       {slots.filter(s => s.incident).map(s => (
@@ -831,10 +848,10 @@ export default function ParkingLot3D(props: Props) {
       </div> : <p className="text-xs text-slate-500">Proposed campus parking layout</p>}
       {(measured || !props.data.measured_layout) && <button type="button" aria-pressed={showMeasurements} onClick={() => { if (!showMeasurements) setMeasured(true); setShowMeasurements(value => !value); }} className={`min-h-11 rounded-lg border px-3 py-2 text-xs font-semibold inline-flex items-center gap-2 ${showMeasurements ? 'border-[#080677] bg-blue-50 text-[#080677]' : 'border-slate-200 text-slate-600 hover:bg-blue-50'}`}><Ruler size={16} />{showMeasurements ? 'Hide measurements' : 'Show measurements'}</button>}
     </div>
-    {inventory && (measured ? <div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900"><strong>Parking layout:</strong> {inventory.car_drawn} full-size car bays arranged around the perimeter. The centre is reserved for access and manoeuvring. Proposed positions require campus confirmation.</div> : <p role="note" className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-relaxed text-blue-900"><strong>Inventory diagram:</strong> {inventory.car_drawn} car slots and {inventory.motorcycle_drawn} motorcycle slots. Car bay symbols are schematic, not to scale. Follow parking staff directions.</p>)}
-    {showMeasurements && <p className="text-xs text-blue-800">One metric scale in the measured proposal. Car bearings are assumed; measurements do not certify physical capacity.</p>}
+    {inventory && (measured ? <div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900"><strong>Parking layout:</strong> {inventory.car_drawn} full-size proposed car bays. The {inventory.car_configured}-car inventory target is retained; {inventory.car_configured - inventory.car_drawn} positions still need a measured layout. Use Show measurements to see each bay’s width × length. Campus confirmation is pending.</div> : <p role="note" className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-relaxed text-blue-900"><strong>Inventory diagram:</strong> {inventory.car_drawn} car slots and {inventory.motorcycle_drawn} motorcycle slots. Car bay symbols are schematic, not to scale. Follow parking staff directions.</p>)}
+    {showMeasurements && <p className="text-xs text-blue-800">Each proposed bay shows W (width) and L (length), in metres. Zoom in or open a slot for its size. Boundary angles and vehicle manoeuvres still require campus confirmation.</p>}
     {supported ? <WebGLBoundary fallback={fallback}><Lot {...props} data={activeData} showMeasurements={showMeasurements} /></WebGLBoundary> : fallback}
-    <ParkingMeasurements geometry={activeData.geometry} />
+    <ParkingMeasurements geometry={activeData.geometry} slots={activeData.slots} />
   </div>;
 }
 
@@ -921,8 +938,8 @@ function Lot({ viewMode = '3d', showMeasurements = false, data, highlight, selec
         <primitive object={sun} />
         <primitive object={sun.target} />
         <CameraRig ref={rig} home={home} onCloseUp={setCloseUp} />
-        <Site g={g} trays={stableTrays} onGate={gate} gateOnline={gateOnline} />
-        <Slots slots={slots} extra={data.extra_bays} selectedId={selectedId} closeUp={closeUp} onSelect={select} />
+        <Site g={g} trays={stableTrays} onGate={gate} gateOnline={gateOnline} showMeasurements={showMeasurements} />
+        <Slots slots={slots} extra={data.extra_bays} selectedId={selectedId} closeUp={closeUp} onSelect={select} measurementUnit={showMeasurements && g.measurement_basis?.scale === 'metric_proposal' ? g.measurement_basis.units_per_metre : undefined} />
         <Signs g={g} areas={data.areas ?? []} trays={stableTrays} />
         {showMeasurements && <Measurements geometry={g} />}
         <Markers slots={slots} highlight={highlight} recent={recent} />

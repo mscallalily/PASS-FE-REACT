@@ -6,7 +6,7 @@ import { PageHeader, Card, Badge, Button, Table, SearchBar, Select, Modal, StatC
 import { apiRequest } from '../../lib/apiClient';
 import { CAMPUS_TIMEZONE, formatCampusDateTime } from '../../lib/datetime';
 import { useLiveLoad, useLiveSync, POLL_MS, type Topic } from '../../lib/liveSync';
-import { MapData, MapSlot, slotFill } from '../../components/ParkingMap';
+import { MapData, MapSlot, slotFill, proposedSlotSize } from '../../components/ParkingMap';
 import ParkingLot3D from '../../components/ParkingLot3D';
 import ParkingAvailabilityMap from '../../components/ParkingAvailabilityMap';
 import { ParkingSquare, Car, CheckCircle, Wrench, AlertTriangle, LogIn, LogOut, RefreshCw, MapPin, Box, Map as MapIcon, Bike, Layers } from 'lucide-react';
@@ -883,6 +883,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
               {[
                 ['Slot number', selected.slot_code],
                 ['Parking area', selected.area_name],
+                ['Proposed bay size', proposedSlotSize(data, selected.slot_code) ?? 'No measured position established for this code'],
                 ['Slot status', selected.status === 'occupied' ? 'Occupied' : selected.status === 'maintenance' ? 'Maintenance / disabled' : 'Available'],
                 ...(selected.accessible ? [['Slot type', 'Accessible (PWD)']] : []),
                 ['Map position', data?.geometry.proposed_slot_codes?.includes(selected.slot_code) ? 'Proposed position · campus confirmation pending' : selected.placed ? 'Mapped on the proposed layout' : 'No confirmed map position'],

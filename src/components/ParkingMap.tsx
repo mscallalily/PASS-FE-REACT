@@ -82,6 +82,7 @@ export interface MapGeometry {
   measurement_basis?: {
     survey_verified: boolean; scale: string; source_image: string; note: string; pathway_note: string;
     car_source_image?: string; car_edges_m?: number[]; units_per_metre?: number;
+    capacity_review?: { reported_car_capacity: number; proposed_car_bays: number; unresolved_car_positions: number; survey_verified: boolean; note: string };
     motorcycle_proposal?: string; car_proposal?: string; circulation_note?: string;
     vehicle_measurements?: { car_width_m: number; car_length_m: number; car_mirrors_included: boolean; motorcycle_width_m: number; motorcycle_length_m: number; note: string };
     inventory?: { motorcycle_configured: number; motorcycle_drawn: number; car_configured: number; car_drawn: number };
@@ -96,6 +97,14 @@ export interface MapData {
   slots: MapSlot[];
   measured_layout?: { geometry: MapGeometry; positions: Record<string, { x: number; y: number; w: number; h: number; rotation: number }> };
   extra_bays: MapBay[];
+}
+
+/** Physical proposal dimensions, never the size of a schematic inventory symbol. */
+export function proposedSlotSize(data: MapData | null | undefined, code: string) {
+  const p = data?.measured_layout?.positions[code];
+  const unit = data?.measured_layout?.geometry.measurement_basis?.units_per_metre;
+  if (!p || !unit) return null;
+  return `${(Math.min(p.w, p.h) / unit).toFixed(2)} × ${(Math.max(p.w, p.h) / unit).toFixed(2)} m`;
 }
 
 // ----------------------------------------------------------------------------- helpers
@@ -231,7 +240,7 @@ export default function ParkingMap({ data, highlight, onSelect, focusArea, showM
           </g>
         ))}
 
-        {g.circulation?.map((clearance, index) => <polygon key={`clearance-${index}`} points={pts(clearance.polygon)} fill={clearance.kind === 'walkway' ? '#BFDBFE' : clearance.kind === 'car_approach' ? '#FDE68A' : '#CBD5E1'} fillOpacity={clearance.kind === 'car_approach' ? 0.7 : 1} stroke="#94A3B8" strokeWidth={0.3} />)}
+        {g.circulation?.filter(c => showMeasurements || ['walkway', 'car_approach'].includes(c.kind)).map((clearance, index) => <polygon key={`clearance-${index}`} points={pts(clearance.polygon)} fill={clearance.kind === 'walkway' ? '#BFDBFE' : clearance.kind === 'car_approach' ? '#FDE68A' : '#CBD5E1'} fillOpacity={clearance.kind === 'car_approach' ? 0.7 : 1} stroke="#94A3B8" strokeWidth={0.3} />)}
 
         {g.circulation_labels?.map(label => <text key={label.text} transform={`translate(${label.at[0]} ${label.at[1]}) rotate(${label.angle})`} textAnchor="middle" fontSize={5} fontWeight={700} fill="#475569">{label.text}</text>)}
 
@@ -312,6 +321,17 @@ export default function ParkingMap({ data, highlight, onSelect, focusArea, showM
                 fontSize={Math.min(5, short * 0.62)} fontWeight={700} fill={c.text} pointerEvents="none">
                 {s.accessible ? `♿ ${slotNumber(s.slot_code)}` : slotNumber(s.slot_code)}
               </text>
+              {showMeasurements && g.measurement_basis?.scale === 'metric_proposal' && [
+                { label: `W ${(Math.min(w, h) / (g.measurement_basis.units_per_metre || 8)).toFixed(2)}m`, offset: s.accessible ? 0.24 : 0.20 },
+                { label: `L ${(Math.max(w, h) / (g.measurement_basis.units_per_metre || 8)).toFixed(2)}m`, offset: s.accessible ? 0.39 : 0.35 },
+              ].map(d => {
+                const x = w > h ? w * d.offset : 0, y = w > h ? 0 : h * d.offset;
+                const direction = w > h ? 90 : 0;
+                const flip = s.rotation + direction > 90 || s.rotation + direction < -90 ? 180 : 0;
+                return <text key={d.label} x={x} y={y} textAnchor="middle" dominantBaseline="central"
+                  fontSize={short * 0.20} fontWeight={600} fill={c.text} pointerEvents="none"
+                  transform={`rotate(${direction + flip} ${x} ${y})`}>{d.label}</text>;
+              })}
               {showPlates && s.occupant && short >= 9 && (
                 <text transform={`rotate(${angle}) translate(0 ${Math.min(5, short * 0.62) * 0.95})`} textAnchor="middle" dominantBaseline="central"
                   fontSize={2.3} fill={c.text} pointerEvents="none">{s.occupant.plate_number}</text>
