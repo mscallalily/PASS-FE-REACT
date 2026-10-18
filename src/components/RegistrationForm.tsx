@@ -10,10 +10,10 @@ const CATEGORIES: { value: Category; label: string; hint: string }[] = [
   { value: 'employee', label: 'Employee', hint: '7-digit employee number' },
   { value: 'shs', label: 'SHS Student', hint: 'ID reviewed by PASS staff' },
 ];
-type FormState = { category: Category; department: string; contact: string; first_name: string; last_name: string; middle_initial: string; user_code: string; email: string; password: string; password_confirmation: string; agree: boolean; request_manual_review: boolean };
+type FormState = { category: Category; department: string; contact: string; first_name: string; last_name: string; middle_initial: string; suffix: string; user_code: string; email: string; password: string; password_confirmation: string; agree: boolean; request_manual_review: boolean };
 type IdCheck = { status: 'matched' | 'manual_review' | 'unavailable' | 'needs_correction'; receipt: string; fields: Partial<FormState>; field_confidence: Record<string, number>; checks: Record<string, { result: string; detail: string }>; reasons: string[]; current_year: number; note: string };
 type Department = { department_id: number; department_code: string; department_name: string };
-const INITIAL: FormState = { category: 'college', department: '', contact: '', first_name: '', last_name: '', middle_initial: '', user_code: '', email: '', password: '', password_confirmation: '', agree: false, request_manual_review: false };
+const INITIAL: FormState = { category: 'college', department: '', contact: '', first_name: '', last_name: '', middle_initial: '', suffix: '', user_code: '', email: '', password: '', password_confirmation: '', agree: false, request_manual_review: false };
 const ID_LABELS: Record<string, string> = { matched: 'Details matched', manual_review: 'Staff review needed', unavailable: 'Automatic reader unavailable', needs_correction: 'Needs correction' };
 const digits = (v: string) => v.replace(/[\s-]/g, '');
 function idError(category: Category, value: string, year: number) {
@@ -56,12 +56,12 @@ export default function RegistrationForm({ variant = 'web', onBackToLogin, onExi
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm(f => ({ ...f, [key]: value })); setErrors(e => ({ ...e, [key]: '' })); setMessage('');
-    if (['first_name', 'last_name', 'middle_initial', 'user_code'].includes(key)) setCheckEdited(true);
+    if (['first_name', 'last_name', 'middle_initial', 'suffix', 'user_code'].includes(key)) setCheckEdited(true);
   };
   const changeCategory = (category: Category) => {
     if (form.category === category) return;
     sequence.current++; request.current?.abort(); setReading(false); setCheck(null); setFile(null); setCheckEdited(false);
-    setForm(f => ({ ...f, category, department: category === 'shs' ? 'Senior High School' : '', user_code: '', first_name: '', last_name: '', middle_initial: '', request_manual_review: false })); setErrors({}); setMessage('');
+    setForm(f => ({ ...f, category, department: category === 'shs' ? 'Senior High School' : '', user_code: '', first_name: '', last_name: '', middle_initial: '', suffix: '', request_manual_review: false })); setErrors({}); setMessage('');
   };
   const changeFile = (value: File | null) => {
     sequence.current++; request.current?.abort(); setReading(false); setForm(f => ({ ...f, request_manual_review: false })); setFile(value); setCheck(null); setCheckEdited(false); setMessage(''); setErrors(e => ({ ...e, school_id_file: '' }));
@@ -76,7 +76,7 @@ export default function RegistrationForm({ variant = 'web', onBackToLogin, onExi
     body.append('registration_category', current.category); body.append('school_id_file', file);
     if (!apply && check?.receipt) body.append('id_check_receipt', check.receipt);
     if (!apply) body.append('request_manual_review', current.request_manual_review ? '1' : '0');
-    if (!apply) for (const key of ['first_name', 'last_name', 'middle_initial', 'user_code'] as const) body.append(key, current[key].trim());
+    if (!apply) for (const key of ['first_name', 'last_name', 'middle_initial', 'suffix', 'user_code'] as const) body.append(key, current[key].trim());
     try {
       const response = await fetch('/api/registration/id-check', { method: 'POST', headers: { Accept: 'application/json' }, body, signal: controller.signal });
       const result = await response.json().catch(() => ({}));
@@ -84,7 +84,7 @@ export default function RegistrationForm({ variant = 'web', onBackToLogin, onExi
       if (seq !== sequence.current) return null;
       const data = result.data as IdCheck; setCheck(data); setYear(data.current_year); setCheckEdited(false);
       if (apply) {
-        setForm(f => ({ ...f, ...Object.fromEntries(Object.entries(data.fields).filter(([key, value]) => ['first_name', 'last_name', 'middle_initial', 'user_code'].includes(key) && value)) }));
+        setForm(f => ({ ...f, ...Object.fromEntries(Object.entries(data.fields).filter(([key, value]) => ['first_name', 'last_name', 'middle_initial', 'suffix', 'user_code'].includes(key) && value)) }));
         setMessage('Suggested details were added below. Review every field against your ID; all details remain editable.');
       }
       return data;
@@ -106,6 +106,7 @@ export default function RegistrationForm({ variant = 'web', onBackToLogin, onExi
       if (!file) e.school_id_file = 'Upload the front of your institutional ID.';
       if (!form.first_name.trim()) e.first_name = 'Enter your first name.';
       if (!form.last_name.trim()) e.last_name = 'Enter your surname.';
+      if (form.suffix && !/^(?:Jr\.?|Sr\.?|I|II|III|IV|V|VI|VII|VIII|IX|X)$/i.test(form.suffix)) e.suffix = 'Select your name suffix.';
       if (form.middle_initial && !/^\p{L}\.?$/u.test(form.middle_initial.trim())) e.middle_initial = 'Use one initial, with an optional period.';
       const problem = idError(form.category, form.user_code, year); if (problem) e.user_code = problem;
       if (form.category !== 'shs' && !check?.receipt) e.id_check_receipt = 'Read the current ID before continuing.';
@@ -126,7 +127,7 @@ export default function RegistrationForm({ variant = 'web', onBackToLogin, onExi
     setBusy(true); setMessage('');
     try {
       const body = new FormData();
-      for (const key of ['first_name', 'last_name', 'middle_initial', 'user_code', 'email', 'password', 'password_confirmation', 'department', 'contact'] as const) body.append(key === 'contact' ? 'contact_number' : key, ['password', 'password_confirmation'].includes(key) ? form[key] : form[key].trim());
+      for (const key of ['first_name', 'last_name', 'middle_initial', 'suffix', 'user_code', 'email', 'password', 'password_confirmation', 'department', 'contact'] as const) body.append(key === 'contact' ? 'contact_number' : key, ['password', 'password_confirmation'].includes(key) ? form[key] : form[key].trim());
       body.append('registration_category', form.category); body.append('agree', '1'); body.append('request_manual_review', form.request_manual_review ? '1' : '0'); body.append('school_id_file', file!);
       if (check?.receipt) body.append('id_check_receipt', check.receipt);
       const response = await fetch('/api/register', { method: 'POST', headers: { Accept: 'application/json' }, body });
@@ -134,7 +135,7 @@ export default function RegistrationForm({ variant = 'web', onBackToLogin, onExi
       if (!response.ok) {
         const e: Record<string, string> = {}; for (const [key, values] of Object.entries(result.errors ?? {})) e[key === 'contact_number' ? 'contact' : key] = Array.isArray(values) ? values[0] : String(values);
         setErrors(e);
-        if (Object.keys(e).some(k => ['first_name', 'last_name', 'middle_initial', 'user_code', 'school_id_file', 'id_check_receipt'].includes(k))) setStep(1);
+        if (Object.keys(e).some(k => ['first_name', 'last_name', 'middle_initial', 'suffix', 'user_code', 'school_id_file', 'id_check_receipt'].includes(k))) setStep(1);
         else if (e.email || e.password) setStep(2);
         else if (e.department || e.contact) setStep(0);
         throw new Error(Object.values(e).join(' ') || result.message || 'Registration could not be completed.');
@@ -143,7 +144,7 @@ export default function RegistrationForm({ variant = 'web', onBackToLogin, onExi
     } catch (e) { setMessage(e instanceof Error ? e.message : 'Cannot reach the server. Try again.'); }
     finally { setBusy(false); }
   };
-  if (submitted) return <EmailCodeVerification initialEmail={form.email.trim()} notice={emailSent ? 'Registration saved. Verify your email next. Your account remains pending administrator approval.' : 'Registration saved, but the email could not be sent. Use Send / resend code to retry.'} />;
+  if (submitted) return <EmailCodeVerification initialEmail={form.email.trim()} notice={emailSent ? 'Registration saved. Verify your email next. A matching ID activates your account after email verification. Unclear or disputed IDs stay pending staff review.' : 'Registration saved, but the email could not be sent. Use Send / resend code to retry.'} />;
   const inputClass = 'w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]';
   const field = (label: string, key: keyof FormState, placeholder = '', type = 'text') => <div key={key}>
     <label htmlFor={`registration-${key}`} className="mb-1.5 block text-sm font-medium text-slate-700">{label}</label>
@@ -170,12 +171,14 @@ export default function RegistrationForm({ variant = 'web', onBackToLogin, onExi
         <FileUpload label={`${categoryLabel} ID (front)`} file={file} onChange={changeFile} error={errors.school_id_file} onError={msg => setErrors(e => ({ ...e, school_id_file: msg }))} />
         {form.category !== 'shs' && file && <button type="button" disabled={reading || busy} onClick={() => void readId(true)} className="flex min-h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-[#2563EB] disabled:opacity-50">{reading ? <Loader2 size={17} className="animate-spin" /> : <RefreshCw size={17} />}{reading ? 'Reading your ID…' : 'Read ID again'}</button>}
         {reading && <p role="status" className="text-sm text-blue-700">Extracting suggested names and ID number. Please wait.</p>}
-        {check && !reading && <div role="status" className={`rounded-xl border p-3 text-sm ${check.status === 'matched' && !checkEdited ? 'border-green-200 bg-green-50 text-green-800' : check.status === 'needs_correction' && !checkEdited ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}><p className="font-semibold">{checkEdited ? 'Edited details will be checked again' : ID_LABELS[check.status]}</p>{!checkEdited && check.reasons.map(r => <p key={r} className="mt-1">{r}</p>)}{check.status === 'matched' && !checkEdited && <p className="mt-1">Review the suggestions below before continuing. This does not activate your account.</p>}</div>}
+        {check && !reading && <div role="status" className={`rounded-xl border p-3 text-sm ${check.status === 'matched' && !checkEdited ? 'border-green-200 bg-green-50 text-green-800' : check.status === 'needs_correction' && !checkEdited ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}><p className="font-semibold">{checkEdited ? 'Edited details will be checked again' : ID_LABELS[check.status]}</p>{!checkEdited && check.reasons.map(r => <p key={r} className="mt-1">{r}</p>)}{check.status === 'matched' && !checkEdited && <p className="mt-1">Review the suggestions below. Your account activates only after submission and email verification.</p>}</div>}
         {check && (check.status === 'needs_correction' || form.request_manual_review) && <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><input type="checkbox" checked={form.request_manual_review} onChange={e => set('request_manual_review', e.target.checked)} className="mt-1 h-4 w-4 shrink-0" /><span>The OCR reading is wrong and my details are correct. Request staff review. My account will remain pending.</span></label>}
         {field('ID Number', 'user_code', form.category === 'college' ? '2026-00123' : form.category === 'employee' ? '022-0001' : 'ID number on your card')}
         <p className="-mt-3 text-xs text-slate-500">{form.category === 'college' ? `9 digits. First four digits identify the start year; no later than ${year}.` : form.category === 'employee' ? `7 digits. The second and third digits identify the year (e.g. 022 → 2022); no later than ${year}. Keep the first zero.` : 'Enter the printed SHS ID number. No college/employee number pattern is applied.'}</p>
         {field('First Name', 'first_name')}
-        <div className="grid grid-cols-[minmax(0,1fr)_100px] gap-3">{field('Surname', 'last_name')}{field('M.I. (optional)', 'middle_initial', 'S.')}</div>
+        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_100px] gap-3">{field('Surname', 'last_name')}{field('M.I. (optional)', 'middle_initial', 'S.')}</div>
+        <div><label htmlFor="registration-suffix" className="block text-sm font-medium text-slate-700">Suffix (optional)</label><select id="registration-suffix" value={form.suffix} disabled={reading || busy} onChange={e => set('suffix', e.target.value)} className={`${inputClass} mt-1.5`}><option value="">None</option>{['Jr.', 'Sr.', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'].map(s => <option key={s}>{s}</option>)}</select></div>
+        <p className="-mt-3 text-xs text-slate-500">Keep your complete surname (e.g. Dela Cruz). Put Jr., Sr. or a Roman numeral in Suffix, not in the surname or middle initial.</p>
         <p className="text-xs text-slate-500 flex items-start gap-2"><ShieldCheck size={15} className="shrink-0 mt-0.5" />All suggested details are editable. Unclear text or an unavailable reader requires staff review. Changing a field does not override the server check.</p>
         {errors.id_check_receipt && <p role="alert" className="text-sm text-red-600">{errors.id_check_receipt}</p>}
       </>}
@@ -184,12 +187,12 @@ export default function RegistrationForm({ variant = 'web', onBackToLogin, onExi
         {field('Password', 'password', 'At least 8 characters', showPassword ? 'text' : 'password')}
         {field('Confirm Password', 'password_confirmation', 'Repeat password', showPassword ? 'text' : 'password')}
         <button type="button" onClick={() => setShowPassword(v => !v)} className="inline-flex min-h-11 items-center gap-2 text-sm text-[#2563EB]">{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}{showPassword ? 'Hide passwords' : 'Show passwords'}</button>
-        <p className="text-sm text-slate-500">After submission, enter the six-digit code sent to this email. Your account remains pending administrator approval.</p>
+        <p className="text-sm text-slate-500">After submission, enter the six-digit code sent to this email. A matching ID activates your account after email verification. Unclear or disputed IDs stay pending staff review.</p>
       </>}
       {step === 3 && <>
         <dl className="divide-y divide-slate-100">{[
           ['User Type', categoryLabel], ['Department / Office', form.department], ['Contact', form.contact],
-          ['Name', [form.first_name, form.middle_initial, form.last_name].filter(Boolean).join(' ')], ['ID Number', form.user_code], ['ID File', file?.name],
+          ['Name', [form.first_name, form.middle_initial, form.last_name, form.suffix].filter(Boolean).join(' ')], ['ID Number', form.user_code], ['ID File', file?.name],
           ['Document Check', form.category === 'shs' ? 'Staff review needed' : check ? ID_LABELS[check.status] : 'Not checked'], ['Email', form.email],
         ].map(([label, value]) => <div key={label} className="grid grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)] gap-3 py-3 text-sm"><dt className="text-slate-500">{label}</dt><dd className="break-words text-right font-medium text-slate-800 [overflow-wrap:anywhere]">{value || '—'}</dd></div>)}</dl>
         <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">Vehicle registration, vehicle photos and driver’s license submission are available after account approval, inside your dashboard.</p>
