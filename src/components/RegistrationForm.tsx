@@ -15,6 +15,25 @@ type IdCheck = { status: 'matched' | 'manual_review' | 'unavailable' | 'needs_co
 type Department = { department_id: number; department_code: string; department_name: string };
 const INITIAL: FormState = { category: 'college', department: '', contact: '', first_name: '', last_name: '', middle_initial: '', suffix: '', user_code: '', email: '', password: '', password_confirmation: '', agree: false, request_manual_review: false };
 const ID_LABELS: Record<string, string> = { matched: 'Details matched', manual_review: 'Staff review needed', unavailable: 'Automatic reader unavailable', needs_correction: 'Needs correction' };
+const CHECK_LABELS: Record<string, string> = { id_format: 'ID format', image_quality: 'Image quality', school: 'DYCI school text', user_code: 'ID number', first_name: 'First name', last_name: 'Surname', middle_initial: 'Middle initial', suffix: 'Suffix' };
+function IdCheckDetails({ check }: { check: IdCheck }) {
+  const needsReview = Object.entries(check.checks).filter(([, c]) => c.result !== 'pass');
+  const confidence = (key: string) => {
+    const value = check.field_confidence[key === 'middle_initial' ? 'first_name' : key];
+    return typeof value === 'number' && Number.isFinite(value) ? ` · OCR confidence ${value.toFixed(1)}%` : '';
+  };
+  return <div className="mt-3 space-y-3 text-xs leading-relaxed">
+    {needsReview.length > 0 && <div className="rounded-lg border border-amber-200 bg-white/70 p-3 text-slate-700">
+      <p className="font-semibold text-amber-900">Checks that need attention</p>
+      <ul className="mt-2 space-y-2">{needsReview.map(([key, value]) => <li key={key}><span className="font-semibold">{CHECK_LABELS[key] || key}{confidence(key)}</span><span className="block">{value.detail}</span></li>)}</ul>
+      <p className="mt-2 text-slate-500">Correct text can still need review when OCR confidence, image quality or school text cannot be confirmed. This is not an account rejection.</p>
+    </div>}
+    <details className="rounded-lg border border-current/15 p-3">
+      <summary className="cursor-pointer font-semibold">View all ID checks</summary>
+      <ul className="mt-2 space-y-2">{Object.entries(check.checks).map(([key, value]) => <li key={key}><span className="font-semibold">{value.result === 'pass' ? 'Passed' : value.result === 'fail' ? 'Correction needed' : 'Needs review'} · {CHECK_LABELS[key] || key}{confidence(key)}</span><span className="block">{value.detail}</span></li>)}</ul>
+    </details>
+  </div>;
+}
 const digits = (v: string) => v.replace(/[\s-]/g, '');
 function idError(category: Category, value: string, year: number) {
   if (category === 'shs') return /^[A-Za-z0-9][A-Za-z0-9 -]{0,49}$/.test(value.trim()) ? '' : 'Enter the ID number printed on your SHS ID.';
@@ -171,7 +190,7 @@ export default function RegistrationForm({ variant = 'web', onBackToLogin, onExi
         <FileUpload label={`${categoryLabel} ID (front)`} file={file} onChange={changeFile} error={errors.school_id_file} onError={msg => setErrors(e => ({ ...e, school_id_file: msg }))} />
         {form.category !== 'shs' && file && <button type="button" disabled={reading || busy} onClick={() => void readId(true)} className="flex min-h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-[#2563EB] disabled:opacity-50">{reading ? <Loader2 size={17} className="animate-spin" /> : <RefreshCw size={17} />}{reading ? 'Reading your ID…' : 'Read ID again'}</button>}
         {reading && <p role="status" className="text-sm text-blue-700">Extracting suggested names and ID number. Please wait.</p>}
-        {check && !reading && <div role="status" className={`rounded-xl border p-3 text-sm ${check.status === 'matched' && !checkEdited ? 'border-green-200 bg-green-50 text-green-800' : check.status === 'needs_correction' && !checkEdited ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}><p className="font-semibold">{checkEdited ? 'Edited details will be checked again' : ID_LABELS[check.status]}</p>{!checkEdited && check.reasons.map(r => <p key={r} className="mt-1">{r}</p>)}{check.status === 'matched' && !checkEdited && <p className="mt-1">Review the suggestions below. Your account activates only after submission and email verification.</p>}</div>}
+        {check && !reading && <div role="status" className={`rounded-xl border p-3 text-sm ${check.status === 'matched' && !checkEdited ? 'border-green-200 bg-green-50 text-green-800' : check.status === 'needs_correction' && !checkEdited ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}><p className="font-semibold">{checkEdited ? 'Edited details will be checked again' : ID_LABELS[check.status]}</p>{!checkEdited && check.reasons.filter(r => !Object.values(check.checks).some(c => c.result !== 'pass' && c.detail === r)).map(r => <p key={r} className="mt-1">{r}</p>)}{!checkEdited && <IdCheckDetails check={check} />}{check.status === 'matched' && !checkEdited && <p className="mt-1">Review the suggestions below. Your account activates only after submission and email verification.</p>}</div>}
         {check && (check.status === 'needs_correction' || form.request_manual_review) && <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><input type="checkbox" checked={form.request_manual_review} onChange={e => set('request_manual_review', e.target.checked)} className="mt-1 h-4 w-4 shrink-0" /><span>The OCR reading is wrong and my details are correct. Request staff review. My account will remain pending.</span></label>}
         {field('ID Number', 'user_code', form.category === 'college' ? '2026-00123' : form.category === 'employee' ? '022-0001' : 'ID number on your card')}
         <p className="-mt-3 text-xs text-slate-500">{form.category === 'college' ? `9 digits. First four digits identify the start year; no later than ${year}.` : form.category === 'employee' ? `7 digits. The second and third digits identify the year (e.g. 022 → 2022); no later than ${year}. Keep the first zero.` : 'Enter the printed SHS ID number. No college/employee number pattern is applied.'}</p>
