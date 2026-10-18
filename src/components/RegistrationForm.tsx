@@ -11,7 +11,7 @@ const CATEGORIES: { value: Category; label: string; hint: string }[] = [
   { value: 'shs', label: 'SHS Student', hint: 'ID reviewed by PASS staff' },
 ];
 type FormState = { category: Category; department: string; contact: string; first_name: string; last_name: string; middle_initial: string; suffix: string; user_code: string; email: string; password: string; password_confirmation: string; agree: boolean; request_manual_review: boolean };
-type IdCheck = { status: 'matched' | 'manual_review' | 'unavailable' | 'needs_correction'; receipt: string; fields: Partial<FormState>; field_confidence: Record<string, number>; checks: Record<string, { result: string; detail: string }>; reasons: string[]; current_year: number; note: string };
+type IdCheck = { status: 'matched' | 'manual_review' | 'unavailable' | 'needs_correction'; receipt: string; fields: Partial<FormState>; field_confidence: Record<string, number>; checks: Record<string, { result: string; detail: string; advisory?: boolean }>; reasons: string[]; current_year: number; note: string };
 type Department = { department_id: number; department_code: string; department_name: string };
 const INITIAL: FormState = { category: 'college', department: '', contact: '', first_name: '', last_name: '', middle_initial: '', suffix: '', user_code: '', email: '', password: '', password_confirmation: '', agree: false, request_manual_review: false };
 const ID_LABELS: Record<string, string> = { matched: 'Details matched', manual_review: 'Staff review needed', unavailable: 'Automatic reader unavailable', needs_correction: 'Needs correction' };
@@ -26,11 +26,11 @@ function IdCheckDetails({ check }: { check: IdCheck }) {
     {needsReview.length > 0 && <div className="rounded-lg border border-amber-200 bg-white/70 p-3 text-slate-700">
       <p className="font-semibold text-amber-900">Checks that need attention</p>
       <ul className="mt-2 space-y-2">{needsReview.map(([key, value]) => <li key={key}><span className="font-semibold">{CHECK_LABELS[key] || key}{confidence(key)}</span><span className="block">{value.detail}</span></li>)}</ul>
-      <p className="mt-2 text-slate-500">Correct text can still need review when OCR confidence, image quality or school text cannot be confirmed. This is not an account rejection.</p>
+      <p className="mt-2 text-slate-500">Review is needed for the checks listed above. Overall sharpness alone does not block a readable ID whose required text checks pass. This is not an account rejection.</p>
     </div>}
     <details className="rounded-lg border border-current/15 p-3">
       <summary className="cursor-pointer font-semibold">View all ID checks</summary>
-      <ul className="mt-2 space-y-2">{Object.entries(check.checks).map(([key, value]) => <li key={key}><span className="font-semibold">{value.result === 'pass' ? 'Passed' : value.result === 'fail' ? 'Correction needed' : 'Needs review'} · {CHECK_LABELS[key] || key}{confidence(key)}</span><span className="block">{value.detail}</span></li>)}</ul>
+      <ul className="mt-2 space-y-2">{Object.entries(check.checks).map(([key, value]) => <li key={key}><span className="font-semibold">{value.result === 'pass' ? (value.advisory ? 'Passed with advisory' : 'Passed') : value.result === 'fail' ? 'Correction needed' : 'Needs review'} · {CHECK_LABELS[key] || key}{confidence(key)}</span><span className="block">{value.detail}</span></li>)}</ul>
     </details>
   </div>;
 }
