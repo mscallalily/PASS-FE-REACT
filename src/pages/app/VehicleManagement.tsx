@@ -814,7 +814,7 @@ export default function VehicleManagement() {
         ) : (
           <div className="space-y-4">
             {(license.status === 'pending_review' || license.status === 'processing') && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">Your license is still pending review. The vehicle cannot be authorized until it is verified.</p>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">Your license document check is unfinished. Retry the automatic check in Driver & License, or contact PASS staff. The vehicle cannot be authorized until the license submission is approved.</p>
             )}
             <Input label="Plate Number" placeholder="ABC-1234" value={vehicleForm.plate_number} onChange={e => setVehicleForm(f => ({ ...f, plate_number: e.target.value.toUpperCase() }))} disabled={registerBusy} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

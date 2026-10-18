@@ -21,14 +21,13 @@ The car parcel shares the **8.80m end of the motorcycle parcel**, which the old 
 
 | Row | Codes | Regular bays |
 | --- | --- | ---: |
-| North perimeter | C-01–C-17 | 17 |
+| North perimeter | C-01–C-17, C-42 | 18 |
 | Interior row A | C-18–C-32 | 15 |
 | Interior row B | C-33–C-40 | 8 |
 | South row | C-41, C-43–C-45 | 4 |
-| Accessible proposal | C-42 | 1 accessible bay |
 | Inventory without measured positions | C-46–C-55 | 10 unresolved |
 
-Each of the 44 regular bays is **2.50 × 5.00m**. C-42 is **4.00 × 5.00m** with a **1.20m front walkway**. All proposed bays have their own frontage; no tandem or blocked bays are used. North-perimeter sections use separate spacing grids beside the accessible bay rather than wasting a regular position to maintain one global grid.
+All 45 proposed car bays, including C-42, are regular **2.50 × 5.00m** bays. The prototype has no PWD eligibility or reserved-bay allocation workflow. The C-42 PWD designation has been removed at the owner’s request; this does not settle campus physical accessibility requirements. All proposed bays have their own frontage; no tandem or blocked bays are used. North-perimeter sections use separate spacing grids around C-42 rather than wasting a regular position to maintain one global grid.
 
 Internal car frontages are **4.50m** deep. This is a **tight concept design allowance**, not a claim of a legal standard aisle or suitability for every vehicle. The widest owner-measured car body is 2.0447m, excluding mirrors, and the longest is 4.7752m. Mirrors, wheelbase, steering lock and actual reversing/turning movements were not measured. A connected 3.06m geometric envelope does not prove those vehicles can complete every turn. Validate the narrower aisles, end manoeuvres and the estimated boundary on site before marking bays.
 

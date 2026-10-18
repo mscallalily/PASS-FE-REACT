@@ -58,6 +58,9 @@ const CHECK_LABEL: Record<string, string> = {
   license_number: 'License number matches',
   expiry_date: 'Expiration date matches',
   name: 'Name matches registration',
+  license_type: 'License type matches',
+  ocr_confidence: 'OCR reading confidence',
+  document_format: 'Document format',
 };
 
 const CHECK_ICON: Record<CheckResult, React.ReactNode> = {
@@ -194,6 +197,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
           {r.verification_status === 'processing' && <Loader2 size={12} className="mr-1 animate-spin" />}
           {LICENSE_STATUS_LABEL[r.verification_status]}
         </Badge>
+        {r.verification_status === 'verified' && r.verification_source === 'automatic' && <span className="text-[10px] font-semibold uppercase tracking-wide text-green-700">Auto-approved</span>}
         {r.verification_status === 'needs_correction' && r.verification_source === 'automatic' && (
           <span className="text-[10px] font-semibold uppercase tracking-wide text-red-500">Auto-returned</span>
         )}
@@ -208,12 +212,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
     if (r.verification_status === 'processing') return <span className="text-xs text-slate-400">Checking…</span>;
     return (
       <div className="flex gap-2">
-        {r.verification_status === 'pending_review' && (
-          <>
-            <Button size="sm" variant="outline" onClick={() => startDecision(r, 'verified')}>Verify</Button>
-            <Button size="sm" variant="danger" onClick={() => startDecision(r, 'needs_correction')}>Needs correction</Button>
-          </>
-        )}
+        {r.verification_status === 'pending_review' && r.has_file && <Button size="sm" variant="outline" onClick={() => recheck(r)}>Re-run check</Button>}
         <Button size="sm" variant="ghost" onClick={() => openDetails(r)}>Details</Button>
       </div>
     );
@@ -224,7 +223,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
   return (
     <Card>
       <div className="p-5 border-b border-slate-50 space-y-3">
-        <p className="text-sm text-slate-500">Each upload is checked automatically. Clear failures are returned to the user with a reason; everything else waits here for review. The automatic check is preliminary and cannot confirm authenticity, so verify each license against the uploaded document. Verifying a license does not authorize a vehicle or assign an RFID; those are separate steps.</p>
+        <p className="text-sm text-slate-500">Uploads receive an automatic document decision. All required OCR, image-quality and matching checks must pass for automatic approval; failed or unreadable submissions are returned with correction reasons. An unavailable reading service leaves the submission unapproved and retryable. Staff exception reviews are recorded separately. This does not confirm authenticity with the LTO or grant vehicle/RFID access.</p>
         <SearchBar value={search} onChange={setSearch} placeholder="Search by owner, ID, or license number...">
           <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="">All Status</option>
@@ -306,6 +305,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
             <div className="space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant={STATUS_VARIANT[selected.verification_status]}>{LICENSE_STATUS_LABEL[selected.verification_status]}</Badge>
+                {selected.verification_source === 'automatic' && selected.verification_status === 'verified' && <span className="text-xs font-semibold text-green-700">Approved automatically</span>}
                 {selected.verification_source === 'automatic' && selected.verification_status === 'needs_correction' && (
                   <span className="text-xs font-semibold text-red-500">Automatically returned</span>
                 )}
@@ -313,7 +313,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
 
               {selected.verification_reason && (
                 <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                  <p className="text-xs font-semibold text-red-700 mb-1">Correction reason sent to the user</p>
+                  <p className="text-xs font-semibold text-red-700 mb-1">Decision reason sent to the user</p>
                   <ul className="list-disc pl-5 text-sm text-red-700 space-y-0.5">
                     {selected.verification_reason.split('\n').filter(Boolean).map(r => <li key={r}>{r}</li>)}
                   </ul>
@@ -321,7 +321,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
               )}
 
               <div>
-                <h4 className="text-sm font-semibold text-[#080677] mb-2">Automatic preliminary check</h4>
+                <h4 className="text-sm font-semibold text-[#080677] mb-2">Automatic document decision</h4>
                 {!ocr ? (
                   <p className="text-sm text-slate-400">{selected.verification_status === 'processing' ? 'The check is running…' : 'No automatic check result is stored for this submission.'}</p>
                 ) : (
@@ -357,20 +357,23 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
               </div>
 
               {selected.verification_status !== 'processing' && (
-                <div className="flex gap-2 flex-wrap pt-2 border-t border-slate-100">
+                <details className="pt-2 border-t border-slate-100">
+                  <summary className="cursor-pointer text-sm font-medium text-slate-600">Staff exception review</summary>
+                  <div className="mt-3 flex gap-2 flex-wrap">
                   {selected.verification_status !== 'verified' && (
-                    <Button size="sm" variant="success" onClick={() => startDecision(selected, 'verified')}>Mark verified</Button>
+                    <Button size="sm" variant="success" onClick={() => startDecision(selected, 'verified')}>Approve manually</Button>
                   )}
                   {selected.verification_status !== 'needs_correction' && (
                     <Button size="sm" variant="danger" onClick={() => startDecision(selected, 'needs_correction')}>Return for correction</Button>
                   )}
                   {selected.verification_status !== 'pending_review' && (
-                    <Button size="sm" variant="outline" onClick={() => startDecision(selected, 'pending_review')}>Move to pending review</Button>
+                    <Button size="sm" variant="outline" onClick={() => startDecision(selected, 'pending_review')}>Hold for review</Button>
                   )}
                   {selected.verification_status !== 'verified' && selected.has_file && (
                     <Button size="sm" variant="ghost" onClick={() => recheck(selected)}><RefreshCw size={14} /> Re-run automatic check</Button>
                   )}
-                </div>
+                  </div>
+                </details>
               )}
             </div>
           </div>
@@ -381,21 +384,21 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
       <Modal
         open={!!decision}
         onClose={() => !busy && setDecision(null)}
-        title={decision?.decision === 'verified' ? 'Verify License' : decision?.decision === 'needs_correction' ? 'Return for Correction' : 'Move to Pending Review'}
+        title={decision?.decision === 'verified' ? 'Staff Exception Approval' : decision?.decision === 'needs_correction' ? 'Return for Correction' : 'Move to Pending Review'}
         size="sm"
       >
         {decision && (
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
               {decision.decision === 'verified'
-                ? `Confirm that you checked ${decision.row.owner_name || 'this user'}'s license against the uploaded document and it is authentic and matches the registration.`
+                ? `Record a staff exception approval for ${decision.row.owner_name || 'this user'} after inspecting the uploaded document. Explain your decision below. This does not establish official LTO authenticity.`
                 : decision.decision === 'needs_correction'
                   ? `Return ${decision.row.owner_name || 'this user'}'s submission. They will be notified and asked to resubmit.`
                   : 'Move this submission back to the pending review queue.'}
             </p>
-            {decision.decision === 'needs_correction' && (
+            {decision && (
               <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1.5">What needs to be corrected?</label>
+                <label className="text-sm font-medium text-slate-700 block mb-1.5">{decision.decision === 'needs_correction' ? 'What needs to be corrected?' : 'Reason for the staff exception'}</label>
                 <textarea
                   value={reason}
                   onChange={e => setReason(e.target.value)}
@@ -417,9 +420,9 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
               <Button
                 variant={decision.decision === 'needs_correction' ? 'danger' : decision.decision === 'verified' ? 'success' : 'primary'}
                 onClick={confirmDecision}
-                disabled={busy || (decision.decision === 'needs_correction' && !reason.trim())}
+                disabled={busy || !reason.trim()}
               >
-                {busy ? 'Saving...' : decision.decision === 'verified' ? 'Verify' : decision.decision === 'needs_correction' ? 'Return to user' : 'Move'}
+                {busy ? 'Saving...' : decision.decision === 'verified' ? 'Approve exception' : decision.decision === 'needs_correction' ? 'Return to user' : 'Move'}
               </Button>
             </div>
           </div>
