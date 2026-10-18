@@ -1,48 +1,61 @@
-# PASS marked parking lineup — 18 October 2026
+# PASS independent parking proposal — 18 October 2026
 
-The owner-marked sketch is the row-placement reference: red car rows, yellow motorcycle parcel, green shared access. Its cumulative ruler marks are not parcel dimensions. The supplied car edges and 30.96 × 8.80 m motorcycle parcel are retained; the separate shared road remains 3.06 m.
+The corrected owner-numbered outline produces **45 full-size independent proposed car positions**. This is a conditional geometric arrangement, not a surveyed capacity, proven maximum or turning certification. It supersedes the previous 32-position arrangement and its incorrect interpretation of all eight supplied values as consecutive boundary edges.
 
-The revised arrangement contains **32 full-size proposed car bays**. It follows the long perimeter row and two interior strokes, with a lower-perimeter bay where the geometry permits. It does not fill every red stroke: additional perimeter boxes would block access frontages or the lower aisle. This is a rearrangement of the previous 32-bay candidate, not an increase in certified physical capacity.
+## Corrected dimensions
 
-| Row | Existing codes | Clear bay width × length |
-| --- | --- | --- |
-| North perimeter, 15 bays | C-01–C-15 | 2.50 × 5.00 m |
-| Interior row A, 13 bays | C-16–C-28 | 2.50 × 5.00 m |
-| Shorter interior row B, 2 parallel bays | C-29, C-30 | 2.15 × 6.00 m |
-| Lower perimeter, 1 bay | C-31 | 2.50 × 5.00 m |
-| Proposed accessible position, 1 bay | C-42 | 4.00 × 5.00 m, plus 1.20 m front walkway |
-| Car inventory without a measured position | 23 codes | No invented dimensions or positions |
+| Owner number | Segment | Metres |
+| --- | --- | ---: |
+| 1 | Right boundary | 18.42 |
+| 2 | Lower-right boundary | 12.04 |
+| 3 | Lower pink/notch segment | 2.60 |
+| 4 | Lower diagonal | 20.18 |
+| 5 | Long left diagonal, starting at the motorcycle end | 33.37 |
+| 6 | Top boundary | 49.26 |
 
-The two short-row bays use the parallel reference dimensions, rather than miniature perpendicular symbols. Perpendicular frontages have 6.00 m clear depth; parallel frontages have a proposed 3.60 m depth. The accessible frontage is also wholly inside the model parcel. The western passage connects the shared approach to the lower aisle. A first arrangement of 36 rectangles failed connection/parcel-clearance checks and was rejected.
+The upper pink junction is **3.36m**. The owner corrected the earlier lower-pink 3.00m to **2.60m**, the same segment as #3; it is counted once. Neither 3.00m nor an additional duplicate opening is included in the perimeter.
 
-All **55 car + 84 motorcycle = 139 inventory records** remain. Operational capacity, statuses, active parking transactions, gate state and entry policies are unchanged. The optional Inventory diagram shows every code schematically; it does not establish physical fit for 55 independent car bays.
+The car parcel shares the **8.80m end of the motorcycle parcel**, which the old model omitted. This restores the longer left-side connection. The remaining short NW return is estimated at **4.66m from the image**, not measured by the owner. All bearings are reconstructed from the image. Consequently, the implied polygon area and bay count are conditional on those estimates. They must not be presented as surveyed land area or approved physical capacity. See `parking-boundary-input-review.md` and the numbered source image.
 
-## Measurements and interpretation
+## Row arrangement
 
-Regular car: 2.50 × 5.00 m; parallel car: 2.15 × 6.00 m. These use Philippine NBCP bay-dimension references. C-42 uses the 4.00 × 5.00 m accessible reference; its location and retaining one code do not establish required accessible-space count or accessible-route compliance.
+| Row | Codes | Regular bays |
+| --- | --- | ---: |
+| North perimeter | C-01–C-17 | 17 |
+| Interior row A | C-18–C-32 | 15 |
+| Interior row B | C-33–C-40 | 8 |
+| South row | C-41, C-43–C-45 | 4 |
+| Accessible proposal | C-42 | 1 accessible bay |
+| Inventory without measured positions | C-46–C-55 | 10 unresolved |
 
-Motorcycles retain 84 compact 1.00 × 2.00 m bays, three rows of 28, with 1.20 m walk/push aisles and a 2.56 m end aisle. This is a compact UK council design reference, not a Philippine legal minimum or suitable for every motorcycle.
+Each of the 44 regular bays is **2.50 × 5.00m**. C-42 is **4.00 × 5.00m** with a **1.20m front walkway**. All proposed bays have their own frontage; no tandem or blocked bays are used. North-perimeter sections use separate spacing grids beside the accessible bay rather than wasting a regular position to maintain one global grid.
 
-The largest owner-measured car body is 2.0447 × 4.7752 m; mirrors were excluded. Motorcycles were measured at 0.5969 × 1.905 m. The body sizes do not replace full bay dimensions.
+Internal car frontages are **4.50m** deep. This is a **tight concept design allowance**, not a claim of a legal standard aisle or suitability for every vehicle. The widest owner-measured car body is 2.0447m, excluding mirrors, and the longest is 4.7752m. Mirrors, wheelbase, steering lock and actual reversing/turning movements were not measured. A connected 3.06m geometric envelope does not prove those vehicles can complete every turn. Validate the narrower aisles, end manoeuvres and the estimated boundary on site before marking bays.
 
-The car parcel is reconstructed from eight supplied lengths and estimated bearings. Lengths alone do not determine the actual boundary or usable area. The arrangement is a geometric proposal, not a surveyed plan, capacity maximum, professional approval or swept-path certification. Actual mirrors, wheelbase, steering, turning space, gates, end manoeuvres, obstructions, slopes and accessible routes must still be verified on site. A 3.06 m shared road is shown for alternating traffic, not two simultaneous car lanes.
+The separate diagonal shared approach remains **3.06m**, with the same gate location and alternating entry/exit. It is not two simultaneous car lanes. The motorcycle parcel remains **30.96 × 8.80m**, with 84 compact **1.00 × 2.00m** proposed bays, two 1.20m walk/push aisles and a 2.56m connecting end aisle. These narrow motorcycle dimensions require actual vehicle and campus confirmation.
 
-## Software validation
+## Live inventory and shared UI
 
-Tests check bay and frontage boundaries, no bay-to-bay/road/aisle/connector overlaps, unique slot codes and preservation of operating data. A reproducible 0.25 m connection grid with 1.60 m edge clearance checks every car frontage connects to the reserved approach; this does not simulate vehicle steering. Plan, 3D and SVG use the same metric data. Measurements are available on each proposed slot, the measurement table, and the map overlay. Slot availability colours retain their existing meaning; the sketch colours appear only in the reference legend.
+All **55 car + 84 motorcycle = 139 inventory records** remain. Coordinate refresh changes drawing positions only; it preserves IDs, operating capacity, statuses, transactions, gate state and access policies. Ten car codes have no proposed physical position. The optional Inventory diagram shows all codes as schematic symbols, not measured bays.
 
-## Defense wording
+Plan, 3D and SVG fallback consume the same geometry across admin, parking staff, regular users and guests. Use Show measurements for per-bay W/L labels and Measurements & design basis for the full slot table, source images and assumptions. Private availability remains sign-in restricted and redacted for users/guests.
 
-“PASS retains the campus-reported 55-car inventory. Our current scaled arrangement follows the proposed row pattern and contains 32 full-size candidate bays with geometric access clearances. The remaining 23 positions require actual parking-position and circulation validation. This drawing does not establish a physical maximum or prove that the reported 55 includes independent standard bays.”
+## Validation and physical review
 
-## References
+Software regression checks cover the owner-numbered lengths, shared motorcycle endpoints, estimated-edge disclosure, unique codes, bay sizes, whole-edge parcel containment, no bay/bay/road/frontage/connector overlap, clear flow arrows and preservation of operating data. A 0.25m connection grid with 1.60m edge clearance checks every frontage connects to the shared approach; it does not simulate steering. Browser checks cover desktop/mobile Plan/3D, slot selection, physical-size labels, source evidence, inventory switching and SVG fallback.
 
-- DPWH Department Order 56 (2016), Annex A, perpendicular and parallel bay dimensions: https://www.dpwh.gov.ph/dpwh/sites/default/files/issuances/DO_056_s2016.pdf
+Before physical use: verify the short NW return and boundary bearings; test actual vehicles and mirrors through all manoeuvres; confirm pedestrian and accessible routes, slope, drainage, accessible-space count, motorcycle circulation and campus approval. The 45 proposal and 55 configured inventory must not be treated as an approved operating-capacity decision.
+
+Suggested defense wording: “PASS retains the campus-reported 55-car inventory. Our current reconstructed outline contains 45 full-size independent candidate positions. The short NW boundary and bearings are estimates, and the 4.50m aisles require actual manoeuvring validation. The remaining ten inventory positions have no established measured placement. Software checks establish consistent geometry, not certified physical capacity.”
+
+## References for dimensions
+
+- DPWH Department Order 56 (2016), Annex A, car bay dimensions: https://www.dpwh.gov.ph/dpwh/sites/default/files/issuances/DO_056_s2016.pdf
 - NCDA revised 2024 BP 344 IRR, accessible parking: https://ncda.gov.ph/revised-2024-rules-and-regulations-implementing-batas-pambansa-344/
-- North Tyneside Council, Transport and Highways SPD 2022, Appendix E, compact motorcycle reference: https://legacy.northtyneside.gov.uk/sites/default/files/web-page-related-files/Transport%20and%20Highways%20SPD%202022.pdf
+- North Tyneside Council, Transport and Highways SPD 2022, Appendix E, compact motorcycle design reference, not a Philippine legal minimum: https://legacy.northtyneside.gov.uk/sites/default/files/web-page-related-files/Transport%20and%20Highways%20SPD%202022.pdf
 
-## Import
+## Delivery
 
-Use matching PASS-parking-lineup-backend.bundle and PASS-parking-lineup-frontend.bundle, branch feature/parking-marked-lineup-20261018. The cumulative bundles include prior parking fixes. No migration or operational reseeding is required. See the frontend docs/parking-capacity-import.md for guarded PowerShell commands.
+Matching PASS-independent-car-backend.bundle and PASS-independent-car-frontend.bundle, branch feature/independent-car-density-20261018. Cumulative bundles include prior parking updates. No migration or operational reseeding. After backend merge run route:clear and parking:refresh-layout; build frontend. See the frontend `docs/parking-capacity-import.md` for guarded commands.
 
-Verification for this build: Laravel suite 125 tests passed (41,410 assertions); Vite production build passed. Browser verification passed 184 checks across admin/security/student/guest at 320px and 1440px, plus a 390px SVG fallback, with no page errors. Checks cover slot selection, physical dimensions, reference legend, Plan/3D, inventory switching, overflow and read-only role separation.
+Verification: TypeScript check and Vite production build passed. Browser checks passed 184 assertions across four roles at 320px/1440px and a 390px SVG fallback, plus 21 focused checks after updating the lower-route arrows; zero JavaScript page errors. Laravel regression suite: 125 tests passed.

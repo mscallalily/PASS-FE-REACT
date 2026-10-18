@@ -81,7 +81,7 @@ export interface MapGeometry {
   proposed_slot_codes?: string[];
   measurement_basis?: {
     survey_verified: boolean; scale: string; source_image: string; note: string; pathway_note: string;
-    lineup_source_image?: string; lineup_note?: string; car_source_image?: string; car_edges_m?: number[]; units_per_metre?: number;
+    boundary_note?: string; lineup_source_image?: string; lineup_note?: string; car_source_image?: string; car_edges_m?: number[]; units_per_metre?: number;
     capacity_review?: { reported_car_capacity: number; proposed_car_bays: number; unresolved_car_positions: number; survey_verified: boolean; note: string };
     motorcycle_proposal?: string; car_proposal?: string; circulation_note?: string;
     vehicle_measurements?: { car_width_m: number; car_length_m: number; car_mirrors_included: boolean; motorcycle_width_m: number; motorcycle_length_m: number; note: string };
