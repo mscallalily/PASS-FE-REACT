@@ -6,7 +6,7 @@ import { PageHeader, Card, Badge, Button, Table, SearchBar, Select, Modal, StatC
 import { apiRequest } from '../../lib/apiClient';
 import { CAMPUS_TIMEZONE, formatCampusDateTime } from '../../lib/datetime';
 import { useLiveLoad, useLiveSync, POLL_MS, type Topic } from '../../lib/liveSync';
-import { MapData, MapSlot, slotFill, proposedSlotSize } from '../../components/ParkingMap';
+import { MapData, MapSlot, slotFill, proposedSlotSize, withProposedLayout } from '../../components/ParkingMap';
 import ParkingLot3D from '../../components/ParkingLot3D';
 import ParkingAvailabilityMap from '../../components/ParkingAvailabilityMap';
 import { ParkingSquare, Car, CheckCircle, Wrench, AlertTriangle, LogIn, LogOut, RefreshCw, MapPin, Box, Map as MapIcon, Bike, Layers } from 'lucide-react';
@@ -695,7 +695,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
   const [recent, setRecent] = useState<Set<number>>(() => new Set());
   const previous = useRef<MapSlot[] | undefined>(undefined);
 
-  const load = useCallback(() => apiRequest<MapResponse>('/api/parking/map'), []);
+  const load = useCallback(() => apiRequest<MapResponse>('/api/parking/map').then(withProposedLayout), []);
   const onData = useCallback((d: MapResponse) => {
     setRecent(changedSlots(previous.current, d.slots));
     previous.current = d.slots;
@@ -1065,8 +1065,9 @@ export default function ParkingOperations() {
   const { user } = useAuth();
   const { pathname } = useLocation();
   const isRegularUser = ['student', 'faculty', 'employee'].includes(user?.role ?? '');
+  const canOperate = user?.role === 'parking_staff';
   const navigate = useNavigate();
-  const tab = selectedSection(PAGE_SECTIONS.parking, pathname, isRegularUser ? 'Availability' : 'Entry & Exit Records');
+  const tab = selectedSection(PAGE_SECTIONS.parking, pathname, isRegularUser ? 'Availability' : canOperate ? 'Entry & Exit Records' : 'Parking Layout');
   const setTab = (label: string) => navigate(sectionPath(PAGE_SECTIONS.parking, label));
   const [overview, setOverview] = useState<Overview | null>(null);
   const [overviewError, setOverviewError] = useState('');
@@ -1077,8 +1078,8 @@ export default function ParkingOperations() {
 
 
   const loadOverview = useCallback(
-    () => (isRegularUser ? Promise.resolve(null) : apiRequest<Overview>('/api/parking/overview')),
-    [isRegularUser]
+    () => (canOperate ? apiRequest<Overview>('/api/parking/overview') : Promise.resolve(null)),
+    [canOperate]
   );
   const refreshOverview = usePolling(loadOverview, d => { if (d) setOverview(d); }, setOverviewError);
 
@@ -1095,16 +1096,16 @@ export default function ParkingOperations() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       <PageHeader backToDashboard
         title={isRegularUser ? 'Parking Information' : tab}
-        subtitle={isRegularUser ? 'View current campus parking availability' : 'Review access records, occupancy, and the parking layout'}
-        action={!isRegularUser ? <Button size="sm" variant="ghost" onClick={refreshOverview}><RefreshCw size={14} /> Refresh</Button> : undefined}
+        subtitle={!canOperate ? 'View current campus parking availability' : 'Review access records, occupancy, and the parking layout'}
+        action={canOperate ? <Button size="sm" variant="ghost" onClick={refreshOverview}><RefreshCw size={14} /> Refresh</Button> : undefined}
       />
 
 
-      {tab === 'Entry & Exit Records' && !isRegularUser && (
+      {tab === 'Entry & Exit Records' && canOperate && (
         <EntryExitRecords areas={areas} notify={notify} onShowOnMap={code => { setHighlight(code); setTab('Parking Layout'); }} />
       )}
-      {tab === 'Occupancy Monitor' && !isRegularUser && <OccupancyMonitor overview={overview} error={overviewError} />}
-      {tab === 'Parking Layout' && (isRegularUser ? <ParkingAvailabilityMap /> : <ParkingLayout notify={notify} highlight={highlight} onHighlight={setHighlight} />)}
+      {tab === 'Occupancy Monitor' && canOperate && <OccupancyMonitor overview={overview} error={overviewError} />}
+      {tab === 'Parking Layout' && (canOperate ? <ParkingLayout notify={notify} highlight={highlight} onHighlight={setHighlight} /> : <ParkingAvailabilityMap />)}
       {tab === 'Availability' && <Availability />}
     </div>
   );

@@ -75,7 +75,7 @@ export interface MapGeometry {
   road: { polygon: Point[]; label: string; label_at: Point; label_angle: number };
   gate: { at: Point; angle: number; label: string; sublabel: string; label_at: Point };
   lanes: { points: Point[]; kind: 'road_in' | 'road_out' | 'to_area' | 'lane'; reverse?: boolean; label?: string; label_at?: Point; label_angle?: number }[];
-  dimensions: { id?: string; text: string; description?: string; at: Point; angle: number; from?: Point; to?: Point }[];
+  dimensions: { id?: string; label?: string; text: string; description?: string; at: Point; angle: number; from?: Point; to?: Point }[];
   circulation?: { polygon: Point[]; kind: string; width_m?: number }[];
   circulation_labels?: { text: string; at: Point; angle: number }[];
   proposed_slot_codes?: string[];
@@ -97,6 +97,20 @@ export interface MapData {
   slots: MapSlot[];
   measured_layout?: { geometry: MapGeometry; positions: Record<string, { x: number; y: number; w: number; h: number; rotation: number }> };
   extra_bays: MapBay[];
+}
+
+/** Use the measured proposal consistently, including records with no map position. */
+export function withProposedLayout<T extends MapData>(data: T): T {
+  const alternative = data.measured_layout;
+  if (!alternative) return data;
+  return {
+    ...data,
+    geometry: alternative.geometry,
+    slots: data.slots.map(slot => {
+      const position = alternative.positions[slot.slot_code];
+      return { ...slot, placed: !!position, x: position?.x ?? null, y: position?.y ?? null, w: position?.w ?? null, h: position?.h ?? null, rotation: position?.rotation ?? 0 };
+    }),
+  };
 }
 
 /** Physical proposal dimensions, never the size of a schematic inventory symbol. */
@@ -276,7 +290,7 @@ export default function ParkingMap({ data, highlight, onSelect, focusArea, showM
         ))}
         {showMeasurements && g.dimensions.map(d => (
           <text key={d.text} transform={`translate(${d.at[0]} ${d.at[1]}) rotate(${d.angle})`}
-            textAnchor="middle" fontSize={5} fill="#1D4ED8">{d.id ? `${d.id}: ` : ''}{d.text}</text>
+            textAnchor="middle" fontSize={5} fill="#1D4ED8">{(d.label ?? d.id) ? `${d.label ?? d.id}: ` : ''}{d.text}</text>
         ))}
 
         {/* Painted bays that are not PASS slots */}

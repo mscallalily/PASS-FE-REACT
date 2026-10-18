@@ -36,13 +36,13 @@ The separate diagonal shared approach remains **3.06m**, with the same gate loca
 
 ## Live inventory and shared UI
 
-All **55 car + 84 motorcycle = 139 inventory records** remain. Coordinate refresh changes drawing positions only; it preserves IDs, operating capacity, statuses, transactions, gate state and access policies. Ten car codes have no proposed physical position. The optional Inventory diagram shows all codes as schematic symbols, not measured bays.
+All **55 car + 84 motorcycle = 139 inventory records** remain. Coordinate refresh changes drawing positions only; it preserves IDs, operating capacity, statuses, transactions, gate state and access policies. Ten car codes have no proposed physical position. The Inventory diagram UI is removed. All codes remain in the database; the ten unpositioned codes have no invented physical bay symbols.
 
 Plan, 3D and SVG fallback consume the same geometry across admin, parking staff, regular users and guests. Use Show measurements for per-bay W/L labels and Measurements & design basis for the full slot table, source images and assumptions. Private availability remains sign-in restricted and redacted for users/guests.
 
 ## Validation and physical review
 
-Software regression checks cover the owner-numbered lengths, shared motorcycle endpoints, estimated-edge disclosure, unique codes, bay sizes, whole-edge parcel containment, no bay/bay/road/frontage/connector overlap, clear flow arrows and preservation of operating data. A 0.25m connection grid with 1.60m edge clearance checks every frontage connects to the shared approach; it does not simulate steering. Browser checks cover desktop/mobile Plan/3D, slot selection, physical-size labels, source evidence, inventory switching and SVG fallback.
+Software regression checks cover the owner-numbered lengths, shared motorcycle endpoints, estimated-edge disclosure, unique codes, bay sizes, whole-edge parcel containment, no bay/bay/road/frontage/connector overlap, clear flow arrows and preservation of operating data. A 0.25m connection grid with 1.60m edge clearance checks every frontage connects to the shared approach; it does not simulate steering. Browser checks cover desktop/mobile Plan/3D, slot selection, physical-size labels, source evidence, read-only admin access, staff controls and SVG fallback.
 
 Before physical use: verify the short NW return and boundary bearings; test actual vehicles and mirrors through all manoeuvres; confirm pedestrian and accessible routes, slope, drainage, accessible-space count, motorcycle circulation and campus approval. The 45 proposal and 55 configured inventory must not be treated as an approved operating-capacity decision.
 
@@ -56,6 +56,8 @@ Suggested defense wording: “PASS retains the campus-reported 55-car inventory.
 
 ## Delivery
 
-Matching PASS-independent-car-backend.bundle and PASS-independent-car-frontend.bundle, branch feature/independent-car-density-20261018. Cumulative bundles include prior parking updates. No migration or operational reseeding. After backend merge run route:clear and parking:refresh-layout; build frontend. See the frontend `docs/parking-capacity-import.md` for guarded commands.
+Matching PASS-parking-ui-cleanup-backend.bundle and PASS-parking-ui-cleanup-frontend.bundle, branch feature/parking-readonly-ui-20261018. Cumulative bundles include prior parking updates. No migration or operational reseeding. After backend merge run route:clear and parking:refresh-layout; build frontend. See the frontend `docs/parking-capacity-import.md` for guarded commands.
 
-Verification: TypeScript check and Vite production build passed. Browser checks passed 184 assertions across four roles at 320px/1440px and a 390px SVG fallback, plus 21 focused checks after updating the lower-route arrows; zero JavaScript page errors. Laravel regression suite: 125 tests passed.
+Current UI/access cleanup: see `parking-ui-cleanup.md`. Administrators monitor the layout without operational controls; only Parking Staff may mutate the live Parking Operations endpoints. The upper junction has a human-readable label.
+
+Verification: Laravel 128 tests passed (52,738 assertions); TypeScript check and Vite production build passed. Browser verification passed 341 checks across admin/security/student/guest at 320px and 1440px plus a 390px admin SVG fallback, with zero JavaScript page errors. Checks cover absence of Inventory diagram, human-readable junction dimensions, admin read-only controls before/after slot selection, staff maintenance/return-to-service and gate form, live record preservation, slot sizes, Plan/3D and overflow.

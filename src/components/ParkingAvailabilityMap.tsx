@@ -3,7 +3,7 @@ import { Box, Map as MapIcon, RefreshCw, ParkingSquare } from 'lucide-react';
 import { Button, Card, Modal, StatCard } from './ui';
 import ParkingLot3D from './ParkingLot3D';
 import type { MapData, MapSlot } from './ParkingMap';
-import { proposedSlotSize } from './ParkingMap';
+import { proposedSlotSize, withProposedLayout } from './ParkingMap';
 import { apiRequest } from '../lib/apiClient';
 import { POLL_MS } from '../lib/liveSync';
 import { formatCampusDateTime } from '../lib/datetime';
@@ -29,7 +29,7 @@ export default function ParkingAvailabilityMap() {
     if (inFlight.current) return;
     inFlight.current = true;
     try {
-      const value = await apiRequest<AvailabilityMap>('/api/parking/availability-map');
+      const value = withProposedLayout(await apiRequest<AvailabilityMap>('/api/parking/availability-map'));
       if (mounted.current) { setData(value); setError(''); }
     } catch (err) {
       if (mounted.current) setError(err instanceof Error ? err.message : 'Unable to load availability.');

@@ -1,34 +1,46 @@
-# Apply the corrected 45-position car proposal
+# Apply the parking UI cleanup
 
-Download both bundles into Downloads. This is a **45-position independent-bay proposal**, with per-slot sizes. All 55 car inventory records and the existing capacity rules remain. The physical 55-car layout still requires actual parking-position evidence; this update does not certify 55 independent bays.
+Save both matching bundles in Downloads. This update removes Inventory diagram, renames Upper junction and makes the admin parking layout read-only. It includes the corrected 45-car proposal and retains all database records. No migration or reseeding is required.
 
-In your PASS-BE-LARAVEL PowerShell terminal:
+In the **PASS-BE-LARAVEL** PowerShell terminal:
 
 ```powershell
-git fetch "$env:USERPROFILE\Downloads\PASS-independent-car-backend.bundle" feature/independent-car-density-20261018
-if ($LASTEXITCODE -eq 0) {
-    git merge --ff-only FETCH_HEAD
+$bundlePath = Join-Path $env:USERPROFILE "Downloads\PASS-parking-ui-cleanup-backend.bundle"
+
+if (Test-Path -LiteralPath $bundlePath) {
+    git fetch "$bundlePath" feature/parking-readonly-ui-20261018
     if ($LASTEXITCODE -eq 0) {
-        php artisan route:clear
-        php artisan parking:refresh-layout
+        git merge --ff-only FETCH_HEAD
+        if ($LASTEXITCODE -eq 0) {
+            php artisan route:clear
+            php artisan parking:refresh-layout
+        }
     }
+} else {
+    Write-Host "Hindi makita ang PASS-parking-ui-cleanup-backend.bundle sa Downloads. Check ang filename."
 }
 ```
 
-In your PASS-FE-REACT PowerShell terminal:
+In the **PASS-FE-REACT** PowerShell terminal:
 
 ```powershell
-git fetch "$env:USERPROFILE\Downloads\PASS-independent-car-frontend.bundle" feature/independent-car-density-20261018
-if ($LASTEXITCODE -eq 0) {
-    git merge --ff-only FETCH_HEAD
+$bundlePath = Join-Path $env:USERPROFILE "Downloads\PASS-parking-ui-cleanup-frontend.bundle"
+
+if (Test-Path -LiteralPath $bundlePath) {
+    git fetch "$bundlePath" feature/parking-readonly-ui-20261018
     if ($LASTEXITCODE -eq 0) {
-        npm run build
+        git merge --ff-only FETCH_HEAD
+        if ($LASTEXITCODE -eq 0) {
+            npm run build
+        }
     }
+} else {
+    Write-Host "Hindi makita ang PASS-parking-ui-cleanup-frontend.bundle sa Downloads. Check ang filename."
 }
 ```
 
-No migration or operational seeding is required. Refresh `/app/parking/layout` (or the guest Parking Layout page). Choose **Parking layout**, then **Show measurements**. Select a bay to see its proposed width × length; expand **Measurements & design basis** for the individual slot table. **Inventory diagram** retains all 55 car codes and explicitly uses schematic symbols.
+Refresh `/app/parking/layout` (guest: `/guest-dashboard/parking`). There is one parking layout with Plan/3D controls and Show measurements. The admin layout has no operational controls. Sign in as Parking Staff to confirm the staff controls remain. No changes are needed to your local Vite proxy settings; if the dev server is stopped, run npm run dev in a separate frontend terminal.
 
-A merge error stops the guarded sequence. Preserve any uncommitted changes rather than overwriting layout files or forcing the merge.
+Stop if Git reports a merge conflict or uncommitted files would be overwritten. Keep your local changes; do not force/reset or replace the entire project. The guarded commands do not continue after a failed fetch or merge.
 
-The owner-numbered six edges and corrected lower pink 2.60m segment are shown in the evidence panel. The shared motorcycle end is restored. The short NW return (4.66m) and boundary bearings remain estimates; internal car aisles are a tight 4.50m concept allowance. The 45 bays require physical boundary and manoeuvring validation. All regular bays remain 2.50 × 5.00m; C-42 is 4.00 × 5.00m with its front walkway. There are no tandem bays.
+The proposal still requires site confirmation of boundary estimates, vehicle manoeuvres, the 4.50m internal aisle allowance, and accessibility. Removing the diagram does not certify physical capacity or remove the ten unpositioned car records.
