@@ -57,6 +57,16 @@ export default function ParkingMeasurements({ geometry, slots = [] }: { geometry
         {basis.circulation_note && <p className="mt-2">{basis.circulation_note}</p>}
         <p className="mt-2">Bay dimensions do not establish the required total number of accessible spaces, accessible routes, drainage, slope or turning clearance. Confirm these against the applicable rules and the campus plan before physical marking.</p>
       </div>
+      {basis.lineup_source_image && <figure className="rounded-xl border border-slate-200 p-3 space-y-3">
+        <figcaption className="text-sm font-semibold text-[#080677]">Requested row arrangement</figcaption>
+        <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-700" aria-label="Owner sketch legend">
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-red-500" />Car rows</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-yellow-400" />Motorcycle parcel</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-green-500" />Shared path</span>
+        </div>
+        <a href={basis.lineup_source_image} target="_blank" rel="noopener noreferrer"><img src={basis.lineup_source_image} alt="Owner-marked lineup: red car rows, yellow motorcycle parcel and green shared path" className="w-full max-w-3xl rounded-lg border border-slate-100" loading="lazy" /></a>
+        <p className="text-xs leading-relaxed text-slate-600">{basis.lineup_note}</p>
+      </figure>}
       <div className="grid lg:grid-cols-2 gap-5 items-start">
         <div className="min-w-0 space-y-4">
           <figure><a href={basis.source_image} target="_blank" rel="noopener noreferrer"><img src={basis.source_image} alt="Owner-supplied motorcycle parcel and separate access road" className="w-full rounded-xl border border-slate-200" loading="lazy" /></a><figcaption className="mt-2 text-xs text-slate-500">Motorcycle reference. Use the owner-reported 30.96 × 8.80 m parcel and separate 3.06 m road width. Intermediate ruler marks in this image are cumulative distances.</figcaption></figure>
