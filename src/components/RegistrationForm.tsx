@@ -1,950 +1,207 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Check, ChevronLeft, ChevronRight, Eye, EyeOff, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
+import FileUpload from './FileUpload';
 import EmailCodeVerification from './EmailCodeVerification';
 
-﻿import React, { useEffect, useState } from 'react';
-import {
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  EyeOff,
-  AlertCircle,
-  Car,
-  User,
-  Briefcase,
-  IdCard,
-} from 'lucide-react';
-import FileUpload from './FileUpload';
-
-export const REGISTRATION_STEPS = [
-  'Account Info',
-  'ID Verification',
-  'User Details',
-  'Vehicle',
-  'Review',
-] as const;
-
-const USER_TYPES = [
-  { value: 'student', label: 'Student' },
-  { value: 'faculty', label: 'Faculty' },
-  { value: 'employee', label: 'Employee' },
-  { value: 'other', label: 'Other Authorized' },
+export const REGISTRATION_STEPS = ['User Details', 'ID Verification', 'Account Info', 'Review'] as const;
+type Category = 'college' | 'employee' | 'shs';
+const CATEGORIES: { value: Category; label: string; hint: string }[] = [
+  { value: 'college', label: 'College Student', hint: '9-digit student number' },
+  { value: 'employee', label: 'Employee', hint: '7-digit employee number' },
+  { value: 'shs', label: 'SHS Student', hint: 'ID reviewed by PASS staff' },
 ];
-
-interface Department {
-  department_id: number;
-  department_code: string;
-  department_name: string;
+type FormState = { category: Category; department: string; contact: string; first_name: string; last_name: string; middle_initial: string; user_code: string; email: string; password: string; password_confirmation: string; agree: boolean; request_manual_review: boolean };
+type IdCheck = { status: 'matched' | 'manual_review' | 'unavailable' | 'needs_correction'; receipt: string; fields: Partial<FormState>; field_confidence: Record<string, number>; checks: Record<string, { result: string; detail: string }>; reasons: string[]; current_year: number; note: string };
+type Department = { department_id: number; department_code: string; department_name: string };
+const INITIAL: FormState = { category: 'college', department: '', contact: '', first_name: '', last_name: '', middle_initial: '', user_code: '', email: '', password: '', password_confirmation: '', agree: false, request_manual_review: false };
+const ID_LABELS: Record<string, string> = { matched: 'Details matched', manual_review: 'Staff review needed', unavailable: 'Automatic reader unavailable', needs_correction: 'Needs correction' };
+const digits = (v: string) => v.replace(/[\s-]/g, '');
+function idError(category: Category, value: string, year: number) {
+  if (category === 'shs') return /^[A-Za-z0-9][A-Za-z0-9 -]{0,49}$/.test(value.trim()) ? '' : 'Enter the ID number printed on your SHS ID.';
+  const n = digits(value), size = category === 'employee' ? 7 : 9;
+  if (!new RegExp(`^\\d{${size}}$`).test(n)) return `Enter exactly ${size} digits. Keep the leading zero; a hyphen is allowed.`;
+  const start = category === 'employee' ? 2000 + Number(n.slice(1, 3)) : Number(n.slice(0, 4));
+  return start < 1000 || start > year ? `The year in this ID must not be later than ${year}.` : '';
 }
 
-const VEHICLE_TYPES = [
-  'Sedan',
-  'SUV',
-  'Hatchback',
-  'Pickup',
-  'Van',
-  'Motorcycle',
-];
-
-const LICENSE_TYPES = [
-  { value: 'student_permit', label: 'Student Permit' },
-  { value: 'non_professional', label: 'Non-Professional' },
-  { value: 'professional', label: 'Professional' },
-  { value: 'international', label: 'International' },
-];
-
-interface FormState {
-  fullName: string;
-  idNum: string;
-  email: string;
-  password: string;
-  confirmPwd: string;
-  idFile: File | null;
-  userType: string;
-  dept: string;
-  contact: string;
-  hasVehicle: boolean | null;
-  vehicleType: string;
-  plate: string;
-  make: string;
-  model: string;
-  color: string;
-  licenseNo: string;
-  licenseType: string;
-  licenseExpiry: string;
-  licenseFile: File | null;
-  agree: boolean;
-}
-
-const INITIAL: FormState = {
-  fullName: '',
-  idNum: '',
-  email: '',
-  password: '',
-  confirmPwd: '',
-  idFile: null,
-  userType: 'student',
-  dept: '',
-  contact: '',
-  hasVehicle: null,
-  vehicleType: 'Sedan',
-  plate: '',
-  make: '',
-  model: '',
-  color: '',
-  licenseNo: '',
-  licenseType: 'non_professional',
-  licenseExpiry: '',
-  licenseFile: null,
-  agree: false,
-};
-
-/**
- * Reads and logs an API response before parsing it.
- * This helps identify responses that contain PHP errors,
- * HTML, Markdown, or other content instead of JSON.
- */
-
-async function readJsonResponse(
-  response: Response,
-  endpoint: string,
-): Promise<any> {
-  const responseText = await response.text();
-
-  console.log(`[${endpoint}] STATUS:`, response.status);
-  console.log(
-    `[${endpoint}] CONTENT-TYPE:`,
-    response.headers.get('content-type'),
-  );
-
-  if (!responseText.trim()) {
-    throw new Error(`[${endpoint}] The server returned an empty response.`);
-  }
-
-  const cleanedText = responseText
-    .trim()
-    .replace(/^```(?:json|php)?[ \t]*\r?\n?/i, '')
-    .replace(/\r?\n?```[ \t]*$/, '')
-    .trim();
-
-  try {
-    return JSON.parse(cleanedText);
-  } catch {
-    console.error(`[${endpoint}] Failed to parse the server response as JSON.`);
-
-    throw new Error(
-      `[${endpoint}] The server returned invalid JSON. Check the backend response.`,
-    );
-  }
-}
-
-
-function validateStep(step: number, f: FormState): Record<string, string> {
-  const e: Record<string, string> = {};
-
-  if (step === 0) {
-    if (!f.fullName.trim() || f.fullName.trim().split(/\s+/).length < 2) {
-      e.fullName = 'Enter your complete name.';
-    }
-
-    if (!f.idNum.trim()) {
-      e.idNum = 'Institutional ID number is required.';
-    }
-
-    if (!f.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) {
-      e.email = 'Enter a valid email address.';
-    }
-
-    if (f.password.length < 8) {
-      e.password = 'Password must be at least 8 characters.';
-    }
-
-    if (f.password !== f.confirmPwd) {
-      e.confirmPwd = 'Passwords do not match.';
-    }
-  }
-
-  if (step === 1) {
-    if (!f.idFile) {
-      e.idFile = 'Upload a photo or scan of your school ID.';
-    }
-  }
-
-  if (step === 2) {
-    if (!f.userType) {
-      e.userType = 'Select a user type.';
-    }
-
-    if (!f.dept) {
-      e.dept = 'Department is required.';
-    }
-
-    if (!f.contact.trim()) {
-      e.contact = 'Contact number is required.';
-    }
-  }
-
-  if (step === 3) {
-    if (f.hasVehicle === null) {
-      e.hasVehicle = 'Please choose Yes or No.';
-    }
-
-    if (f.hasVehicle === true) {
-      if (!f.plate.trim()) {
-        e.plate = 'Plate number is required.';
-      }
-
-      if (!f.make.trim()) {
-        e.make = 'Vehicle make is required.';
-      }
-
-      if (!f.model.trim()) {
-        e.model = 'Vehicle model is required.';
-      }
-
-      if (!f.color.trim()) {
-        e.color = 'Vehicle color is required.';
-      }
-
-      if (!f.licenseNo.trim()) {
-        e.licenseNo = "Driver's license number is required.";
-      }
-
-      if (!f.licenseType) {
-        e.licenseType = 'License type is required.';
-      }
-
-      if (!f.licenseExpiry) {
-        e.licenseExpiry = 'License expiry date is required.';
-      } else {
-        const expiry = new Date(`${f.licenseExpiry}T00:00:00`);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        if (expiry < today) {
-          e.licenseExpiry = 'This license is already expired.';
-        }
-      }
-
-      if (!f.licenseFile) {
-        e.licenseFile = "Upload a photo or scan of your driver's license.";
-      }
-    }
-  }
-
-  return e;
-}
-
-export default function RegistrationForm({
-  variant = 'web',
-  onBackToLogin,
-  onExit,
-}: {
-  variant?: 'web' | 'mobile';
-  onBackToLogin: () => void;
-  onExit?: () => void;
-}) {
-  const m = variant === 'mobile';
-
-  const [step, setStep] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
-  const [showPwd, setShowPwd] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
-
-  const [emailVerificationSent, setEmailVerificationSent] =
-    useState<boolean | null>(null);
-
+export default function RegistrationForm({ variant = 'web', onBackToLogin, onExit }: { variant?: 'web' | 'mobile'; onBackToLogin: () => void; onExit?: () => void }) {
   const [form, setForm] = useState<FormState>(INITIAL);
+  const [step, setStep] = useState(0);
+  const [file, setFile] = useState<File | null>(null);
+  const [check, setCheck] = useState<IdCheck | null>(null);
+  const [checkEdited, setCheckEdited] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
-
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [departmentsLoading, setDepartmentsLoading] = useState(true);
-  const [departmentsError, setDepartmentsError] = useState('');
-
+  const [loadError, setLoadError] = useState('');
+  const [year, setYear] = useState(Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Manila', year: 'numeric' }).format(new Date())));
+  const [ready, setReady] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const sequence = useRef(0);
+  const request = useRef<AbortController | null>(null);
+  const formRef = useRef(form); formRef.current = form;
   useEffect(() => {
-    const loadDepartments = async () => {
-      try {
-        setDepartmentsLoading(true);
-        setDepartmentsError('');
-
-        const response = await fetch('/api/departments', {
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-          },
-        });
-
-        const result = await readJsonResponse(response, 'DEPARTMENTS');
-
-        if (!response.ok) {
-          throw new Error(
-            result?.message ||
-              `Unable to load departments. HTTP ${response.status}.`,
-          );
-        }
-
-        if (!result) {
-          throw new Error(
-            'The departments API returned invalid JSON. Check the browser Console.',
-          );
-        }
-
-        const departmentData = Array.isArray(result)
-          ? result
-          : result.data;
-
-        if (!Array.isArray(departmentData)) {
-          console.error('UNEXPECTED DEPARTMENT DATA:', result);
-
-          throw new Error('Invalid department data received.');
-        }
-
-        setDepartments(departmentData);
-      } catch (error) {
-        console.error('LOAD DEPARTMENTS ERROR:', error);
-
-        setDepartmentsError(
-          error instanceof Error
-            ? error.message
-            : 'Unable to load departments. Please try again.',
-        );
-      } finally {
-        setDepartmentsLoading(false);
-      }
-    };
-
-    void loadDepartments();
+    const controller = new AbortController();
+    Promise.all([
+      fetch('/api/departments', { headers: { Accept: 'application/json' }, signal: controller.signal }).then(async r => { if (!r.ok) throw new Error('Departments could not be loaded.'); return r.json(); }),
+      fetch('/api/registration/options', { headers: { Accept: 'application/json' }, signal: controller.signal }).then(async r => { if (!r.ok) throw new Error('Registration settings could not be loaded.'); return r.json(); }),
+    ]).then(([d, options]) => { setDepartments(d.data ?? d); setYear(options.current_year); setReady(true); }).catch(e => { if (e.name !== 'AbortError') setLoadError(e.message); });
+    return () => controller.abort();
   }, []);
+  useEffect(() => () => { sequence.current++; request.current?.abort(); }, []);
 
-  const last = REGISTRATION_STEPS.length - 1;
-
-  const set = <K extends keyof FormState>(key: K, val: FormState[K]) => {
-    setForm(f => ({ ...f, [key]: val }));
-
-    if (errors[key as string]) {
-      setErrors(e => {
-        const n = { ...e };
-        delete n[key as string];
-        return n;
-      });
-    }
-
-    if (submitError) {
-      setSubmitError('');
-    }
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+    setForm(f => ({ ...f, [key]: value })); setErrors(e => ({ ...e, [key]: '' })); setMessage('');
+    if (['first_name', 'last_name', 'middle_initial', 'user_code'].includes(key)) setCheckEdited(true);
+  };
+  const changeCategory = (category: Category) => {
+    if (form.category === category) return;
+    sequence.current++; request.current?.abort(); setReading(false); setCheck(null); setFile(null); setCheckEdited(false);
+    setForm(f => ({ ...f, category, department: category === 'shs' ? 'Senior High School' : '', user_code: '', first_name: '', last_name: '', middle_initial: '', request_manual_review: false })); setErrors({}); setMessage('');
+  };
+  const changeFile = (value: File | null) => {
+    sequence.current++; request.current?.abort(); setReading(false); setForm(f => ({ ...f, request_manual_review: false })); setFile(value); setCheck(null); setCheckEdited(false); setMessage(''); setErrors(e => ({ ...e, school_id_file: '' }));
   };
 
-  const next = () => {
-    const e = validateStep(step, form);
-    setErrors(e);
-
-    if (Object.keys(e).length === 0) {
-      setStep(s => Math.min(s + 1, last));
-      setSubmitError('');
-    }
-  };
-
-  const prev = () => {
-    setErrors({});
-
-    if (step === 0) {
-      onExit?.();
-    } else {
-      setStep(s => s - 1);
-    }
-  };
-
-  const inputCls = (key: string, extra = '') =>
-    `w-full border ${
-      errors[key] ? 'border-red-400' : 'border-slate-200'
-    } rounded-xl px-4 ${
-      m ? 'py-3.5' : 'py-3'
-    } text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white ${extra}`;
-
-  const labelCls = 'text-sm font-medium text-slate-700 block mb-1.5';
-
-  const err = (key: string) =>
-    errors[key] && (
-      <p className="text-xs text-red-500 mt-1">{errors[key]}</p>
-    );
-
-  const choiceCls = (on: boolean) =>
-    `py-3 px-3 rounded-xl border-2 text-sm font-medium transition-all ${
-      on
-        ? 'border-[#2563EB] bg-blue-50 text-[#2563EB]'
-        : 'border-slate-200 text-slate-500 hover:border-blue-200'
-    }`;
-
-  const text = (
-    label: string,
-    key: keyof FormState,
-    placeholder: string,
-    type = 'text',
-  ) => (
-    <div key={key as string}>
-      <label className={labelCls}>{label}</label>
-      <input
-        type={type}
-        value={form[key] as string}
-        onChange={e => set(key, e.target.value as never)}
-        placeholder={placeholder}
-        className={inputCls(key as string)}
-      />
-      {err(key as string)}
-    </div>
-  );
-
-  const fileField = (
-    label: string,
-    field: 'idFile' | 'licenseFile',
-  ) => (
-    <FileUpload
-      label={label}
-      file={form[field]}
-      error={errors[field]}
-      onChange={f => set(field, f as never)}
-      onError={msg => setErrors(e => ({ ...e, [field]: msg }))}
-    />
-  );
-
-  const submitRegistration = async () => {
-    if (!form.agree || isSubmitting) {
-      return;
-    }
-
-    const allErrors = {
-      ...validateStep(0, form),
-      ...validateStep(1, form),
-      ...validateStep(2, form),
-      ...validateStep(3, form),
-    };
-
-    if (Object.keys(allErrors).length > 0) {
-      setErrors(allErrors);
-
-      const firstInvalidStep = [0, 1, 2, 3].find(s => {
-        return Object.keys(validateStep(s, form)).length > 0;
-      });
-
-      if (firstInvalidStep !== undefined) {
-        setStep(firstInvalidStep);
-      }
-
-      setSubmitError(
-        'Please correct the highlighted information before submitting.',
-      );
-      return;
-    }
-
-    setIsSubmitting(true);
-    setSubmitError('');
-    setErrors({});
-
+  const readId = async (apply: boolean): Promise<IdCheck | null> => {
+    if (!file) return null;
+    const seq = ++sequence.current; request.current?.abort(); const controller = new AbortController(); request.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 100000);
+    setReading(true); setMessage('');
+    const current = formRef.current, body = new FormData();
+    body.append('registration_category', current.category); body.append('school_id_file', file);
+    if (!apply && check?.receipt) body.append('id_check_receipt', check.receipt);
+    if (!apply) body.append('request_manual_review', current.request_manual_review ? '1' : '0');
+    if (!apply) for (const key of ['first_name', 'last_name', 'middle_initial', 'user_code'] as const) body.append(key, current[key].trim());
     try {
-      const data = new FormData();
-
-      data.append('full_name', form.fullName.trim());
-      data.append('user_code', form.idNum.trim());
-      data.append('email', form.email.trim());
-      data.append('password', form.password);
-      data.append('password_confirmation', form.confirmPwd);
-      data.append('user_type', form.userType);
-      data.append('department', form.dept);
-      data.append('contact_number', form.contact.trim());
-      data.append('has_vehicle', form.hasVehicle ? '1' : '0');
-
-      if (form.idFile) {
-        data.append('school_id_file', form.idFile);
+      const response = await fetch('/api/registration/id-check', { method: 'POST', headers: { Accept: 'application/json' }, body, signal: controller.signal });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.errors?.id_check_receipt?.[0] || result.errors?.school_id_file?.[0] || result.message || 'The document could not be read.');
+      if (seq !== sequence.current) return null;
+      const data = result.data as IdCheck; setCheck(data); setYear(data.current_year); setCheckEdited(false);
+      if (apply) {
+        setForm(f => ({ ...f, ...Object.fromEntries(Object.entries(data.fields).filter(([key, value]) => ['first_name', 'last_name', 'middle_initial', 'user_code'].includes(key) && value)) }));
+        setMessage('Suggested details were added below. Review every field against your ID; all details remain editable.');
       }
-
-      if (form.hasVehicle) {
-        data.append('vehicle_type', form.vehicleType);
-        data.append('plate_number', form.plate.trim().toUpperCase());
-        data.append('make', form.make.trim());
-        data.append('model', form.model.trim());
-        data.append('color', form.color.trim());
-        data.append('license_number', form.licenseNo.trim());
-        data.append('license_type', form.licenseType);
-        data.append('license_expiry', form.licenseExpiry);
-
-        if (form.licenseFile) {
-          data.append('license_file', form.licenseFile);
-        }
-      }
-
-      const response = await fetch('/api/register', {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-        },
-        body: data,
-      });
-
-      const result = await readJsonResponse(response, 'REGISTRATION');
-
-      if (!response.ok) {
-        if (result?.errors) {
-          const messages = Object.values(
-            result.errors as Record<string, string[]>,
-          ).flat();
-
-          throw new Error(
-            messages.join(' ') ||
-              result.message ||
-              'Please check your registration details.',
-          );
-        }
-
-        throw new Error(
-          result?.message ||
-            `Registration failed. HTTP ${response.status}. Check the Console for the server response.`,
-        );
-      }
-
-      if (!result) {
-        throw new Error(
-          'The registration API returned invalid JSON. Check the browser Console.',
-        );
-      }
-
-      setEmailVerificationSent(result.email_verification_sent === true);
-      setSubmitted(true);
-    } catch (error) {
-      console.error('REGISTRATION ERROR:', error);
-
-      setSubmitError(
-        error instanceof Error
-          ? error.message
-          : 'Unable to submit registration. Please try again.',
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
+      return data;
+    } catch (e) {
+      if (seq === sequence.current) setMessage(e instanceof Error && e.name !== 'AbortError' ? e.message : 'The reader took too long. Try again or upload a clearer image.');
+      return null;
+    } finally { window.clearTimeout(timeout); if (seq === sequence.current) setReading(false); }
   };
+  useEffect(() => {
+    if (file && form.category !== 'shs') void readId(true);
+    // File/category changes invalidate the previous request and receipt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file, form.category]);
 
-  if (submitted) {
-    return <EmailCodeVerification initialEmail={form.email.trim()} notice={emailVerificationSent ? 'Registration saved. Check your email for your verification code.' : 'Registration saved, but the email could not be sent. Use Send / resend code to try again.'} />;
-  }
-
-  const progress = m ? (
-    <div className="mb-6">
-      <p className="text-slate-400 text-sm mb-2">
-        Step {step + 1} of {REGISTRATION_STEPS.length} Â·{' '}
-        <span className="text-[#080677] font-medium">
-          {REGISTRATION_STEPS[step]}
-        </span>
-      </p>
-
-      <div className="flex gap-1.5">
-        {REGISTRATION_STEPS.map((s, i) => (
-          <div
-            key={s}
-            className={`h-1.5 flex-1 rounded-full ${
-              i <= step ? 'bg-[#2563EB]' : 'bg-slate-100'
-            }`}
-          />
-        ))}
-      </div>
+  const validate = (s: number) => {
+    const e: Record<string, string> = {};
+    if (s === 0) { if (!form.department.trim()) e.department = form.category === 'employee' ? 'Enter your department or office.' : 'Choose your department.'; if (!form.contact.trim()) e.contact = 'Enter your contact number.'; }
+    if (s === 1) {
+      if (!file) e.school_id_file = 'Upload the front of your institutional ID.';
+      if (!form.first_name.trim()) e.first_name = 'Enter your first name.';
+      if (!form.last_name.trim()) e.last_name = 'Enter your surname.';
+      if (form.middle_initial && !/^\p{L}\.?$/u.test(form.middle_initial.trim())) e.middle_initial = 'Use one initial, with an optional period.';
+      const problem = idError(form.category, form.user_code, year); if (problem) e.user_code = problem;
+      if (form.category !== 'shs' && !check?.receipt) e.id_check_receipt = 'Read the current ID before continuing.';
+    }
+    if (s === 2) { if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = 'Enter a valid email.'; if (form.password.length < 8) e.password = 'Use at least 8 characters.'; if (form.password_confirmation !== form.password) e.password_confirmation = 'Passwords do not match.'; }
+    return e;
+  };
+  const next = async () => {
+    const e = validate(step); setErrors(e); setMessage(''); if (Object.keys(e).length) return;
+    if (step === 1 && form.category !== 'shs') {
+      const latest = await readId(false); if (!latest || latest.status === 'needs_correction') return;
+    }
+    setStep(s => Math.min(3, s + 1));
+  };
+  const submit = async () => {
+    if (busy || reading || !form.agree) return;
+    for (const s of [0, 1, 2]) { const e = validate(s); if (Object.keys(e).length) { setErrors(e); setStep(s); return; } }
+    setBusy(true); setMessage('');
+    try {
+      const body = new FormData();
+      for (const key of ['first_name', 'last_name', 'middle_initial', 'user_code', 'email', 'password', 'password_confirmation', 'department', 'contact'] as const) body.append(key === 'contact' ? 'contact_number' : key, ['password', 'password_confirmation'].includes(key) ? form[key] : form[key].trim());
+      body.append('registration_category', form.category); body.append('agree', '1'); body.append('request_manual_review', form.request_manual_review ? '1' : '0'); body.append('school_id_file', file!);
+      if (check?.receipt) body.append('id_check_receipt', check.receipt);
+      const response = await fetch('/api/register', { method: 'POST', headers: { Accept: 'application/json' }, body });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const e: Record<string, string> = {}; for (const [key, values] of Object.entries(result.errors ?? {})) e[key === 'contact_number' ? 'contact' : key] = Array.isArray(values) ? values[0] : String(values);
+        setErrors(e);
+        if (Object.keys(e).some(k => ['first_name', 'last_name', 'middle_initial', 'user_code', 'school_id_file', 'id_check_receipt'].includes(k))) setStep(1);
+        else if (e.email || e.password) setStep(2);
+        else if (e.department || e.contact) setStep(0);
+        throw new Error(Object.values(e).join(' ') || result.message || 'Registration could not be completed.');
+      }
+      setEmailSent(result.email_verification_sent === true); setSubmitted(true);
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Cannot reach the server. Try again.'); }
+    finally { setBusy(false); }
+  };
+  if (submitted) return <EmailCodeVerification initialEmail={form.email.trim()} notice={emailSent ? 'Registration saved. Verify your email next. Your account remains pending administrator approval.' : 'Registration saved, but the email could not be sent. Use Send / resend code to retry.'} />;
+  const inputClass = 'w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]';
+  const field = (label: string, key: keyof FormState, placeholder = '', type = 'text') => <div key={key}>
+    <label htmlFor={`registration-${key}`} className="mb-1.5 block text-sm font-medium text-slate-700">{label}</label>
+    <input id={`registration-${key}`} type={type} value={String(form[key])} placeholder={placeholder} onChange={e => set(key, e.target.value as never)} disabled={busy || reading} className={`${inputClass} ${errors[key] ? 'border-red-400' : ''}`} aria-invalid={!!errors[key]} aria-describedby={errors[key] ? `registration-${key}-error` : undefined} autoComplete={key === 'password' || key === 'password_confirmation' ? 'new-password' : key === 'email' ? 'email' : 'off'} />
+    {errors[key] && <p id={`registration-${key}-error`} role="alert" className="mt-1 block text-xs text-red-600">{errors[key]}</p>}
+  </div>;
+  const categoryLabel = CATEGORIES.find(c => c.value === form.category)!.label;
+  const currentError = Object.values(errors).filter(Boolean);
+  return <div className={`min-w-0 ${variant === 'mobile' ? 'pb-4' : ''}`}>
+    <nav aria-label="Registration progress" className="mb-6">
+      <p className="text-sm text-slate-500 mb-3">Step {step + 1} of 4 <span className="text-[#080677] font-semibold">· {REGISTRATION_STEPS[step]}</span></p>
+      <ol className="grid grid-cols-4 gap-2">{REGISTRATION_STEPS.map((label, i) => <li key={label} aria-current={step === i ? 'step' : undefined} className="min-w-0"><span className={`block h-1.5 rounded-full ${i <= step ? 'bg-[#2563EB]' : 'bg-slate-100'}`} /><span className={`mt-2 hidden sm:block text-xs leading-tight ${step === i ? 'text-[#080677] font-semibold' : 'text-slate-400'}`}>{label}</span></li>)}</ol>
+    </nav>
+    {loadError && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{loadError} Refresh this page to retry.</p>}
+    <div className="space-y-5">
+      <h2 className="text-lg font-bold text-[#080677]">{REGISTRATION_STEPS[step]}</h2>
+      {step === 0 && <>
+        <fieldset><legend className="mb-2 text-sm font-medium text-slate-700">User Type</legend><div className="grid gap-2">{CATEGORIES.map(c => <button type="button" key={c.value} onClick={() => changeCategory(c.value)} aria-pressed={c.value === form.category} disabled={busy || reading} className={`flex min-h-14 items-center justify-between gap-3 rounded-xl border-2 px-4 py-3 text-left ${c.value === form.category ? 'border-[#2563EB] bg-blue-50' : 'border-slate-200 bg-white'}`}><span className="min-w-0"><span className="block text-sm font-semibold text-[#080677]">{c.label}</span><span className="block text-xs text-slate-500 mt-0.5">{c.hint}</span></span>{c.value === form.category && <Check size={18} className="shrink-0 text-[#2563EB]" />}</button>)}</div></fieldset>
+        {form.category === 'college' ? <label className="block text-sm font-medium text-slate-700">College Department<select className={`${inputClass} mt-1.5`} value={form.department} onChange={e => set('department', e.target.value)} disabled={!ready}><option value="">{ready ? 'Select college department' : 'Loading departments…'}</option>{departments.filter(d => !['SHS', 'JHS', 'BED'].includes(d.department_code.toUpperCase())).map(d => <option key={d.department_id}>{d.department_name}</option>)}</select>{errors.department && <span role="alert" className="text-xs text-red-600">{errors.department}</span>}</label> : form.category === 'employee' ? field('Department / Office', 'department', 'e.g. General Services') : <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">Senior High School · Your ID will be reviewed by PASS staff while the SHS format is being confirmed.</p>}
+        {field('Contact Number', 'contact', '09XX XXX XXXX', 'tel')}
+      </>}
+      {step === 1 && <>
+        <p className="text-sm text-slate-500">Upload the full front of your {form.category === 'employee' ? 'employee' : 'school'} ID, upright with readable text. Crop to the card edges and keep the ID upright. JPG/PNG is recommended for automatic reading.</p>
+        <FileUpload label={`${categoryLabel} ID (front)`} file={file} onChange={changeFile} error={errors.school_id_file} onError={msg => setErrors(e => ({ ...e, school_id_file: msg }))} />
+        {form.category !== 'shs' && file && <button type="button" disabled={reading || busy} onClick={() => void readId(true)} className="flex min-h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-[#2563EB] disabled:opacity-50">{reading ? <Loader2 size={17} className="animate-spin" /> : <RefreshCw size={17} />}{reading ? 'Reading your ID…' : 'Read ID again'}</button>}
+        {reading && <p role="status" className="text-sm text-blue-700">Extracting suggested names and ID number. Please wait.</p>}
+        {check && !reading && <div role="status" className={`rounded-xl border p-3 text-sm ${check.status === 'matched' && !checkEdited ? 'border-green-200 bg-green-50 text-green-800' : check.status === 'needs_correction' && !checkEdited ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}><p className="font-semibold">{checkEdited ? 'Edited details will be checked again' : ID_LABELS[check.status]}</p>{!checkEdited && check.reasons.map(r => <p key={r} className="mt-1">{r}</p>)}{check.status === 'matched' && !checkEdited && <p className="mt-1">Review the suggestions below before continuing. This does not activate your account.</p>}</div>}
+        {check && (check.status === 'needs_correction' || form.request_manual_review) && <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><input type="checkbox" checked={form.request_manual_review} onChange={e => set('request_manual_review', e.target.checked)} className="mt-1 h-4 w-4 shrink-0" /><span>The OCR reading is wrong and my details are correct. Request staff review. My account will remain pending.</span></label>}
+        {field('ID Number', 'user_code', form.category === 'college' ? '2026-00123' : form.category === 'employee' ? '022-0001' : 'ID number on your card')}
+        <p className="-mt-3 text-xs text-slate-500">{form.category === 'college' ? `9 digits. First four digits identify the start year; no later than ${year}.` : form.category === 'employee' ? `7 digits. The second and third digits identify the year (e.g. 022 → 2022); no later than ${year}. Keep the first zero.` : 'Enter the printed SHS ID number. No college/employee number pattern is applied.'}</p>
+        {field('First Name', 'first_name')}
+        <div className="grid grid-cols-[minmax(0,1fr)_100px] gap-3">{field('Surname', 'last_name')}{field('M.I. (optional)', 'middle_initial', 'S.')}</div>
+        <p className="text-xs text-slate-500 flex items-start gap-2"><ShieldCheck size={15} className="shrink-0 mt-0.5" />All suggested details are editable. Unclear text or an unavailable reader requires staff review. Changing a field does not override the server check.</p>
+        {errors.id_check_receipt && <p role="alert" className="text-sm text-red-600">{errors.id_check_receipt}</p>}
+      </>}
+      {step === 2 && <>
+        {field('Email Address', 'email', 'you@example.com', 'email')}
+        {field('Password', 'password', 'At least 8 characters', showPassword ? 'text' : 'password')}
+        {field('Confirm Password', 'password_confirmation', 'Repeat password', showPassword ? 'text' : 'password')}
+        <button type="button" onClick={() => setShowPassword(v => !v)} className="inline-flex min-h-11 items-center gap-2 text-sm text-[#2563EB]">{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}{showPassword ? 'Hide passwords' : 'Show passwords'}</button>
+        <p className="text-sm text-slate-500">After submission, enter the six-digit code sent to this email. Your account remains pending administrator approval.</p>
+      </>}
+      {step === 3 && <>
+        <dl className="divide-y divide-slate-100">{[
+          ['User Type', categoryLabel], ['Department / Office', form.department], ['Contact', form.contact],
+          ['Name', [form.first_name, form.middle_initial, form.last_name].filter(Boolean).join(' ')], ['ID Number', form.user_code], ['ID File', file?.name],
+          ['Document Check', form.category === 'shs' ? 'Staff review needed' : check ? ID_LABELS[check.status] : 'Not checked'], ['Email', form.email],
+        ].map(([label, value]) => <div key={label} className="grid grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)] gap-3 py-3 text-sm"><dt className="text-slate-500">{label}</dt><dd className="break-words text-right font-medium text-slate-800 [overflow-wrap:anywhere]">{value || '—'}</dd></div>)}</dl>
+        <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">Vehicle registration, vehicle photos and driver’s license submission are available after account approval, inside your dashboard.</p>
+        <label className="flex items-start gap-3 text-sm text-slate-600"><input type="checkbox" checked={form.agree} onChange={e => set('agree', e.target.checked)} className="mt-1 h-4 w-4 shrink-0" /><span>I agree to the PASS Terms and Conditions and Privacy Notice. I confirm that these details and documents are mine and accurate.</span></label>
+        <p className="text-xs text-slate-500">Automatic ID checks compare document text. Current enrollment/employment and ID authenticity require school records or staff confirmation.</p>
+      </>}
+      {message && <p role="status" className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700 [overflow-wrap:anywhere]">{message}</p>}
+      {currentError.length > 0 && step === 3 && <p role="alert" className="text-sm text-red-700">{currentError.join(' ')}</p>}
     </div>
-  ) : (
-    <div className="flex items-center justify-center mb-8 px-2">
-      {REGISTRATION_STEPS.map((s, i) => (
-        <React.Fragment key={s}>
-          <div className="flex flex-col items-center">
-            <div
-              className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all ${
-                i < step
-                  ? 'bg-green-500 border-green-500 text-white'
-                  : i === step
-                    ? 'bg-[#2563EB] border-[#2563EB] text-white'
-                    : 'bg-white border-slate-200 text-slate-400'
-              }`}
-            >
-              {i < step ? <Check size={16} /> : i + 1}
-            </div>
-
-            <span
-              className={`text-[10px] mt-1 font-medium whitespace-nowrap hidden sm:block ${
-                i === step ? 'text-[#2563EB]' : 'text-slate-400'
-              }`}
-            >
-              {s}
-            </span>
-          </div>
-
-          {i < REGISTRATION_STEPS.length - 1 && (
-            <div
-              className={`flex-1 h-0.5 mx-2 ${
-                i < step ? 'bg-green-500' : 'bg-slate-200'
-              }`}
-            />
-          )}
-        </React.Fragment>
-      ))}
+    <div className="mt-7 flex flex-wrap justify-between gap-3">
+      <button type="button" disabled={busy || reading} onClick={() => { if (step > 0) setStep(s => s - 1); else if (onExit) onExit(); else onBackToLogin(); setErrors({}); setMessage(''); }} className="flex min-h-11 items-center gap-1 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-600 disabled:opacity-50"><ChevronLeft size={16} />{step === 0 ? 'Sign in' : 'Back'}</button>
+      <button type="button" disabled={!ready || busy || reading || (step === 3 && !form.agree)} onClick={() => void (step === 3 ? submit() : next())} className="flex min-h-11 max-w-full items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy || reading ? <Loader2 size={16} className="shrink-0 animate-spin" /> : step === 3 ? <Check size={16} className="shrink-0" /> : null}{busy ? 'Submitting…' : reading ? 'Checking…' : step === 3 ? 'Submit Registration' : 'Continue'}{step !== 3 && !reading && <ChevronRight size={16} className="shrink-0" />}</button>
     </div>
-  );
-
-  const h = (icon: React.ReactNode, title: string) => (
-    <h2 className="font-semibold text-[#080677] text-lg flex items-center gap-2">
-      {icon} {title}
-    </h2>
-  );
-
-  const reviewRows: { label: string; value: string }[] = [
-    { label: 'Full Name', value: form.fullName },
-    { label: 'ID Number', value: form.idNum },
-    { label: 'Email', value: form.email },
-    { label: 'School ID Upload', value: form.idFile?.name ?? '' },
-    {
-      label: 'User Type',
-      value:
-        USER_TYPES.find(t => t.value === form.userType)?.label ??
-        form.userType,
-    },
-    { label: 'Department', value: form.dept },
-    { label: 'Contact', value: form.contact },
-    ...(form.hasVehicle
-      ? [
-          {
-            label: 'Vehicle',
-            value: `${form.vehicleType} â€” ${form.make} ${form.model}, ${form.color}`,
-          },
-          { label: 'Plate Number', value: form.plate.toUpperCase() },
-          { label: "Driver's License No.", value: form.licenseNo },
-          {
-            label: 'License Type',
-            value:
-              LICENSE_TYPES.find(t => t.value === form.licenseType)?.label ??
-              form.licenseType,
-          },
-          { label: 'License Expiry', value: form.licenseExpiry },
-          { label: 'License Upload', value: form.licenseFile?.name ?? '' },
-        ]
-      : [{ label: 'Vehicle', value: 'None to register now' }]),
-  ];
-
-  return (
-    <div>
-      {progress}
-
-      <div className="space-y-5">
-        {step === 0 && (
-          <>
-            {h(<User size={18} />, 'Account Information')}
-
-            {text('Full Name', 'fullName', 'Juan dela Cruz')}
-            {text('Institutional ID Number', 'idNum', '2024-00001')}
-            {text('Email Address', 'email', 'juan@university.edu', 'email')}
-
-            <div>
-              <label className={labelCls}>Password</label>
-              <div className="relative">
-                <input
-                  type={showPwd ? 'text' : 'password'}
-                  value={form.password}
-                  onChange={e => set('password', e.target.value)}
-                  placeholder="Minimum 8 characters"
-                  className={inputCls('password', 'pr-12')}
-                />
-
-                <button
-                  type="button"
-                  onClick={() => setShowPwd(v => !v)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
-                  aria-label={showPwd ? 'Hide password' : 'Show password'}
-                >
-                  {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-
-              {err('password')}
-            </div>
-
-            <div>
-              <label className={labelCls}>Confirm Password</label>
-              <input
-                type={showPwd ? 'text' : 'password'}
-                value={form.confirmPwd}
-                onChange={e => set('confirmPwd', e.target.value)}
-                placeholder="Repeat password"
-                className={inputCls('confirmPwd')}
-              />
-              {err('confirmPwd')}
-            </div>
-          </>
-        )}
-
-        {step === 1 && (
-          <>
-            {h(<IdCard size={18} />, 'Identity Verification')}
-
-            <p className="text-sm text-slate-500">
-              Upload a clear photo or scan of your school ID. The administrator
-              uses it to confirm your affiliation with DYCI.
-            </p>
-
-            {fileField('School ID (front)', 'idFile')}
-          </>
-        )}
-
-        {step === 2 && (
-          <>
-            {h(<Briefcase size={18} />, 'User Details')}
-
-            <div>
-              <label className={labelCls}>User Type</label>
-
-              <div className="grid grid-cols-2 gap-3">
-                {USER_TYPES.map(t => (
-                  <button
-                    key={t.value}
-                    type="button"
-                    onClick={() => set('userType', t.value)}
-                    className={choiceCls(form.userType === t.value)}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-
-              {err('userType')}
-            </div>
-
-            <div>
-              <label className={labelCls}>Department / College</label>
-
-              <select
-                value={form.dept}
-                onChange={e => set('dept', e.target.value)}
-                className={inputCls('dept')}
-                disabled={departmentsLoading || departmentsError !== ''}
-              >
-                <option value="">
-                  {departmentsLoading
-                    ? 'Loading departments...'
-                    : departmentsError
-                      ? 'Departments unavailable'
-                      : 'Select department'}
-                </option>
-
-                {departments.map(department => (
-                  <option
-                    key={department.department_id}
-                    value={department.department_name}
-                  >
-                    {department.department_name}
-                  </option>
-                ))}
-              </select>
-
-              {departmentsError && (
-                <p role="alert" className="text-xs text-red-500 mt-1">
-                  {departmentsError}
-                </p>
-              )}
-
-              {err('dept')}
-            </div>
-
-            {text('Contact Number', 'contact', '09XX XXX XXXX', 'tel')}
-          </>
-        )}
-
-        {step === 3 && (
-          <>
-            {h(<Car size={18} />, 'Vehicle (optional)')}
-
-            <div>
-              <label className={labelCls}>
-                Do you have a vehicle to register?
-              </label>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => set('hasVehicle', true)}
-                  className={choiceCls(form.hasVehicle === true)}
-                >
-                  Yes
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => set('hasVehicle', false)}
-                  className={choiceCls(form.hasVehicle === false)}
-                >
-                  No, not now
-                </button>
-              </div>
-
-              {err('hasVehicle')}
-
-              {form.hasVehicle === false && (
-                <p className="text-xs text-slate-500 mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3">
-                  No problem. You can still submit your account registration.
-                  Once your account is approved, you can register a vehicle
-                  later under My Vehicle.
-                </p>
-              )}
-            </div>
-
-            {form.hasVehicle === true && (
-              <>
-                <div>
-                  <label className={labelCls}>Vehicle Type</label>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    {VEHICLE_TYPES.map(t => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => set('vehicleType', t)}
-                        className={`py-2.5 rounded-xl border text-xs font-medium transition-all ${
-                          form.vehicleType === t
-                            ? 'border-[#2563EB] bg-blue-50 text-[#2563EB]'
-                            : 'border-slate-200 text-slate-500 hover:border-blue-200'
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {text('Plate Number', 'plate', 'ABC-1234')}
-                {text('Make (Brand)', 'make', 'Toyota, Honda, Mitsubishi...')}
-                {text('Model', 'model', 'Vios, Civic, Mirage...')}
-                {text('Color', 'color', 'White, Silver, Black...')}
-
-                <div className="pt-2 border-t border-slate-100">
-                  <p className="text-sm font-semibold text-[#080677] mt-4 mb-3">
-                    Driver's License
-                  </p>
-
-                  <div className="space-y-5">
-                    {text('License Number', 'licenseNo', 'N01-23-456789')}
-
-                    <div>
-                      <label className={labelCls}>License Type</label>
-
-                      <select
-                        value={form.licenseType}
-                        onChange={e => set('licenseType', e.target.value)}
-                        className={inputCls('licenseType')}
-                      >
-                        {LICENSE_TYPES.map(t => (
-                          <option key={t.value} value={t.value}>
-                            {t.label}
-                          </option>
-                        ))}
-                      </select>
-
-                      {err('licenseType')}
-                    </div>
-
-                    {text('Expiry Date', 'licenseExpiry', '', 'date')}
-                    {fileField("Driver's License (front)", 'licenseFile')}
-                    
-                  </div>
-                </div>
-              </>
-            )}
-          </>
-        )}
-
-        {step === 4 && (
-          <>
-            {h(<Check size={18} />, 'Review & Confirm')}
-
-            <div className="space-y-1">
-              {reviewRows.map(r => (
-                <div
-                  key={r.label}
-                  className="flex justify-between gap-4 py-2 border-b border-slate-50 text-sm"
-                >
-                  <span className="text-slate-400 font-medium shrink-0">
-                    {r.label}
-                  </span>
-
-                  <span className="text-slate-700 font-semibold text-right break-all">
-                    {r.value || 'â€”'}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <label className="flex items-start gap-3 text-sm text-slate-600 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.agree}
-                onChange={e => set('agree', e.target.checked)}
-                className="mt-1 rounded"
-              />
-
-              <span>
-                I agree to the PASS{' '}
-                <span className="text-[#2563EB]">Terms and Conditions</span>{' '}
-                and{' '}
-                <span className="text-[#2563EB]">Privacy Notice</span>. I
-                certify that all information and documents provided are
-                accurate.
-              </span>
-            </label>
-
-            {!form.agree && (
-              <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 p-3 rounded-xl">
-                <AlertCircle size={14} />
-                Please agree to the terms to submit your registration.
-              </div>
-            )}
-          </>
-        )}
-
-        {submitError && (
-          <div
-            role="alert"
-            className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 p-3 rounded-xl"
-          >
-            <AlertCircle size={18} className="shrink-0 mt-0.5" />
-            <span>{submitError}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="flex gap-3 mt-8">
-        {(step > 0 || onExit) && (
-          <button
-            type="button"
-            onClick={prev}
-            disabled={isSubmitting}
-            className="flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm disabled:opacity-50"
-          >
-            <ChevronLeft size={16} /> Back
-          </button>
-        )}
-
-        <div className="flex-1" />
-
-        {step < last ? (
-          <button
-            type="button"
-            onClick={next}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#2563EB] text-white font-semibold hover:bg-[#1D4ED8] transition-colors text-sm"
-          >
-            Continue <ChevronRight size={16} />
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={submitRegistration}
-            disabled={!form.agree || isSubmitting}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 text-sm"
-          >
-            <Check size={16} />
-            {isSubmitting ? 'Submitting...' : 'Submit Registration'}
-          </button>
-        )}
-      </div>
-    </div>
-  );
+  </div>;
 }

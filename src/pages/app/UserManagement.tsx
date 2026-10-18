@@ -1,6 +1,6 @@
 import { PAGE_SECTIONS, selectedSection } from '../../lib/pageSections';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   PageHeader,
@@ -17,6 +17,9 @@ import {
   Toast,
 } from '../../components/ui';
 import { UserPlus, Check, X, RefreshCw } from 'lucide-react';
+import { apiBlob } from '../../lib/apiClient';
+type SchoolIdCheck = { status: string; reasons: string[]; note: string; checks: Record<string, { result: string; detail: string }> };
+const ID_CHECK_LABELS: Record<string, string> = { matched: 'Details matched', manual_review: 'Staff review needed', unavailable: 'Automatic reader unavailable', needs_correction: 'Needs correction' };
 
 type UserStatus =
   | 'pending'
@@ -35,6 +38,9 @@ interface UserRow {
   contact: string;
   status: UserStatus;
   registered: string;
+  registrationCategory?: string | null;
+  schoolIdCheck?: SchoolIdCheck | null;
+  schoolIdSubmitted?: boolean;
 }
 
 interface ApiUser {
@@ -48,6 +54,9 @@ interface ApiUser {
   contact?: string | null;
   status: UserStatus;
   registered?: string | null;
+  registrationCategory?: string | null;
+  schoolIdCheck?: SchoolIdCheck | null;
+  schoolIdSubmitted?: boolean;
 }
 
 interface ApiListResponse {
@@ -93,6 +102,7 @@ function mapUser(user: ApiUser): UserRow {
     contact: user.contact || '—',
     status: user.status,
     registered: user.registered || '',
+    registrationCategory: user.registrationCategory, schoolIdCheck: user.schoolIdCheck, schoolIdSubmitted: user.schoolIdSubmitted,
   };
 }
 
@@ -152,6 +162,21 @@ export default function UserManagement() {
 
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selected, setSelected] = useState<UserRow | null>(null);
+
+  const [idPreview, setIdPreview] = useState<{ url: string; pdf: boolean } | null>(null);
+  const [idError, setIdError] = useState('');
+  const [idLoading, setIdLoading] = useState(false);
+  const previewSequence = useRef(0);
+  useEffect(() => { previewSequence.current++; setIdPreview(null); setIdError(''); setIdLoading(false); }, [selected?.id]);
+  useEffect(() => () => { if (idPreview) URL.revokeObjectURL(idPreview.url); }, [idPreview]);
+  const viewSchoolId = async () => {
+    if (!selected || idLoading) return;
+    const seq = ++previewSequence.current;
+    setIdLoading(true); setIdError('');
+    try { const blob = await apiBlob(`/api/admin/users/${selected.id}/school-id`); if (seq !== previewSequence.current) return; setIdPreview({ url: URL.createObjectURL(blob), pdf: blob.type === 'application/pdf' }); }
+    catch (error) { if (seq === previewSequence.current) setIdError(error instanceof Error ? error.message : 'Unable to load the ID.'); }
+    finally { if (seq === previewSequence.current) setIdLoading(false); }
+  };
 
   const [showAdd, setShowAdd] = useState(false);
   const [toast, setToast] = useState('');
@@ -693,6 +718,16 @@ async function handleAddUser() {
               </div>
             ))}
 
+            {selected.registrationCategory && <p className="text-sm text-slate-600">Registration category: <strong>{selected.registrationCategory === 'college' ? 'College Student' : selected.registrationCategory === 'shs' ? 'SHS Student' : 'Employee'}</strong></p>}
+            {selected.schoolIdCheck && <section className="rounded-xl border border-blue-100 bg-blue-50 p-3 space-y-2 text-sm">
+              <h3 className="font-semibold text-[#080677]">ID document check · {ID_CHECK_LABELS[selected.schoolIdCheck.status] || selected.schoolIdCheck.status}</h3>
+              {Object.entries(selected.schoolIdCheck.checks ?? {}).map(([key, result]) => <p key={key}><strong className="capitalize">{result.result}:</strong> {result.detail}</p>)}
+              {selected.schoolIdCheck.reasons?.map(reason => <p key={reason} className="text-amber-800">{reason}</p>)}
+              <p className="text-xs text-slate-600">{selected.schoolIdCheck.note}</p>
+            </section>}
+            {selected.schoolIdSubmitted && <Button variant="outline" disabled={idLoading} onClick={viewSchoolId}>{idLoading ? 'Loading ID…' : 'View institutional ID'}</Button>}
+            {idError && <p role="alert" className="text-sm text-red-700">{idError}</p>}
+            {idPreview && (idPreview.pdf ? <iframe src={idPreview.url} title="Institutional ID" className="w-full h-96 rounded-xl" /> : <img src={idPreview.url} alt="Uploaded institutional ID" className="max-h-[32rem] max-w-full mx-auto rounded-xl" />)}
             <Button variant="outline" onClick={() => setSelected(null)}>
               Close
             </Button>
