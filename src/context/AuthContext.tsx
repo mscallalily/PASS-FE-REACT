@@ -23,6 +23,9 @@ interface AuthUser {
   role: UserRole;
   idNum?: string;
   dept?: string;
+  accountStatus?: string;
+  emailVerified?: boolean;
+  schoolIdSubmitted?: boolean;
 }
 
 interface AuthContextType {
@@ -45,6 +48,9 @@ interface ApiUser {
   role: string | null;
   idNum?: string;
   dept?: string;
+  accountStatus?: string;
+  emailVerified?: boolean;
+  schoolIdSubmitted?: boolean;
 }
 
 interface ApiResponse {
@@ -99,6 +105,9 @@ function toAuthUser(apiUser: ApiUser): AuthUser {
     role: normalizeRole(apiUser.role),
     idNum: apiUser.idNum,
     dept: apiUser.dept,
+    accountStatus: apiUser.accountStatus,
+    emailVerified: apiUser.emailVerified,
+    schoolIdSubmitted: apiUser.schoolIdSubmitted,
   };
 }
 
@@ -136,16 +145,17 @@ async function readResponse(response: Response): Promise<ApiResponse> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  // With a saved token, routes wait until the session is restored instead of
-  // redirecting to /login (e.g. when a page is refreshed or opened directly).
-  const [ready, setReady] = useState(() => !getStoredToken());
+  const [restoringSession, setRestoringSession] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
     async function restoreSession() {
       const token = getStoredToken();
-      if (!token) return;
+      if (!token) {
+        if (!cancelled) setRestoringSession(false);
+        return;
+      }
 
       try {
         const response = await fetch('/api/me', {
@@ -157,7 +167,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const data = await readResponse(response);
 
-        if (!data.user || cancelled) return;
+        if (cancelled || getStoredToken() !== token) return;
+        if (!data.user) throw new Error("Incomplete session response.");
 
         const restoredUser = toAuthUser(data.user);
 
@@ -168,9 +179,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(restoredUser);
       } catch {
-        clearStoredToken();
+        if (!cancelled && getStoredToken() === token) clearStoredToken();
       } finally {
-        if (!cancelled) setReady(true);
+        if (!cancelled) setRestoringSession(false);
       }
     }
 
@@ -223,6 +234,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout: AuthContextType['logout'] = async () => {
     const token = getStoredToken();
+    clearStoredToken();
+    setUser(null);
 
     try {
       if (token) {
@@ -247,10 +260,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         isAuthenticated: !!user,
-        ready,
+        ready: !restoringSession,
       }}
     >
-      {children}
+      {restoringSession ? (
+        <div role="status" className="min-h-screen flex items-center justify-center text-slate-600">
+          Restoring your session...
+        </div>
+      ) : children}
     </AuthContext.Provider>
   );
 }

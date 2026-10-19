@@ -1,5 +1,7 @@
+import { useLocation } from 'react-router-dom';
+import { PAGE_SECTIONS, selectedSection } from '../../lib/pageSections';
 import React, { useEffect, useRef, useState } from 'react';
-import { PageHeader, Card, Button, Tabs, Toggle, Toast, Input, Select } from '../../components/ui';
+import { PageHeader, Card, Button,  Toggle, Toast, Input, Select } from '../../components/ui';
 import { Settings, Save } from 'lucide-react';
 
 type TabName = 'General' | 'Parking' | 'Access Control' | 'Notifications' | 'Security';
@@ -42,11 +44,11 @@ const NOTIFICATION_EVENTS = [
 ];
 
 const DEFAULT_SETTINGS: SettingsData = {
-  system_name: 'PASS — Parking Access and Security System',
+  system_name: 'PASS — Parking Access and Space Management System',
   institution_name: "Dr. Yanga's Colleges, Inc.",
   contact_email: 'parking@dyci.edu.ph',
   contact_phone: '(02) 8123-4567',
-  timezone: 'Asia/Manila (UTC+8)',
+  timezone: 'Asia/Manila',
   date_format: 'MM/DD/YYYY',
   zone_a_capacity: '50',
   zone_b_capacity: '40',
@@ -113,11 +115,13 @@ function getAuthToken(): string | null {
 }
 
 export default function SystemSettings() {
-  const [tab, setTab] = useState<TabName>('General');
+  const { pathname } = useLocation();
+  const tab = selectedSection(PAGE_SECTIONS.settings, pathname);
   const [toast, setToast] = useState('');
   const [settings, setSettings] = useState<SettingsData>(DEFAULT_SETTINGS);
   const savedSettings = useRef<SettingsData>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
+  const [loadedSettings, setLoadedSettings] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [logoUploading, setLogoUploading] = useState(false);
@@ -135,9 +139,10 @@ export default function SystemSettings() {
         });
         if (!response.ok) throw new Error(`Unable to load system settings (${response.status}).`);
         const result = await response.json();
-        const normalized = normalizeSettings(result.settings ?? result);
+        const normalized = normalizeSettings(result.data ?? result.settings ?? result);
         if (!cancelled) {
           setSettings(normalized);
+          setLoadedSettings(true);
           savedSettings.current = normalized;
           setError('');
         }
@@ -167,6 +172,7 @@ export default function SystemSettings() {
   // Accepts either native input/select events or custom UI component values.
   const field = (key: keyof SettingsData) => ({
     value: String(settings[key]),
+    disabled: isBusy,
     onChange: (eventOrValue: any) => {
       const next = eventOrValue?.target ? eventOrValue.target.value : eventOrValue;
       setSettings(prev => ({ ...prev, [key]: String(next) }));
@@ -181,13 +187,14 @@ export default function SystemSettings() {
   }
 
   async function save(scope: TabName | 'all' = 'all') {
-    if (loading || saving) return;
+    if (loading || saving || !loadedSettings) return;
     setSaving(true);
     setError('');
     try {
       const token = getAuthToken();
       if (!token) throw new Error('No login token found. Please log in again.');
-      const names = scope === 'all' ? (Object.keys(settings) as (keyof SettingsData)[]) : KEYS[scope];
+      if (tab !== 'General') throw new Error('This settings section is not available yet.');
+      const names = KEYS.General;
       const body: Record<string, unknown> = {};
       for (const key of names) {
         const value = settings[key];
@@ -212,7 +219,7 @@ export default function SystemSettings() {
         ...savedSettings.current,
         ...Object.fromEntries(names.map(key => [key, settings[key]])),
       } as SettingsData;
-      notify(scope === 'all' ? 'All system settings saved successfully.' : `${scope} settings saved successfully.`);
+      notify('General settings saved successfully.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save system settings.');
     } finally {
@@ -245,29 +252,30 @@ export default function SystemSettings() {
     }
   }
 
-  const isBusy = loading || saving;
+  const isBusy = loading || saving || !loadedSettings;
 
   return (
     <div className="animate-fadein">
       {toast && <Toast message={toast} onClose={() => setToast('')} />}
-      <PageHeader title="System Settings" subtitle="Configure PASS system preferences and parameters"
-        action={<Button onClick={() => void save('all')} disabled={isBusy}><Save size={16} /> {saving ? 'Saving...' : 'Save Changes'}</Button>}
+      <PageHeader title={tab === 'General' ? 'System Settings' : `System Settings · ${tab}`} subtitle="Configure PASS system preferences and parameters"
+        action={<Button disabled={isBusy || tab !== 'General'} onClick={() => void save('General')}><Save size={16} /> Save Changes</Button>}
       />
 
-      <Tabs tabs={['General', 'Parking', 'Access Control', 'Notifications', 'Security']} active={tab} onChange={value => setTab(value as TabName)} />
 
-      {error && <p className="my-3 text-sm text-red-600" role="alert">{error}</p>}
-      {loading && <p className="my-3 text-sm text-slate-500">Loading saved settings...</p>}
+
+      {loading && <p role="status" className="mb-4 text-sm text-slate-500">Loading settings…</p>}
+      {error && <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><p>{error}</p><Button className="mt-3" variant="outline" onClick={() => window.location.reload()}>Reload settings</Button></div>}
 
       {tab === 'General' && (
-        <Card className="p-8 space-y-6 max-w-2xl">
+        <Card className="p-4 sm:p-6 space-y-6 max-w-2xl">
           <h3 className="font-semibold text-[#080677] flex items-center gap-2"><Settings size={18} /> General Settings</h3>
+          <p className="text-xs text-slate-500">General preferences are saved here. Gate and visitor schedules use Manila time.</p>
           <Input label="System Name" {...field('system_name')} />
           <Input label="Institution Name" {...field('institution_name')} />
           <Input label="Contact Email" type="email" {...field('contact_email')} />
           <Input label="Contact Phone" {...field('contact_phone')} />
           <Select label="Time Zone" {...field('timezone')}>
-            <option>Asia/Manila (UTC+8)</option>
+            <option value="Asia/Manila">Asia/Manila (UTC+8)</option>
             <option>UTC</option>
           </Select>
           <Select label="Date Format" {...field('date_format')}>
@@ -275,14 +283,7 @@ export default function SystemSettings() {
             <option>DD/MM/YYYY</option>
             <option>YYYY-MM-DD</option>
           </Select>
-          <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center">
-            <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
-              onChange={event => void uploadLogo(event.target.files?.[0])} />
-            <button type="button" disabled={logoUploading} className="text-sm text-slate-400 hover:text-blue-600 disabled:opacity-60"
-              onClick={() => logoInputRef.current?.click()}>
-              {logoUploading ? 'Uploading system logo...' : 'Click to upload system logo'}
-            </button>
-          </div>
+          <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Logo upload is not available yet. The existing PASS logo remains in use.</p>
           <div className="flex gap-3">
             <Button onClick={() => void save('General')} disabled={isBusy}>Save General Settings</Button>
             <Button variant="outline" onClick={() => setSettings(prev => ({ ...prev, ...Object.fromEntries(KEYS.General.map(key => [key, savedSettings.current[key]])) }))}>Cancel</Button>
@@ -290,10 +291,12 @@ export default function SystemSettings() {
         </Card>
       )}
 
+      {tab !== 'General' && <p role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">This section is a preview. These controls do not change parking, gate, notification or security rules yet.</p>}
+      <fieldset disabled={tab !== 'General'} className="min-w-0">
       {tab === 'Parking' && (
-        <Card className="p-8 space-y-6 max-w-2xl">
+        <Card className="p-4 sm:p-6 space-y-6 max-w-2xl">
           <h3 className="font-semibold text-[#080677]">Parking Settings</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Max Capacity (Zone A)" type="number" {...field('zone_a_capacity')} />
             <Input label="Max Capacity (Zone B)" type="number" {...field('zone_b_capacity')} />
             <Input label="Max Capacity (Zone C)" type="number" {...field('zone_c_capacity')} />
@@ -304,7 +307,7 @@ export default function SystemSettings() {
           <Select label="Default Slot Type" {...field('default_slot_type')}><option>Regular</option><option>Reserved</option><option>Disabled</option><option>Motorcycle</option></Select>
           <div>
             <label className="text-sm font-medium text-slate-700 mb-2 block">Vehicle Categories Allowed</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {VEHICLE_CATEGORIES.map(v => (
                 <label key={v} className="flex items-center gap-2 text-sm text-slate-600">
                   <input type="checkbox" checked={settings.allowed_vehicle_categories.includes(v)}
@@ -318,7 +321,7 @@ export default function SystemSettings() {
       )}
 
       {tab === 'Access Control' && (
-        <Card className="p-8 space-y-6 max-w-2xl">
+        <Card className="p-4 sm:p-6 space-y-6 max-w-2xl">
           <h3 className="font-semibold text-[#080677]">Access Control Settings</h3>
           <Input label="RFID Card Validity (months)" type="number" {...field('rfid_card_validity_months')} />
           <Input label="QR Pass Validity (hours)" type="number" {...field('qr_pass_validity_hours')} />
@@ -331,7 +334,7 @@ export default function SystemSettings() {
       )}
 
       {tab === 'Notifications' && (
-        <Card className="p-8 space-y-6 max-w-2xl">
+        <Card className="p-4 sm:p-6 space-y-6 max-w-2xl">
           <h3 className="font-semibold text-[#080677]">Notification Settings</h3>
           <div className="space-y-4">
             {([
@@ -361,7 +364,7 @@ export default function SystemSettings() {
       )}
 
       {tab === 'Security' && (
-        <Card className="p-8 space-y-6 max-w-2xl">
+        <Card className="p-4 sm:p-6 space-y-6 max-w-2xl">
           <h3 className="font-semibold text-[#080677]">User & Security Settings</h3>
           <Input label="Minimum Password Length" type="number" {...field('min_password_length')} />
           <Input label="Session Timeout (minutes)" type="number" {...field('session_timeout_minutes')} />
@@ -380,6 +383,7 @@ export default function SystemSettings() {
           <Button onClick={() => void save('Security')} disabled={isBusy}>Save Security Settings</Button>
         </Card>
       )}
+      </fieldset>
     </div>
   );
 }

@@ -55,3 +55,24 @@ h1, h2, h3 {
   background: linear-gradient(90deg, transparent, #38BDF8, transparent);
   animation: scanLine 2s ease-in-out infinite;
 }
+
+/* Data records remain readable without sideways scrolling on narrow screens. */
+.pass-cell-value { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .pass-responsive-table, .pass-responsive-table tbody { display: block; width: 100%; }
+  .pass-responsive-table thead { display: none; }
+  .pass-responsive-table tbody { padding: 12px; }
+  .pass-responsive-table tbody tr { display: block; border: 1px solid #e2e8f0; border-radius: 12px; padding: 8px 12px; margin-bottom: 12px; background: white; }
+  .pass-responsive-table tbody tr:last-child { margin-bottom: 0; }
+  .pass-responsive-table tbody td { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px; padding: 10px 0; white-space: normal; border-bottom: 1px solid #f1f5f9; }
+  .pass-responsive-table tbody td:last-child { border-bottom: 0; }
+  .pass-responsive-table tbody td::before { content: attr(data-label); font-size: 11px; line-height: 1.5; font-weight: 600; color: #64748b; }
+  .pass-responsive-table .pass-cell-value { white-space: normal; }
+  .pass-responsive-table .pass-cell-value button { max-width: 100%; }
+  input, select, textarea { font-size: 16px !important; }
+}
+
+@media (max-width: 767px) {
+  button:not([role="switch"]) { min-height: 44px; }
+  label:has([role="switch"]) { min-height: 44px; }
+}

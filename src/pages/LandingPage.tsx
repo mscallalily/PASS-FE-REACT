@@ -10,21 +10,7 @@ const FEATURES = [
   { icon: <Wifi size={24} />, title: 'QR Visitor Passes', desc: 'Generate temporary digital QR passes for campus visitors with time-limited access.' },
   { icon: <BarChart3 size={24} />, title: 'Analytics Dashboard', desc: 'Comprehensive reports and occupancy analytics for parking administrators.' },
   { icon: <Bell size={24} />, title: 'Smart Notifications', desc: 'Automated alerts for parking availability, violations, and access updates.' },
-  { icon: <Smartphone size={24} />, title: 'Mobile Application', desc: 'Full-featured mobile app for checking availability, history, and QR passes on the go.' },
-];
-
-const STATS = [
-  { label: 'Parking Slots', value: '180' },
-  { label: 'Registered Vehicles', value: '320+' },
-  { label: 'Daily Transactions', value: '400+' },
-  { label: 'RFID Tags Active', value: '250+' },
-];
-
-const ZONE_DATA = [
-  { zone: 'Zone A', available: 18, total: 50, color: 'bg-green-500' },
-  { zone: 'Zone B', available: 2, total: 40, color: 'bg-red-500' },
-  { zone: 'Zone C', available: 39, total: 60, color: 'bg-green-500' },
-  { zone: 'Zone D', available: 18, total: 30, color: 'bg-amber-500' },
+  { icon: <Smartphone size={24} />, title: 'Mobile Application', desc: 'A dedicated mobile app is planned. Use the responsive web portal on your phone today.' },
 ];
 
 export default function LandingPage() {
@@ -79,44 +65,13 @@ export default function LandingPage() {
                 </Link>
               </div>
             </div>
-            <div className="hidden lg:block">
-              <div className="relative">
-                <div className="bg-white/10 backdrop-blur border border-white/20 rounded-3xl p-6">
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="w-3 h-3 bg-red-400 rounded-full" />
-                    <div className="w-3 h-3 bg-amber-400 rounded-full" />
-                    <div className="w-3 h-3 bg-green-400 rounded-full" />
-                    <span className="text-xs text-white/60 ml-2">PASS Live Dashboard</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 mb-5">
-                    {STATS.map(s => (
-                      <div key={s.label} className="bg-white/10 rounded-xl p-4">
-                        <p className="text-2xl font-bold text-[#38BDF8]">{s.value}</p>
-                        <p className="text-xs text-blue-200">{s.label}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="bg-white/10 rounded-xl p-4">
-                    <p className="text-xs font-semibold text-blue-200 mb-3">ZONE AVAILABILITY</p>
-                    <div className="space-y-2.5">
-                      {ZONE_DATA.map(z => (
-                        <div key={z.zone}>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="text-white/80">{z.zone}</span>
-                            <span className="text-white font-medium">{z.available}/{z.total} free</span>
-                          </div>
-                          <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
-                            <div className={`h-full ${z.color} rounded-full`} style={{ width: `${(z.available / z.total) * 100}%` }} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div className="absolute -bottom-4 -right-4 bg-white text-[#080677] px-4 py-2 rounded-lg shadow-lg text-xs font-semibold">
-                  77 Slots Available Now
-                </div>
-              </div>
+            <div className="rounded-3xl border border-white/20 bg-white/10 backdrop-blur p-6 sm:p-8">
+              <div className="flex items-center gap-3 text-[#96D1F2] mb-5"><ParkingSquare size={28} /><span className="text-sm font-semibold">PASS Parking Overview</span></div>
+              <h2 className="text-2xl font-bold mb-3">Plan your campus visit</h2>
+              <p className="text-blue-100 leading-relaxed">Sign in to see the parking layout and current availability for cars and motorcycles.</p>
+              <div className="grid grid-cols-2 gap-3 my-6">{['Car parking', 'Motorcycle parking'].map(label => <div key={label} className="rounded-xl bg-white/10 p-4 text-sm font-medium"><MapPin size={20} className="mb-2 text-[#96D1F2]" />{label}</div>)}</div>
+              <Link to="/login" className="inline-flex items-center gap-2 rounded-xl bg-[#96D1F2] px-5 py-3 font-bold text-[#080677]">View parking availability <ChevronRight size={17} /></Link>
+              <p className="text-xs text-blue-200 mt-4">Live availability is available to signed-in accounts.</p>
             </div>
           </div>
         </div>
@@ -148,27 +103,10 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
-              <h2 className="text-3xl font-bold text-[#080677] mb-4">Real-Time Parking Availability</h2>
-              <p className="text-slate-500 mb-6 leading-relaxed">Know before you go. PASS provides live updates on parking slot availability across all campus zones, visible on the web and mobile app.</p>
-              <div className="space-y-4">
-                {ZONE_DATA.map(z => (
-                  <div key={z.zone} className="bg-white rounded-xl p-4 border border-blue-100 shadow-sm">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-semibold text-slate-700">{z.zone}</span>
-                      <span className={`text-sm font-bold ${z.available < 5 ? 'text-red-600' : z.available < 15 ? 'text-amber-600' : 'text-green-600'}`}>
-                        {z.available} Available
-                      </span>
-                    </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full ${z.color} rounded-full transition-all`} style={{ width: `${(z.available / z.total) * 100}%` }} />
-                    </div>
-                    <div className="flex justify-between text-xs text-slate-400 mt-1">
-                      <span>{z.total - z.available} Occupied</span>
-                      <span>{z.total} Total</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <h2 className="text-3xl font-bold text-[#080677] mb-4">Find your way around campus parking</h2>
+              <p className="text-slate-500 mb-6 leading-relaxed">View the same parking layout in plan or 3D after signing in. Check availability for the car and motorcycle areas before you travel.</p>
+              <div className="space-y-3 mb-6">{['A shared Main Entrance / Exit', 'Separate car and motorcycle parking areas', 'Visitor requests and temporary QR passes'].map(label => <p key={label} className="flex items-center gap-3 rounded-xl border border-blue-100 bg-white p-4 text-sm text-slate-600"><CheckCircle size={18} className="shrink-0 text-[#2563EB]" />{label}</p>)}</div>
+              <Link to="/login" className="inline-flex items-center gap-2 rounded-xl bg-[#080677] px-5 py-3 text-sm font-semibold text-white">Sign in to view the parking map <ChevronRight size={16} /></Link>
             </div>
             <div id="about" className="bg-[#080677] rounded-3xl p-8 text-white">
               <Shield size={40} className="text-[#38BDF8] mb-5" />

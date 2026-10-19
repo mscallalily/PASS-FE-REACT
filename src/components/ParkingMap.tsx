@@ -75,7 +75,19 @@ export interface MapGeometry {
   road: { polygon: Point[]; label: string; label_at: Point; label_angle: number };
   gate: { at: Point; angle: number; label: string; sublabel: string; label_at: Point };
   lanes: { points: Point[]; kind: 'road_in' | 'road_out' | 'to_area' | 'lane'; reverse?: boolean; label?: string; label_at?: Point; label_angle?: number }[];
-  dimensions: { text: string; at: Point; angle: number }[];
+  dimensions: { id?: string; label?: string; text: string; description?: string; at: Point; angle: number; from?: Point; to?: Point }[];
+  circulation?: { polygon: Point[]; kind: string; width_m?: number }[];
+  circulation_labels?: { text: string; at: Point; angle: number }[];
+  proposed_slot_codes?: string[];
+  measurement_basis?: {
+    survey_verified: boolean; scale: string; source_image: string; note: string; pathway_note: string;
+    boundary_note?: string; lineup_source_image?: string; lineup_note?: string; car_source_image?: string; car_edges_m?: number[]; units_per_metre?: number;
+    capacity_review?: { reported_car_capacity: number; proposed_car_bays: number; unresolved_car_positions: number; survey_verified: boolean; note: string };
+    motorcycle_proposal?: string; car_proposal?: string; circulation_note?: string;
+    vehicle_measurements?: { car_width_m: number; car_length_m: number; car_mirrors_included: boolean; motorcycle_width_m: number; motorcycle_length_m: number; note: string };
+    inventory?: { motorcycle_configured: number; motorcycle_drawn: number; car_configured: number; car_drawn: number };
+    standards: { type: string; label: string; width_m: number; length_m: number; basis: string; source: string; url: string }[];
+  };
   trays?: MapTray[];
 }
 
@@ -83,14 +95,37 @@ export interface MapData {
   view_box: [number, number, number, number];
   geometry: MapGeometry;
   slots: MapSlot[];
+  measured_layout?: { geometry: MapGeometry; positions: Record<string, { x: number; y: number; w: number; h: number; rotation: number }> };
   extra_bays: MapBay[];
+}
+
+/** Use the measured proposal consistently, including records with no map position. */
+export function withProposedLayout<T extends MapData>(data: T): T {
+  const alternative = data.measured_layout;
+  if (!alternative) return data;
+  return {
+    ...data,
+    geometry: alternative.geometry,
+    slots: data.slots.map(slot => {
+      const position = alternative.positions[slot.slot_code];
+      return { ...slot, placed: !!position, x: position?.x ?? null, y: position?.y ?? null, w: position?.w ?? null, h: position?.h ?? null, rotation: position?.rotation ?? 0 };
+    }),
+  };
+}
+
+/** Physical proposal dimensions, never the size of a schematic inventory symbol. */
+export function proposedSlotSize(data: MapData | null | undefined, code: string) {
+  const p = data?.measured_layout?.positions[code];
+  const unit = data?.measured_layout?.geometry.measurement_basis?.units_per_metre;
+  if (!p || !unit) return null;
+  return `${(Math.min(p.w, p.h) / unit).toFixed(2)} × ${(Math.max(p.w, p.h) / unit).toFixed(2)} m`;
 }
 
 // ----------------------------------------------------------------------------- helpers
 
 const FOCUS: Record<string, ViewBox> = {
-  MC: [50, 18, 340, 270],
-  CAR: [300, 20, 460, 320],
+  MC: [40, 0, 320, 240],
+  CAR: [290, 0, 460, 330],
 };
 
 /** Keep text close to upright: rotate along the bay's long axis. */
@@ -109,7 +144,7 @@ function textAngle(rotation: number, w: number, h: number) {
 export function slotFill(slot: MapSlot) {
   if (slot.status === 'maintenance') return { fill: '#9CA3AF', stroke: '#6B7280', side: '#6B7280', dash: undefined, text: '#FFFFFF' };
   if (slot.status === 'occupied') {
-    return { fill: '#EF4444', stroke: slot.occupant?.confirmed ? '#B91C1C' : '#FFFFFF', side: '#B91C1C', dash: slot.occupant?.confirmed ? undefined : '1.2 0.8', text: '#FFFFFF' };
+    return { fill: '#EF4444', stroke: !slot.occupant || slot.occupant.confirmed ? '#B91C1C' : '#FFFFFF', side: '#B91C1C', dash: !slot.occupant || slot.occupant.confirmed ? undefined : '1.2 0.8', text: '#FFFFFF' };
   }
   return { fill: '#22C55E', stroke: '#15803D', side: '#15803D', dash: undefined, text: '#FFFFFF' };
 }
@@ -118,7 +153,7 @@ export const slotNumber = (code: string) => String(Number(code.split('-')[1] ?? 
 
 export function slotLabel(slot: MapSlot) {
   const state = slot.status === 'occupied'
-    ? `occupied by ${slot.occupant?.plate_number}${slot.occupant?.confirmed ? '' : ' (location not yet confirmed)'}`
+    ? slot.occupant ? `occupied by ${slot.occupant.plate_number}${slot.occupant.confirmed ? '' : ' (location not yet confirmed)'}` : 'occupied'
     : slot.status;
   return `Slot ${slot.slot_code}${slot.accessible ? ' (accessible / PWD)' : ''}, ${slot.area_name}, ${state}${slot.incident ? ', wrong-slot report' : ''}`;
 }
@@ -149,13 +184,14 @@ export function ZoomControls({ onZoomIn, onZoomOut, onReset, children }: {
 // ----------------------------------------------------------------------------- component
 
 /** Flat 2D plan of the DYCI layout; also the fallback for the 3D-style view. */
-export default function ParkingMap({ data, highlight, onSelect, focusArea }: {
+export default function ParkingMap({ data, highlight, onSelect, focusArea, showMeasurements = false }: {
+  showMeasurements?: boolean;
   data: MapData;
   highlight?: string | null;
   onSelect: (slot: MapSlot) => void;
   focusArea?: { code: string; key: number } | null;
 }) {
-  const home = useMemo<ViewBox>(() => [...data.view_box] as ViewBox, [data.view_box]);
+  const home = useMemo<ViewBox>(() => showMeasurements ? [25, -40, 795, 425] : [...data.view_box] as ViewBox, [data.view_box, showMeasurements]);
   const svgRef = useRef<SVGSVGElement>(null);
   const { view, zoomScale, zoomCenter, focus, reset, suppressClick, handlers } = usePanZoom(svgRef, home);
 
@@ -218,6 +254,10 @@ export default function ParkingMap({ data, highlight, onSelect, focusArea }: {
           </g>
         ))}
 
+        {g.circulation?.filter(c => showMeasurements || ['walkway', 'car_approach'].includes(c.kind)).map((clearance, index) => <polygon key={`clearance-${index}`} points={pts(clearance.polygon)} fill={clearance.kind === 'walkway' ? '#BFDBFE' : clearance.kind === 'car_approach' ? '#FDE68A' : '#CBD5E1'} fillOpacity={clearance.kind === 'car_approach' ? 0.7 : 1} stroke="#94A3B8" strokeWidth={0.3} />)}
+
+        {g.circulation_labels?.map(label => <text key={label.text} transform={`translate(${label.at[0]} ${label.at[1]}) rotate(${label.angle})`} textAnchor="middle" fontSize={5} fontWeight={700} fill="#475569">{label.text}</text>)}
+
         {/* Shared IN/OUT road */}
         <polygon points={pts(g.road.polygon)} fill="#FACC15" stroke="#A16207" strokeWidth={0.6} />
         <text transform={`translate(${g.road.label_at[0]} ${g.road.label_at[1]}) rotate(${g.road.label_angle})`}
@@ -242,14 +282,15 @@ export default function ParkingMap({ data, highlight, onSelect, focusArea }: {
           );
         })}
 
+        {showMeasurements && g.dimensions.filter(d => d.from && d.to).map(d => <line key={`dim-${d.id}`} x1={d.from![0]} y1={d.from![1]} x2={d.to![0]} y2={d.to![1]} stroke="#1D4ED8" strokeWidth={0.7} />)}
         {/* Area titles and dimensions */}
         {g.areas.map(a => (
           <text key={a.area} transform={`translate(${a.label_at[0]} ${a.label_at[1]}) rotate(${a.label_angle})`}
             textAnchor="middle" fontSize={6.5} fontWeight={800} fill="#080677" stroke="#FFFFFF" strokeWidth={1.6} paintOrder="stroke">{a.label}</text>
         ))}
-        {g.dimensions.map(d => (
+        {showMeasurements && g.dimensions.map(d => (
           <text key={d.text} transform={`translate(${d.at[0]} ${d.at[1]}) rotate(${d.angle})`}
-            textAnchor="middle" fontSize={5} fill="#94A3B8">{d.text}</text>
+            textAnchor="middle" fontSize={5} fill="#1D4ED8">{(d.label ?? d.id) ? `${d.label ?? d.id}: ` : ''}{d.text}</text>
         ))}
 
         {/* Painted bays that are not PASS slots */}
@@ -294,6 +335,17 @@ export default function ParkingMap({ data, highlight, onSelect, focusArea }: {
                 fontSize={Math.min(5, short * 0.62)} fontWeight={700} fill={c.text} pointerEvents="none">
                 {s.accessible ? `♿ ${slotNumber(s.slot_code)}` : slotNumber(s.slot_code)}
               </text>
+              {showMeasurements && g.measurement_basis?.scale === 'metric_proposal' && [
+                { label: `W ${(Math.min(w, h) / (g.measurement_basis.units_per_metre || 8)).toFixed(2)}m`, offset: s.accessible ? 0.24 : 0.20 },
+                { label: `L ${(Math.max(w, h) / (g.measurement_basis.units_per_metre || 8)).toFixed(2)}m`, offset: s.accessible ? 0.39 : 0.35 },
+              ].map(d => {
+                const x = w > h ? w * d.offset : 0, y = w > h ? 0 : h * d.offset;
+                const direction = w > h ? 90 : 0;
+                const flip = s.rotation + direction > 90 || s.rotation + direction < -90 ? 180 : 0;
+                return <text key={d.label} x={x} y={y} textAnchor="middle" dominantBaseline="central"
+                  fontSize={short * 0.20} fontWeight={600} fill={c.text} pointerEvents="none"
+                  transform={`rotate(${direction + flip} ${x} ${y})`}>{d.label}</text>;
+              })}
               {showPlates && s.occupant && short >= 9 && (
                 <text transform={`rotate(${angle}) translate(0 ${Math.min(5, short * 0.62) * 0.95})`} textAnchor="middle" dominantBaseline="central"
                   fontSize={2.3} fill={c.text} pointerEvents="none">{s.occupant.plate_number}</text>

@@ -33,7 +33,7 @@ export interface LicenseSubmission {
 
 export type SubmitResult =
   | { ok: true; message: string }
-  | { ok: false; message: string; fieldErrors: Record<string, string> };
+  | { ok: false; message: string; fieldErrors: Record<string, string>; retryAfterSeconds?: number };
 
 interface LicenseContextType {
   status: LicenseStatus;
@@ -42,6 +42,7 @@ interface LicenseContextType {
   error: string;
   refresh: () => Promise<void>;
   submit: (s: LicenseSubmission) => Promise<SubmitResult>;
+  retry: () => Promise<SubmitResult>;
 }
 
 const LicenseContext = createContext<LicenseContextType | null>(null);
@@ -109,15 +110,27 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
       setError('');
       return { ok: true, message: result.message };
     } catch (err) {
-      if (err instanceof ApiError) return { ok: false, message: err.message, fieldErrors: err.fieldErrors };
+      if (err instanceof ApiError) return { ok: false, message: err.message, fieldErrors: err.fieldErrors, retryAfterSeconds: err.retryAfterSeconds };
       return { ok: false, message: 'The license could not be submitted. Please try again.', fieldErrors: {} };
+    }
+  };
+
+  const retry = async (): Promise<SubmitResult> => {
+    if (!license) return { ok: false, message: 'No license submission is on file.', fieldErrors: {} };
+    try {
+      const result = await apiRequest<{ message: string; data: LicenseRecord }>(`/api/licenses/${license.license_id}/recheck`, { method: 'POST' });
+      setLicense(result.data);
+      setError('');
+      return { ok: true, message: result.message };
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : 'The check could not be restarted.', fieldErrors: {}, retryAfterSeconds: err instanceof ApiError ? err.retryAfterSeconds : 0 };
     }
   };
 
   const status: LicenseStatus = license?.verification_status ?? 'not_submitted';
 
   return (
-    <LicenseContext.Provider value={{ status, license, loading, error, refresh, submit }}>
+    <LicenseContext.Provider value={{ status, license, loading, error, refresh, submit, retry }}>
       {children}
     </LicenseContext.Provider>
   );
@@ -133,8 +146,8 @@ export const LICENSE_STATUS_LABEL: Record<LicenseStatus, string> = {
   not_submitted: 'Not submitted',
   processing: 'Processing',
   needs_correction: 'Needs correction',
-  pending_review: 'Pending review',
-  verified: 'Verified',
+  pending_review: 'Review / retry needed',
+  verified: 'Approved',
 };
 
 export const LICENSE_TYPE_LABEL: Record<LicenseType, string> = {

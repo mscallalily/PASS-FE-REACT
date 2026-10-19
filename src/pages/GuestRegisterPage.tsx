@@ -1,3 +1,4 @@
+import EmailCodeVerification from '../components/EmailCodeVerification';
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BrandLockup } from '../components/Brand';
@@ -6,6 +7,7 @@ import { Shield, Check, User, Eye, EyeOff, Info, ChevronRight } from 'lucide-rea
 export default function GuestRegisterPage() {
   const navigate = useNavigate();
   const [submitted, setSubmitted] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [form, setForm] = useState({
     fullName: '', email: '', phone: '', password: '', confirmPwd: '',
@@ -52,6 +54,7 @@ export default function GuestRegisterPage() {
       });
       const data = await response.json().catch(() => ({}));
       if (response.ok) {
+        setVerificationMessage(data.message || 'Check your inbox and spam folder to verify your email before signing in.');
         setSubmitted(true);
         return;
       }
@@ -68,23 +71,7 @@ export default function GuestRegisterPage() {
     }
   };
   if (submitted) {
-    return (
-      <div className="min-h-screen bg-[#F4F7FB] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-10 max-w-md w-full text-center">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Check size={36} className="text-green-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-[#080677] mb-3">Guest Account Created!</h2>
-          <p className="text-slate-500 mb-8">Your guest account has been registered. Sign in with your email and password to submit a visitor parking request with your visit purpose and required vehicle details. A QR pass is not issued until the request is approved.</p>
-          <Link to="/login" className="w-full block py-3 bg-[#2563EB] text-white font-semibold rounded-xl hover:bg-[#1D4ED8] transition-colors">
-            Go to Login
-          </Link>
-          <p className="text-xs text-slate-400 mt-4">
-            <Link to="/guest" className="hover:text-[#2563EB]">← Back to Guest Page</Link>
-          </p>
-        </div>
-      </div>
-    );
+    return <div className="min-h-screen bg-slate-50 p-6 flex items-center"><EmailCodeVerification initialEmail={form.email.trim()} notice={verificationMessage} /></div>;
   }
 
   return (
@@ -96,11 +83,13 @@ export default function GuestRegisterPage() {
           <p className="text-sm text-slate-500 mt-1">Create a guest account before submitting a visitor parking request</p>
         </div>
 
+        <p className="mb-5 text-sm text-center"><Link to="/verify-email" className="text-blue-700 underline">Already registered? Verify email / resend code</Link></p>
+
         {/* Guest Notice */}
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3 mb-6">
           <Info size={18} className="text-amber-600 shrink-0 mt-0.5" />
           <div className="text-sm text-amber-700">
-            <strong>Account creation is not parking approval.</strong> After registering, sign in and submit your visit purpose, schedule, and required vehicle details. A temporary visitor QR pass can only be issued after approval.
+            <strong>Account creation is not parking approval.</strong> After registering, verify your email, then sign in and submit your visit purpose, schedule, and required vehicle details. A temporary visitor QR pass can only be issued after approval.
           </div>
         </div>
 

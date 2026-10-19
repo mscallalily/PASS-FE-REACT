@@ -1,0 +1,140 @@
+Slot,Area,Proposed width (m),Proposed length (m),Bay type,Position basis
+C-01,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-02,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-03,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-04,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-05,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-06,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-07,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-08,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-09,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-10,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-11,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-12,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-13,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-14,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-15,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-16,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-17,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-18,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-19,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-20,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-21,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-22,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-23,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-24,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-25,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-26,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-27,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-28,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-29,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-30,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-31,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-32,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-33,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-34,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-35,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-36,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-37,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-38,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-39,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-40,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-41,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-42,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-43,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-44,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-45,Car,2.50,5.00,perpendicular,Conditional proposed position; boundary and tight 4.50m aisle validation pending
+C-46,Car,,,Unpositioned,Inventory only; no measured physical position established
+C-47,Car,,,Unpositioned,Inventory only; no measured physical position established
+C-48,Car,,,Unpositioned,Inventory only; no measured physical position established
+C-49,Car,,,Unpositioned,Inventory only; no measured physical position established
+C-50,Car,,,Unpositioned,Inventory only; no measured physical position established
+C-51,Car,,,Unpositioned,Inventory only; no measured physical position established
+C-52,Car,,,Unpositioned,Inventory only; no measured physical position established
+C-53,Car,,,Unpositioned,Inventory only; no measured physical position established
+C-54,Car,,,Unpositioned,Inventory only; no measured physical position established
+C-55,Car,,,Unpositioned,Inventory only; no measured physical position established
+M-01,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-02,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-03,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-04,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-05,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-06,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-07,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-08,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-09,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-10,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-11,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-12,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-13,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-14,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-15,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-16,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-17,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-18,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-19,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-20,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-21,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-22,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-23,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-24,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-25,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-26,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-27,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-28,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-29,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-30,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-31,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-32,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-33,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-34,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-35,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-36,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-37,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-38,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-39,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-40,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-41,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-42,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-43,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-44,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-45,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-46,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-47,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-48,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-49,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-50,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-51,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-52,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-53,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-54,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-55,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-56,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-57,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-58,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-59,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-60,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-61,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-62,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-63,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-64,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-65,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-66,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-67,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-68,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-69,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-70,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-71,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-72,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-73,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-74,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-75,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-76,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-77,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-78,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-79,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-80,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-81,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-82,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-83,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
+M-84,Motorcycle,1.00,2.00,compact motorcycle,Compact proposal; campus validation pending
