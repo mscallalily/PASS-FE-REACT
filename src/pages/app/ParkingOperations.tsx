@@ -6,8 +6,9 @@ import { PageHeader, Card, Badge, Button, Table, SearchBar, Select, Modal, StatC
 import { apiRequest } from '../../lib/apiClient';
 import { CAMPUS_TIMEZONE, formatCampusDateTime } from '../../lib/datetime';
 import { useLiveLoad, useLiveSync, POLL_MS, type Topic } from '../../lib/liveSync';
-import ParkingMap, { MapData, MapSlot, slotFill } from '../../components/ParkingMap';
+import { MapData, MapSlot, slotFill, proposedSlotSize, withProposedLayout } from '../../components/ParkingMap';
 import ParkingLot3D from '../../components/ParkingLot3D';
+import ParkingAvailabilityMap from '../../components/ParkingAvailabilityMap';
 import { ParkingSquare, Car, CheckCircle, Wrench, AlertTriangle, LogIn, LogOut, RefreshCw, MapPin, Box, Map as MapIcon, Bike, Layers } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
@@ -614,12 +615,12 @@ function OccupancyPanel({ areas, overall, inside }: { areas: AreaStats[]; overal
   ];
 
   return (
-    <div className="grid md:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
       {cards.map(({ key, title, icon, stats }) => {
         const pct = (n: number) => (stats.capacity ? (n / stats.capacity) * 100 : 0);
         const sumOk = stats.available + stats.occupied + stats.maintenance === stats.capacity;
         return (
-          <div key={key} className={`rounded-2xl border p-4 space-y-3 ${key === 'ALL' ? 'border-[#080677]/15 bg-gradient-to-br from-[#080677]/[0.04] to-[#2563EB]/[0.06]' : 'border-slate-100 bg-white'}`}>
+          <div key={key} className={`min-w-0 rounded-2xl border p-3 sm:p-4 space-y-3 ${key === 'ALL' ? 'border-[#080677]/15 bg-gradient-to-br from-[#080677]/[0.04] to-[#2563EB]/[0.06]' : 'border-slate-100 bg-white'}`}>
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-[#2563EB] text-white flex items-center justify-center shrink-0">{icon}</div>
               <div className="min-w-0">
@@ -635,7 +636,7 @@ function OccupancyPanel({ areas, overall, inside }: { areas: AreaStats[]; overal
               {([['Available', stats.available, 'text-green-600 bg-green-50'], ['Occupied', stats.occupied, 'text-red-600 bg-red-50'], ['Maintenance', stats.maintenance, 'text-gray-600 bg-gray-100']] as const).map(([label, value, tone]) => (
                 <div key={label} className={`rounded-xl py-2 ${tone}`}>
                   <p className="text-xl font-bold leading-tight">{value}</p>
-                  <p className="text-[10px] font-medium opacity-80">{label}</p>
+                  <p className="text-[10px] font-medium opacity-80 break-words">{label}</p>
                 </div>
               ))}
             </div>
@@ -694,7 +695,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
   const [recent, setRecent] = useState<Set<number>>(() => new Set());
   const previous = useRef<MapSlot[] | undefined>(undefined);
 
-  const load = useCallback(() => apiRequest<MapResponse>('/api/parking/map'), []);
+  const load = useCallback(() => apiRequest<MapResponse>('/api/parking/map').then(withProposedLayout), []);
   const onData = useCallback((d: MapResponse) => {
     setRecent(changedSlots(previous.current, d.slots));
     previous.current = d.slots;
@@ -762,9 +763,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
     [{ background: '#EF4444', outline: '1.5px dashed #FFFFFF', outlineOffset: -3 }, 'Occupied, location not yet confirmed'],
     [{ background: '#FFFFFF', border: '1px dashed #94A3B8' }, 'Painted bay, not a PASS slot'],
   ];
-  // The 3D view shows unprinted slots in in-scene trays; list only any it cannot place.
-  const trayAreas = new Set((data?.geometry.trays ?? []).map(t => t.area));
-  const unplaced = (data?.slots.filter(s => !s.placed) ?? []).filter(s => view === 'plan' || !trayAreas.has(s.area_code));
+  const unplaced = data?.slots.filter(s => !s.placed) ?? [];
   const others = activeVehicles.filter(t => t.transaction_id !== selected?.occupant?.transaction_id);
   const colors = selected ? slotFill(selected) : null;
   const gateOnline = (data?.gate?.gate_status ?? 'online') === 'online';
@@ -809,12 +808,8 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
           !error && <p className="py-16 text-center text-sm text-slate-400">Loading parking map...</p>
         ) : (
           <>
-            {view === '3d' ? (
-              <ParkingLot3D data={data} highlight={highlight} selectedId={selectedId} recent={recent} gateOnline={gateOnline}
-                focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} onGate={() => setGateMenu(true)} />
-            ) : (
-              <ParkingMap data={data} highlight={highlight} focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} />
-            )}
+            <ParkingLot3D viewMode={view} data={data} highlight={highlight} selectedId={selectedId} recent={recent} gateOnline={gateOnline}
+              focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} onGate={() => setGateMenu(true)} />
             <p className="text-xs text-slate-400">
               Drag to pan · scroll, pinch or use the buttons to zoom · select a slot for details{view === '3d' ? ' · select the Main Entrance / Exit to record an entry or exit' : ''}. Updates automatically: checks for changes every {POLL_MS / 1000} seconds while this tab is open.{' '}
               {highlight && (
@@ -826,10 +821,11 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
             <Reconciliation inside={data.inside} />
 
             {unplaced.length > 0 && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+              <details className="rounded-xl border border-slate-200 p-4 space-y-3">
+                <summary className="cursor-pointer text-sm font-medium text-slate-600">Unmapped slot inventory ({unplaced.length})</summary>
                 <div>
-                  <p className="text-sm font-semibold text-amber-800">Slots not shown on the reference drawing ({unplaced.length})</p>
-                  <p className="text-xs text-amber-700">These PASS slots exist and are tracked, but the DYCI layout drawing does not print their position. They are assigned only after all mapped bays in their area are taken. Verify their physical location before use.</p>
+                  <p className="text-sm font-semibold text-amber-800">Inventory without a proposed map position ({unplaced.length})</p>
+                  <p className="text-xs text-amber-700">These inventory records are retained without positions in this proposal. The current assignment rules give them out after mapped bays; this drawing does not confirm that the configured capacity physically fits. Resolve the campus layout and capacity before physical use.</p>
                 </div>
                 {data.areas.map(a => {
                   const list = unplaced.filter(s => s.parking_area_id === a.parking_area_id);
@@ -853,11 +849,11 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
                     </div>
                   );
                 })}
-              </div>
+              </details>
             )}
 
             <details className="rounded-xl border border-slate-100 p-4 text-sm">
-              <summary className="cursor-pointer font-medium text-slate-600">About this map: how the reference drawing was interpreted</summary>
+              <summary className="cursor-pointer font-medium text-slate-600">About this proposed layout</summary>
               <ul className="mt-3 list-disc pl-5 space-y-1 text-slate-500 text-xs">
                 {data.ambiguities.map(a => <li key={a}>{a}</li>)}
               </ul>
@@ -887,9 +883,10 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
               {[
                 ['Slot number', selected.slot_code],
                 ['Parking area', selected.area_name],
+                ['Proposed bay size', proposedSlotSize(data, selected.slot_code) ?? 'No measured position established for this code'],
                 ['Slot status', selected.status === 'occupied' ? 'Occupied' : selected.status === 'maintenance' ? 'Maintenance / disabled' : 'Available'],
                 ...(selected.accessible ? [['Slot type', 'Accessible (PWD)']] : []),
-                ['Map position', selected.placed ? 'Shown on the DYCI layout' : 'Not printed on the reference drawing'],
+                ['Map position', data?.geometry.proposed_slot_codes?.includes(selected.slot_code) ? 'Proposed position · campus confirmation pending' : selected.placed ? 'Mapped on the proposed layout' : 'No confirmed map position'],
                 ...(selected.occupant ? [
                   ['Plate number', selected.occupant.plate_number],
                   ['Vehicle type', selected.occupant.vehicle_type ?? '—'],
@@ -1068,8 +1065,9 @@ export default function ParkingOperations() {
   const { user } = useAuth();
   const { pathname } = useLocation();
   const isRegularUser = ['student', 'faculty', 'employee'].includes(user?.role ?? '');
+  const canOperate = user?.role === 'parking_staff';
   const navigate = useNavigate();
-  const tab = selectedSection(PAGE_SECTIONS.parking, pathname, isRegularUser ? 'Availability' : 'Entry & Exit Records');
+  const tab = selectedSection(PAGE_SECTIONS.parking, pathname, isRegularUser ? 'Availability' : canOperate ? 'Entry & Exit Records' : 'Parking Layout');
   const setTab = (label: string) => navigate(sectionPath(PAGE_SECTIONS.parking, label));
   const [overview, setOverview] = useState<Overview | null>(null);
   const [overviewError, setOverviewError] = useState('');
@@ -1080,8 +1078,8 @@ export default function ParkingOperations() {
 
 
   const loadOverview = useCallback(
-    () => (isRegularUser ? Promise.resolve(null) : apiRequest<Overview>('/api/parking/overview')),
-    [isRegularUser]
+    () => (canOperate ? apiRequest<Overview>('/api/parking/overview') : Promise.resolve(null)),
+    [canOperate]
   );
   const refreshOverview = usePolling(loadOverview, d => { if (d) setOverview(d); }, setOverviewError);
 
@@ -1098,16 +1096,16 @@ export default function ParkingOperations() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       <PageHeader backToDashboard
         title={isRegularUser ? 'Parking Information' : tab}
-        subtitle={isRegularUser ? 'View current campus parking availability' : 'Review access records, occupancy, and the parking layout'}
-        action={!isRegularUser ? <Button size="sm" variant="ghost" onClick={refreshOverview}><RefreshCw size={14} /> Refresh</Button> : undefined}
+        subtitle={!canOperate ? 'View current campus parking availability' : 'Review access records, occupancy, and the parking layout'}
+        action={canOperate ? <Button size="sm" variant="ghost" onClick={refreshOverview}><RefreshCw size={14} /> Refresh</Button> : undefined}
       />
 
 
-      {tab === 'Entry & Exit Records' && !isRegularUser && (
+      {tab === 'Entry & Exit Records' && canOperate && (
         <EntryExitRecords areas={areas} notify={notify} onShowOnMap={code => { setHighlight(code); setTab('Parking Layout'); }} />
       )}
-      {tab === 'Occupancy Monitor' && !isRegularUser && <OccupancyMonitor overview={overview} error={overviewError} />}
-      {tab === 'Parking Layout' && !isRegularUser && <ParkingLayout notify={notify} highlight={highlight} onHighlight={setHighlight} />}
+      {tab === 'Occupancy Monitor' && canOperate && <OccupancyMonitor overview={overview} error={overviewError} />}
+      {tab === 'Parking Layout' && (canOperate ? <ParkingLayout notify={notify} highlight={highlight} onHighlight={setHighlight} /> : <ParkingAvailabilityMap />)}
       {tab === 'Availability' && <Availability />}
     </div>
   );

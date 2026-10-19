@@ -1,9 +1,12 @@
+import VehiclePhotoReader from '../components/VehiclePhotoReader';
+import FileUpload from '../components/FileUpload';
 import '../styles/guest-portal.css';
+import ParkingAvailabilityMap from '../components/ParkingAvailabilityMap';
 import VisitorDocuments from '../components/VisitorDocuments';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DyciLogo } from '../components/Brand';
-import { Shield, CarFront, ClipboardList, Info, CheckCircle2, Clock3, AlertCircle, QrCode, Bell, User, History, Plus, X, Maximize2, ArrowRight, UploadCloud } from 'lucide-react';
+import { Shield, CarFront, ClipboardList, Info, CheckCircle2, Clock3, AlertCircle, QrCode, Bell, User, History, Plus, X, Maximize2, ArrowRight, UploadCloud, MapPin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import { Modal, Button, Card as SharedCard, PageHeader, StatCard } from '../components/ui';
@@ -16,7 +19,7 @@ import { CAMPUS_TIMEZONE, formatCampusDateTime } from '../lib/datetime';
 // in MySQL via /api/guest/*: profile, vehicles, visitor parking requests, the
 // Visitor QR passes an Administrator issued, visits, and notifications.
 
-type Section = 'overview' | 'request' | 'vehicles' | 'passes' | 'visits' | 'notifications' | 'profile';
+type Section = 'overview' | 'request' | 'vehicles' | 'passes' | 'visits' | 'notifications' | 'profile' | 'parking';
 type PassStatus = 'active' | 'scheduled' | 'used' | 'expired' | 'revoked' | 'legacy';
 
 interface Pass {
@@ -72,6 +75,7 @@ const SECTIONS: { id: Section; label: string; icon: React.ReactNode }[] = [
   { id: 'request', label: 'New Request', icon: <ClipboardList size={18} /> },
   { id: 'passes', label: 'My QR Passes', icon: <QrCode size={18} /> },
   { id: 'vehicles', label: 'My Vehicles', icon: <CarFront size={18} /> },
+  { id: 'parking', label: 'Parking Layout', icon: <MapPin size={18} /> },
   { id: 'visits', label: 'Visit History', icon: <History size={18} /> },
   { id: 'notifications', label: 'Notifications', icon: <Bell size={18} /> },
   { id: 'profile', label: 'Profile', icon: <User size={18} /> },
@@ -286,6 +290,7 @@ export default function GuestDashboardPage() {
           </div>
         )}
 
+        {section === 'parking' && <ParkingAvailabilityMap />}
         {section === 'request' && <RequestForm vehicles={vehicles} onAddVehicle={() => setSection('vehicles')} onSubmitted={message => { notify(message); load(); setSection('overview'); }} />}
         {section === 'vehicles' && <Vehicles vehicles={vehicles} types={types} onAdded={message => { notify(message); load(); }} />}
 
@@ -449,6 +454,8 @@ function PhotoUpload({ label, hint, file, onChange, error, disabled }: { label: 
 
 function Vehicles({ vehicles, types, onAdded }: { vehicles: Vehicle[]; types: VehicleType[]; onAdded: (message: string) => void }) {
   const empty = { plate_number: '', vehicle_type_id: '', make: '', model: '', color: '' };
+  const [analysisPhoto, setAnalysisPhoto] = useState<File | null>(null);
+  const [photoReading, setPhotoReading] = useState(false);
   const [form, setForm] = useState(empty);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
@@ -457,6 +464,7 @@ function Vehicles({ vehicles, types, onAdded }: { vehicles: Vehicle[]; types: Ve
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (photoReading || busy) return;
     const next: Record<string, string> = {};
     if (!form.plate_number.trim()) next.plate_number = 'Vehicle plate number is required.';
     if (!form.vehicle_type_id) next.vehicle_type_id = 'Please select a vehicle type.';
@@ -466,7 +474,7 @@ function Vehicles({ vehicles, types, onAdded }: { vehicles: Vehicle[]; types: Ve
     setBusy(true);
     try {
       const r = await apiRequest<{ message: string }>('/api/guest/vehicles', { method: 'POST', body: { ...form, vehicle_type_id: Number(form.vehicle_type_id) } });
-      setForm(empty);
+      setForm(empty); setAnalysisPhoto(null);
       onAdded(r.message);
     } catch (err) {
       if (err instanceof ApiError) { setErrors(err.fieldErrors); setError(err.message); } else setError('The vehicle could not be registered.');
@@ -494,20 +502,25 @@ function Vehicles({ vehicles, types, onAdded }: { vehicles: Vehicle[]; types: Ve
       <form onSubmit={submit}>
         <Card>
           <h3 className="font-semibold text-[#080677] mb-4 flex items-center gap-2"><Plus size={16} /> Register a vehicle</h3>
+          <div className="mb-5 space-y-3">
+            <FileUpload accept="image/jpeg,image/png" label="Vehicle photo for suggestions (optional)" file={analysisPhoto} onChange={f => { setAnalysisPhoto(f); setError(''); }} onError={setError} />
+            <VehiclePhotoReader file={analysisPhoto} onBusyChange={setPhotoReading} onApply={fields => setForm(f => ({ ...f, ...(fields.plate_number ? { plate_number: fields.plate_number } : {}), ...(fields.color ? { color: fields.color } : {}), ...(fields.category === 'motorcycle' ? { vehicle_type_id: String(types.find(t => t.type_name === 'Motorcycle')?.vehicle_type_id || '') } : fields.category === 'car' && types.find(t => String(t.vehicle_type_id) === f.vehicle_type_id)?.type_name === 'Motorcycle' ? { vehicle_type_id: '' } : {}) }))} />
+            <p className="text-xs text-slate-500">Your visitor request will still require a vehicle photo for staff review.</p>
+          </div>
           <div className="grid sm:grid-cols-2 gap-5">
-            <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Plate number *</label><input value={form.plate_number} onChange={set('plate_number')} placeholder="e.g. ABC 1234" className={inputClass(errors.plate_number)} disabled={busy} /><FieldError message={errors.plate_number} /></div>
+            <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Plate number *</label><input aria-label="Plate number" value={form.plate_number} onChange={set('plate_number')} placeholder="e.g. ABC 1234" className={inputClass(errors.plate_number)} disabled={busy} /><FieldError message={errors.plate_number} /></div>
             <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Vehicle type *</label>
-              <select value={form.vehicle_type_id} onChange={set('vehicle_type_id')} className={inputClass(errors.vehicle_type_id)} disabled={busy}>
+              <select aria-label="Vehicle type" value={form.vehicle_type_id} onChange={set('vehicle_type_id')} className={inputClass(errors.vehicle_type_id)} disabled={busy}>
                 <option value="">Choose…</option>
                 {types.map(t => <option key={t.vehicle_type_id} value={t.vehicle_type_id}>{t.type_name}</option>)}
               </select><FieldError message={errors.vehicle_type_id} />
             </div>
             <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Make <span className="text-slate-400">(optional)</span></label><input value={form.make} onChange={set('make')} placeholder="e.g. Toyota" className={inputClass()} disabled={busy} /></div>
             <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Model <span className="text-slate-400">(optional)</span></label><input value={form.model} onChange={set('model')} placeholder="e.g. Vios" className={inputClass()} disabled={busy} /></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Color <span className="text-slate-400">(optional)</span></label><input value={form.color} onChange={set('color')} className={inputClass()} disabled={busy} /></div>
+            <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Color <span className="text-slate-400">(optional)</span></label><input aria-label="Color" value={form.color} onChange={set('color')} className={inputClass()} disabled={busy} /></div>
           </div>
           {error && <p className="mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3" role="alert">{error}</p>}
-          <div className="mt-6 flex sm:justify-end"><button type="submit" disabled={busy} className="w-full sm:w-auto px-5 py-3 rounded-xl bg-[#080677] hover:bg-blue-900 text-white text-sm font-semibold disabled:opacity-50">{busy ? 'Saving…' : 'Register Vehicle'}</button></div>
+          <div className="mt-6 flex sm:justify-end"><button type="submit" disabled={busy || photoReading} className="w-full sm:w-auto px-5 py-3 rounded-xl bg-[#080677] hover:bg-blue-900 text-white text-sm font-semibold disabled:opacity-50">{busy ? 'Saving…' : 'Register Vehicle'}</button></div>
         </Card>
       </form>
     </div>

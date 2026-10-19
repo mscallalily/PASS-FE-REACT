@@ -2,18 +2,20 @@ import React, { Component, memo, useCallback, useEffect, useImperativeHandle, us
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
-import { ZoomControls, slotLabel, slotNumber, type MapData, type MapGeometry, type MapSlot } from './ParkingMap';
-import ParkingScene3D, {
+import ParkingMap, { ZoomControls, withProposedLayout, slotLabel, slotNumber, type MapData, type MapGeometry, type MapSlot } from './ParkingMap';
+import {
   arrowShape, bayAxis, before, bodyColor, carSize, isMotorcycle, layoutSlots, motoSize, offset, plantTrees, rect,
   type SceneSlot, type TrayPanel,
 } from './ParkingScene3D';
+import { Ruler } from 'lucide-react';
+import ParkingMeasurements from './ParkingMeasurements';
 import type { Point } from './usePanZoom';
 
 // WebGL (Three.js) view of the DYCI parking layout.
 //
 // World axes: x = drawing x, z = drawing y (south, towards the camera), y up.
-// One unit is one drawing px (about 0.2 m), so every bay keeps the position,
-// size and diagonal orientation measured from the DYCI drawing. A fixed
+// Drawing units are schematic. Bay templates use proportional nominal
+// dimensions; the site boundaries are not survey-calibrated. A fixed
 // elevated perspective camera looks north; the user can pan and zoom but not
 // rotate. Slots, vehicles and the gate are clickable meshes driven by the
 // live /api/parking/map data. Without WebGL the SVG view is shown instead.
@@ -244,7 +246,7 @@ function Box({ size, at, color, extra, cast = true }: { size: [number, number, n
 function Car({ s }: { s: SceneSlot }) {
   const { deg } = bayAxis(s);
   const { L, W } = carSize(s);
-  const color = bodyColor(s.occupant!.plate_number);
+  const color = bodyColor(s.occupant?.plate_number ?? s.slot_code);
   const paint = { metalness: 0.45, roughness: 0.35 };
   return (
     <group position={[s.gx, PAVE, s.gy]} rotation-y={-THREE.MathUtils.degToRad(deg)}>
@@ -268,7 +270,7 @@ function Car({ s }: { s: SceneSlot }) {
 function Motorcycle({ s }: { s: SceneSlot }) {
   const { deg } = bayAxis(s);
   const { L, W } = motoSize(s);
-  const color = bodyColor(s.occupant!.plate_number);
+  const color = bodyColor(s.occupant?.plate_number ?? s.slot_code);
   return (
     <group position={[s.gx, PAVE, s.gy]} rotation-y={-THREE.MathUtils.degToRad(deg)}>
       {[-0.36, 0.36].map(u => (
@@ -372,7 +374,7 @@ function edgeDistance(p: Point, points: Point[]) {
 
 // ----------------------------------------------------------------- static site
 
-const Site = memo(function Site({ g, trays, onGate, gateOnline }: { g: MapGeometry; trays: TrayPanel[]; onGate: (e: ThreeEvent<MouseEvent>) => void; gateOnline: boolean }) {
+const Site = memo(function Site({ g, trays, onGate, gateOnline, showMeasurements }: { g: MapGeometry; trays: TrayPanel[]; onGate: (e: ThreeEvent<MouseEvent>) => void; gateOnline: boolean; showMeasurements: boolean }) {
   const parts = useMemo(() => {
     const asphalt = noiseTexture('#30353E', ['#1F242B', '#454B55', '#3A4049'], 40);
     const grass = noiseTexture('#7FB262', ['#6A9C50', '#93C477', '#5E8E46'], 30);
@@ -402,9 +404,7 @@ const Site = memo(function Site({ g, trays, onGate, gateOnline }: { g: MapGeomet
     }
     for (const a of g.areas) faint.dashed(a.polygon, 0.55, 5, 2.5, true);
     yellow.outline(g.road.polygon, 0.6);
-    const [p0, p1, p2, p3] = g.road.polygon;
-    yellow.dashed([offset([(p0[0] + p3[0]) / 2, (p0[1] + p3[1]) / 2], g.gate.angle, 14), [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2]], 0.55, 4, 3);
-    white.poly(arrowShape(offset(g.gate.at, g.gate.angle, 10, -5.2), offset(g.gate.at, g.gate.angle, 24, -5.2), 1.5, 4.6, 4.6));
+    // A 3.06 m shared road has no painted median or separate full-width car lanes.
     for (const t of trays) amber.dashed(t.footprint, 0.6, 2, 1.4, true);
 
     return {
@@ -423,7 +423,6 @@ const Site = memo(function Site({ g, trays, onGate, gateOnline }: { g: MapGeomet
   const soil = std('#5B7F43', { roughness: 1 });
 
   const trees = useMemo(() => [...plantTrees(g, trays), ...groveTrees(g, trays)], [g, trays]);
-  const gateAt = g.gate.at, roadDeg = g.gate.angle;
 
   return (
     <group>
@@ -437,8 +436,8 @@ const Site = memo(function Site({ g, trays, onGate, gateOnline }: { g: MapGeomet
       <mesh geometry={parts.blue} material={paintMat('#2563EB')} />
 
       <GroundText text={g.road.label} at={g.road.label_at} h={5} deg={g.road.label_angle} />
-      <GroundText text="IN" at={offset(gateAt, roadDeg, 31, -5.2)} h={3.6} deg={roadDeg} />
-      <GroundText text="OUT" at={offset(gateAt, roadDeg, 14, 5.2)} h={3.6} deg={roadDeg} />
+      {g.circulation?.filter(c => showMeasurements || ['walkway', 'car_approach'].includes(c.kind)).map((clearance, index) => <mesh key={`clearance-${index}`} geometry={flat(clearance.polygon, PAINT - 0.03)} material={paintMat(clearance.kind === 'walkway' ? '#93C5FD' : clearance.kind === 'car_approach' ? '#EAB308' : '#4B5563', clearance.kind === 'car_approach' ? 0.6 : 1)} />)}
+      {g.circulation_labels?.map(label => <GroundText key={label.text} text={label.text} at={label.at} h={4.4} deg={label.angle} />)}
 
       {parts.islands.map((island, i) => {
         const c = island.polygon.reduce<Point>(([x, y], p) => [x + p[0] / island.polygon.length, y + p[1] / island.polygon.length], [0, 0]);
@@ -476,24 +475,12 @@ function Gate({ g, onGate, online }: { g: MapGeometry; onGate: (e: ThreeEvent<Mo
       <Box size={[9, 9, 7.5]} at={[0, 4.5 - PAVE, -22]} color="#F1F5F9" />
       <Box size={[9.2, 2.4, 7.7]} at={[0, 6, -22]} color="#1E3A8A" extra={{ metalness: 0.5, roughness: 0.2 }} />
       <Box size={[11, 1.2, 9.5]} at={[0, 9.6 - PAVE, -22]} color="#080677" />
-      {/* Median with RFID / QR readers */}
-      <Box size={[16, 0.8, 2.4]} at={[2, 0.4, 0]} color="#E2E8F0" />
-      {[-4, 6].map(u => (
-        <group key={u}>
-          <Box size={[1.4, 4.2, 1.4]} at={[u, 2.9, 0]} color="#1E3A8A" />
-          <Box size={[1.5, 1.2, 1.5]} at={[u, 4.6, 0]} color="#2563EB" extra={{ emissive: '#1D4ED8', emissiveIntensity: 0.4 }} cast={false} />
-        </group>
-      ))}
-      {/* Barriers: entry lane (north) and exit lane (south) */}
-      {[[-1, -12.6, 1], [5, 12.6, -1]].map(([u, v, dir]) => (
-        <group key={v}>
-          <Box size={[2.4, 7, 2.4]} at={[u, 3.5, v]} color="#FACC15" />
-          <mesh geometry={CANOPY} material={std(light, { emissive: light, emissiveIntensity: 1 })} position={[u, 7.3, v]} scale={0.7} />
-          {Array.from({ length: 4 }, (_, k) => (
-            <Box key={k} size={[0.8, 0.8, 2.65]} at={[u, 6.4, v + dir * (1.6 + 2.65 * k + 1.3)]} color={k % 2 ? '#FFFFFF' : '#DC2626'} />
-          ))}
-        </group>
-      ))}
+      {/* Shared controlled lane: readers and one boom stand outside the clear road. */}
+      <Box size={[1.4, 4.2, 1.4]} at={[6, 2.9, -14]} color="#1E3A8A" />
+      <Box size={[1.5, 1.2, 1.5]} at={[6, 4.6, -14]} color="#2563EB" cast={false} />
+      <Box size={[2.4, 7, 2.4]} at={[0, 3.5, -14]} color="#FACC15" />
+      <mesh geometry={CANOPY} material={std(light, { emissive: light, emissiveIntensity: 1 })} position={[0, 7.3, -14]} scale={0.7} />
+      {Array.from({ length: 8 }, (_, k) => <Box key={k} size={[0.8, 0.8, 2.8]} at={[0, 6.4, -11.8 + 2.8 * k]} color={k % 2 ? '#FFFFFF' : '#DC2626'} />)}
       {/* Canopy */}
       {[[-5, -15], [9, -15], [-5, 15], [9, 15]].map(([u, v]) => (
         <Box key={`${u}${v}`} size={[1.4, 15, 1.4]} at={[u, 7.5, v]} color="#CBD5E1" />
@@ -519,11 +506,12 @@ function Stall({ s, selected, onSelect }: { s: SceneSlot; selected: boolean; onS
   );
 }
 
-const Slots = memo(function Slots({ slots, extra, selectedId, closeUp, onSelect }: {
+const Slots = memo(function Slots({ slots, extra, selectedId, closeUp, onSelect, measurementUnit }: {
   slots: SceneSlot[];
   extra: MapData['extra_bays'];
   selectedId: number | null;
   closeUp: boolean;
+  measurementUnit?: number;
   onSelect: (s: MapSlot, e: ThreeEvent<MouseEvent>) => void;
 }) {
   // Stall lines, unconfirmed-location dashes, and painted stalls that are not PASS slots.
@@ -532,7 +520,7 @@ const Slots = memo(function Slots({ slots, extra, selectedId, closeUp, onSelect 
     const faint = new Paint(PAINT);
     for (const s of slots) {
       white.outline(rect(s.gx, s.gy, s.gw, s.gh, s.rot), 0.5);
-      if (s.status === 'occupied' && !s.occupant?.confirmed) white.dashed(rect(s.gx, s.gy, s.gw - 2.2, s.gh - 2.2, s.rot), 0.45, 1.4, 1, true);
+      if (s.status === 'occupied' && s.occupant && !s.occupant.confirmed) white.dashed(rect(s.gx, s.gy, s.gw - 2.2, s.gh - 2.2, s.rot), 0.45, 1.4, 1, true);
     }
     for (const b of extra) {
       const r = rect(b.x, b.y, b.w, b.h, b.rotation);
@@ -552,9 +540,10 @@ const Slots = memo(function Slots({ slots, extra, selectedId, closeUp, onSelect 
         const label = slotNumber(s.slot_code);
         const short = Math.min(s.gw, s.gh);
         const h = Math.max(3, Math.min(s.area_code === 'MC' ? 4.4 : 6, short * 0.55));
-        if (s.occupant) {
+        if (s.status === 'occupied') {
           const top = isMotorcycle(s) ? 7 : 9.5;
-          const tex = badge(closeUp ? [label, s.occupant.plate_number] : [label], '#DC2626', { size: 30 });
+          const dimensions = measurementUnit ? `${(Math.min(s.gw, s.gh) / measurementUnit).toFixed(2)} × ${(Math.max(s.gw, s.gh) / measurementUnit).toFixed(2)} m` : null;
+          const tex = badge([label, ...(closeUp && s.occupant ? [s.occupant.plate_number] : []), ...(dimensions ? [dimensions] : [])], '#DC2626', { size: 30 });
           return <Billboard key={`n${s.slot_id}`} tex={tex} at={[s.gx, PAVE + top + h * 0.7, s.gy]} h={closeUp ? h * 1.6 : h * 1.15} />;
         }
         return (
@@ -567,12 +556,27 @@ const Slots = memo(function Slots({ slots, extra, selectedId, closeUp, onSelect 
         );
       })}
 
+      {!!measurementUnit && slots.filter(s => s.status !== 'occupied').map(s => {
+        const r = THREE.MathUtils.degToRad(s.rot);
+        const horizontal = s.gw > s.gh;
+        const long = Math.max(s.gw, s.gh);
+        const short = Math.min(s.gw, s.gh);
+        const direction = horizontal ? [Math.cos(r), Math.sin(r)] : [-Math.sin(r), Math.cos(r)];
+        let angle = s.rot + (horizontal ? 90 : 0);
+        while (angle > 90) angle -= 180;
+        while (angle < -90) angle += 180;
+        return <React.Fragment key={`dimension-${s.slot_id}`}>
+          {[{ label: `W ${(short / measurementUnit).toFixed(2)}m`, offset: s.accessible ? 0.24 : 0.20 }, { label: `L ${(long / measurementUnit).toFixed(2)}m`, offset: s.accessible ? 0.39 : 0.35 }].map(d => <GroundText key={d.label} text={d.label}
+            at={[s.gx + direction[0] * long * d.offset, s.gy + direction[1] * long * d.offset]} h={short * 0.20} deg={angle} color="#F8FAFC" />)}
+        </React.Fragment>;
+      })}
+
       {slots.filter(s => s.incident).map(s => (
         <Billboard key={`i${s.slot_id}`} tex={badge(['!'], '#F59E0B', { size: 30 })} at={[s.gx + 4, PAVE + (s.occupant ? 16 : 7), s.gy]} h={3.6} order={11} />
       ))}
 
       {slots.map(s => (
-        s.occupant
+        s.status === 'occupied'
           ? <group key={`v${s.slot_id}`} onClick={e => onSelect(s, e)}>{isMotorcycle(s) ? <Motorcycle s={s} /> : <Car s={s} />}</group>
           : s.status === 'maintenance' ? <group key={`c${s.slot_id}`} onClick={e => onSelect(s, e)}><Cone s={s} /></group> : null
       ))}
@@ -639,7 +643,9 @@ function Signs({ g, areas, trays }: { g: MapGeometry; areas: { area_code: string
         const at = a.sign_at ?? a.label_at;
         const st = areas.find(x => x.area_code === a.area);
         const title = a.area === 'MC' ? 'MOTORCYCLE PARKING' : a.area === 'CAR' ? 'CAR PARKING' : a.label;
-        const tex = badge([title, st ? `${st.capacity} SLOTS · ${st.available} AVAILABLE` : ''], '#1D4ED8', { icon: 'P', size: 30 });
+        const inventory = g.measurement_basis?.inventory;
+        const proposed = inventory ? `${a.area === 'MC' ? inventory.motorcycle_drawn : inventory.car_drawn} ${g.measurement_basis?.scale === 'slot_diagram' ? 'LIVE SLOTS' : 'PROPOSED BAYS'}` : st ? `${st.capacity} SLOTS · ${st.available} AVAILABLE` : '';
+        const tex = badge([title, proposed], '#1D4ED8', { icon: 'P', size: 30 });
         return (
           <group key={a.area}>
             <Box size={[0.9, 12, 0.9]} at={[at[0], 6, at[1]]} color="#64748B" />
@@ -659,6 +665,24 @@ function Signs({ g, areas, trays }: { g: MapGeometry; areas: { area_code: string
   );
 }
 
+/** Reference callouts share the same coordinates in both camera views. */
+function Measurements({ geometry }: { geometry: MapGeometry }) {
+  const lines = useMemo(() => {
+    const paint = new Paint(PAINT + 0.1);
+    for (const dimension of geometry.dimensions) {
+      if (!dimension.from || !dimension.to) continue;
+      paint.line(dimension.from, dimension.to, 0.7);
+      const angle = Math.atan2(dimension.to[1] - dimension.from[1], dimension.to[0] - dimension.from[0]) * 180 / Math.PI;
+      for (const end of [dimension.from, dimension.to]) paint.line(offset(end, angle + 45, -3), offset(end, angle + 45, 3), 0.7);
+    }
+    return paint.build();
+  }, [geometry]);
+  return <group>
+    <mesh geometry={lines} material={paintMat('#2563EB')} />
+    {geometry.dimensions.map(dimension => <Billboard key={dimension.id ?? dimension.text} tex={badge([`${dimension.label ?? dimension.id ?? ''}: ${dimension.text}`], '#EFF6FF', { fg: '#1E3A8A', border: '#93C5FD', size: 28 })} at={[dimension.at[0], 5, dimension.at[1]]} h={16} />)}
+  </group>;
+}
+
 // ----------------------------------------------------------------- camera
 
 export interface CameraApi { zoom: (f: number) => void; reset: () => void; focus: (box: THREE.Box2, minDistance?: number) => void }
@@ -676,7 +700,7 @@ const CameraRig = React.forwardRef<CameraApi, { home: THREE.Box2; onCloseUp: (cl
     const c = controls.current;
     if (!c) return;
     c.target.copy(target);
-    camera.position.copy(target).addScaledVector(VIEW_DIR, distance);
+    camera.position.copy(target).addScaledVector(camera instanceof THREE.OrthographicCamera ? new THREE.Vector3(0, 1, 0) : VIEW_DIR, distance);
     camera.lookAt(target);
     c.update();
     invalidate();
@@ -684,6 +708,17 @@ const CameraRig = React.forwardRef<CameraApi, { home: THREE.Box2; onCloseUp: (cl
 
   /** Frame a ground box: project its corners through the real camera and refine. */
   const focus = useCallback((box: THREE.Box2, minDistance = 60) => {
+    if (camera instanceof THREE.OrthographicCamera) {
+      const centre = box.getCenter(new THREE.Vector2());
+      const target = new THREE.Vector3(centre.x, 0, centre.y);
+      camera.left = -size.width / 2; camera.right = size.width / 2;
+      camera.top = size.height / 2; camera.bottom = -size.height / 2;
+      camera.zoom = Math.min(size.width / Math.max(1, box.max.x - box.min.x), size.height / Math.max(1, box.max.y - box.min.y)) * 0.92;
+      camera.up.set(0, 0, -1);
+      camera.updateProjectionMatrix();
+      place(target, 900);
+      return;
+    }
     const cam = camera as THREE.PerspectiveCamera;
     cam.aspect = size.width / Math.max(1, size.height);
     cam.updateProjectionMatrix();
@@ -715,12 +750,16 @@ const CameraRig = React.forwardRef<CameraApi, { home: THREE.Box2; onCloseUp: (cl
     zoom: f => {
       const c = controls.current;
       if (!c) return;
+      if (camera instanceof THREE.OrthographicCamera) {
+        camera.zoom = THREE.MathUtils.clamp(camera.zoom * f, c.minZoom, c.maxZoom);
+        camera.updateProjectionMatrix(); c.update(); invalidate(); return;
+      }
       const dist = camera.position.distanceTo(c.target) / f;
       place(c.target.clone(), THREE.MathUtils.clamp(dist, c.minDistance, c.maxDistance));
     },
     reset,
     focus,
-  }), [camera, place, reset, focus]);
+  }), [camera, place, reset, focus, invalidate]);
 
   useEffect(() => {
     const c = new MapControls(camera, gl.domElement);
@@ -729,11 +768,13 @@ const CameraRig = React.forwardRef<CameraApi, { home: THREE.Box2; onCloseUp: (cl
     c.enableDamping = true;
     c.dampingFactor = 0.14;
     c.zoomToCursor = true;
+    c.minZoom = 0.1;
+    c.maxZoom = 20;
     c.minDistance = 45;
     c.maxDistance = 2200;
     const onChange = () => {
       invalidate();
-      const close = camera.position.distanceTo(c.target) < 260;
+      const close = camera instanceof THREE.OrthographicCamera ? camera.zoom > 3 : camera.position.distanceTo(c.target) < 260;
       if (close !== closeRef.current) { closeRef.current = close; onCloseUp(close); }
     };
     c.addEventListener('change', onChange);
@@ -766,6 +807,8 @@ function webglAvailable() {
 }
 
 type Props = {
+  viewMode?: '3d' | 'plan';
+  showMeasurements?: boolean;
   data: MapData & { areas?: { area_code: string; capacity: number; available: number }[] };
   highlight: string | null;
   selectedId: number | null;
@@ -778,17 +821,26 @@ type Props = {
 
 export default function ParkingLot3D(props: Props) {
   const [supported] = useState(webglAvailable);
-  const fallback = (
-    <div className="space-y-2">
-      <p className="text-xs text-amber-700">3D rendering (WebGL) is not available in this browser, so a simplified view is shown.</p>
-      <ParkingScene3D {...props} />
+  const [showMeasurements, setShowMeasurements] = useState(false);
+  const activeData = useMemo(() => withProposedLayout(props.data), [props.data]);
+  const inventory = activeData.geometry.measurement_basis?.inventory;
+  const fallback = <div className="space-y-2">
+    <p className="text-xs text-amber-700">This browser is showing the simplified plan. Slot positions and availability are unchanged.</p>
+    <ParkingMap data={activeData} highlight={props.highlight} onSelect={props.onSelect} focusArea={props.focusArea} showMeasurements={showMeasurements} />
+  </div>;
+  return <div className="space-y-3 min-w-0">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-xs font-medium text-slate-500">Proposed campus parking layout</p>
+      <button type="button" aria-pressed={showMeasurements} onClick={() => setShowMeasurements(value => !value)} className={`min-h-11 rounded-lg border px-3 py-2 text-xs font-semibold inline-flex items-center gap-2 ${showMeasurements ? 'border-[#080677] bg-blue-50 text-[#080677]' : 'border-slate-200 text-slate-600 hover:bg-blue-50'}`}><Ruler size={16} />{showMeasurements ? 'Hide measurements' : 'Show measurements'}</button>
     </div>
-  );
-  if (!supported) return fallback;
-  return <WebGLBoundary fallback={fallback}><Lot {...props} /></WebGLBoundary>;
+    {inventory && <div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900"><strong>Parking layout:</strong> {inventory.car_drawn} full-size proposed car bays. The {inventory.car_configured}-car inventory target is retained; {inventory.car_configured - inventory.car_drawn} positions still need a measured layout. Use Show measurements to see each bay’s width × length. Campus confirmation is pending.</div>}
+    {showMeasurements && <p className="text-xs text-blue-800">Each proposed bay shows W (width) and L (length), in metres. Zoom in or open a slot for its size. Boundary angles and vehicle manoeuvres still require campus confirmation.</p>}
+    {supported ? <WebGLBoundary fallback={fallback}><Lot {...props} data={activeData} showMeasurements={showMeasurements} /></WebGLBoundary> : fallback}
+    <ParkingMeasurements geometry={activeData.geometry} slots={activeData.slots} />
+  </div>;
 }
 
-function Lot({ data, highlight, selectedId, recent, gateOnline, onSelect, onGate, focusArea }: Props) {
+function Lot({ viewMode = '3d', showMeasurements = false, data, highlight, selectedId, recent, gateOnline, onSelect, onGate, focusArea }: Props) {
   // Static geometry only changes when the layout itself changes, not on every poll.
   const geometryKey = JSON.stringify(data.geometry);
   const g = useMemo(() => data.geometry, [geometryKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -798,7 +850,7 @@ function Lot({ data, highlight, selectedId, recent, gateOnline, onSelect, onGate
   const rig = useRef<CameraApi>(null);
 
   // Default framing: the paved areas, road and slot pads (the planted border may crop slightly).
-  const home = useMemo(() => bbox([...g.areas.flatMap(a => a.polygon), ...g.road.polygon, ...stableTrays.flatMap(t => t.footprint), g.gate.at]).expandByScalar(6), [g, stableTrays]);
+  const home = useMemo(() => bbox([...g.areas.flatMap(a => a.polygon), ...g.road.polygon, ...stableTrays.flatMap(t => t.footprint), g.gate.at, ...(showMeasurements ? g.dimensions.flatMap(d => [d.at, ...(d.from ? [d.from] : []), ...(d.to ? [d.to] : [])]) : [])]).expandByScalar(showMeasurements ? 24 : 6), [g, stableTrays, showMeasurements]);
   const areaBox = useCallback((code: string) => {
     const a = g.areas.find(x => x.area === code);
     const t = stableTrays.find(x => x.area === code);
@@ -841,7 +893,7 @@ function Lot({ data, highlight, selectedId, recent, gateOnline, onSelect, onGate
     light.position.set(center.x - 260, 520, center.y - 300);
     light.target.position.set(center.x, 0, center.y);
     light.castShadow = true;
-    light.shadow.mapSize.set(4096, 4096);
+    light.shadow.mapSize.set(2048, 2048);
     Object.assign(light.shadow.camera, { left: -460, right: 460, top: 460, bottom: -460, near: 50, far: 1600 });
     light.shadow.bias = -0.0004;
     light.shadow.normalBias = 0.6;
@@ -853,15 +905,17 @@ function Lot({ data, highlight, selectedId, recent, gateOnline, onSelect, onGate
     <div className="relative rounded-2xl border border-slate-200 overflow-hidden bg-gradient-to-b from-[#E6EDF5] to-[#D9E2EC]">
       <ZoomControls onZoomIn={() => rig.current?.zoom(1.4)} onZoomOut={() => rig.current?.zoom(1 / 1.4)} onReset={() => rig.current?.reset()} />
       {/* The lot is wide; size the view to it so the default framing fills the frame. */}
-      <div className="w-full min-h-[360px] max-h-[680px]" style={{ aspectRatio: '2.45 / 1' }}>
+      <div className="w-full min-h-[340px] sm:min-h-[440px] max-h-[680px]" style={{ aspectRatio: '2.45 / 1' }}>
       <Canvas
+        key={viewMode}
+        orthographic={viewMode === 'plan'}
         className="cursor-grab active:cursor-grabbing"
         shadows="percentage"
-        dpr={[1, 2]}
+        dpr={[1, 1.5]}
         frameloop={animate ? 'always' : 'demand'}
         camera={{ fov: FOV, near: 4, far: 6000, position: [center.x, 700, center.y + 500] }}
         gl={{ antialias: true, preserveDrawingBuffer: false }}
-        aria-label="3D view of the DYCI parking layout. Drag to pan, scroll or pinch to zoom, select a slot for details."
+        aria-label={`${viewMode === 'plan' ? 'Plan' : '3D'} view of the DYCI parking layout. Drag to pan, scroll or pinch to zoom, select a slot for details.`}
         role="application"
       >
         <hemisphereLight args={['#F1F5FF', '#5B7F43', 0.9]} />
@@ -869,9 +923,10 @@ function Lot({ data, highlight, selectedId, recent, gateOnline, onSelect, onGate
         <primitive object={sun} />
         <primitive object={sun.target} />
         <CameraRig ref={rig} home={home} onCloseUp={setCloseUp} />
-        <Site g={g} trays={stableTrays} onGate={gate} gateOnline={gateOnline} />
-        <Slots slots={slots} extra={data.extra_bays} selectedId={selectedId} closeUp={closeUp} onSelect={select} />
+        <Site g={g} trays={stableTrays} onGate={gate} gateOnline={gateOnline} showMeasurements={showMeasurements} />
+        <Slots slots={slots} extra={data.extra_bays} selectedId={selectedId} closeUp={closeUp} onSelect={select} measurementUnit={showMeasurements && g.measurement_basis?.scale === 'metric_proposal' ? g.measurement_basis.units_per_metre : undefined} />
         <Signs g={g} areas={data.areas ?? []} trays={stableTrays} />
+        {showMeasurements && <Measurements geometry={g} />}
         <Markers slots={slots} highlight={highlight} recent={recent} />
       </Canvas>
       </div>

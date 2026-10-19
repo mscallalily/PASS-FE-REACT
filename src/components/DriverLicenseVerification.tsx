@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { IdCard, Clock, CheckCircle, AlertTriangle, Send, Loader2, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { IdCard, Clock, CheckCircle, AlertTriangle, Send, Loader2, ShieldCheck, RefreshCw } from 'lucide-react';
 import FileUpload from './FileUpload';
 import { LICENSE_STATUS_LABEL, LICENSE_TYPE_LABEL, LicenseType, useLicense } from '../context/LicenseContext';
 import { formatCampusDateTime } from '../lib/datetime';
@@ -21,7 +21,7 @@ const FIELD_MAP: Record<string, string> = {
  * Independent of vehicle registration: a user who answered "No" at sign-up can submit it here later.
  */
 export default function DriverLicenseVerification({ variant = 'web' }: { variant?: 'web' | 'mobile'; owner?: string }) {
-  const { status, license, error: loadError, submit } = useLicense();
+  const { status, license, error: loadError, submit, retry } = useLicense();
   const m = variant === 'mobile';
   const [editing, setEditing] = useState(false);
   const [licenseNo, setLicenseNo] = useState('');
@@ -31,10 +31,16 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [formMessage, setFormMessage] = useState('');
+  const [retrying, setRetrying] = useState(false);
+  const [retryMessage, setRetryMessage] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+  const submitLock = useRef(false);
+  useEffect(() => { if (!cooldown) return; const timer = window.setTimeout(() => setCooldown(v => Math.max(0, v - 1)), 1000); return () => window.clearTimeout(timer); }, [cooldown]);
 
   const showForm = status === 'not_submitted' || status === 'needs_correction' || (editing && status !== 'processing');
 
   const handleSubmit = async () => {
+    if (submitLock.current || cooldown > 0) return;
     const e: Record<string, string> = {};
     if (!licenseNo.trim()) e.licenseNo = "Driver's license number is required";
     else if (!/^[A-Za-z]\d{2}[-\s]?\d{2}[-\s]?\d{6}$/.test(licenseNo.trim())) e.licenseNo = 'Use the LTO format, for example N01-23-456789';
@@ -45,11 +51,14 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
     setFormMessage('');
     if (Object.keys(e).length) return;
 
+    submitLock.current = true;
     setSubmitting(true);
     const result = await submit({ licenseNumber: licenseNo.trim(), licenseType, expiryDate: expiry, file: file! });
     setSubmitting(false);
+    submitLock.current = false;
 
     if (!result.ok) {
+      setCooldown(result.retryAfterSeconds ?? 0);
       const fieldErrors: Record<string, string> = {};
       for (const [field, message] of Object.entries(result.fieldErrors)) fieldErrors[FIELD_MAP[field] ?? field] = message;
       setErrors(fieldErrors);
@@ -65,8 +74,8 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
   const tone = {
     not_submitted: { box: 'bg-slate-50 border-slate-200', text: 'text-slate-700', icon: <IdCard size={22} className="text-slate-500" />, msg: "No driver's license on file. Submit it to register a vehicle." },
     processing: { box: 'bg-blue-50 border-blue-200', text: 'text-blue-800', icon: <Loader2 size={22} className="text-blue-600 animate-spin" />, msg: 'Checking your document. This usually takes a few seconds.' },
-    pending_review: { box: 'bg-amber-50 border-amber-200', text: 'text-amber-800', icon: <Clock size={22} className="text-amber-600" />, msg: 'Your submission is waiting for review by PASS staff. Pending review does not mean the automatic document check passed.' },
-    verified: { box: 'bg-green-50 border-green-200', text: 'text-green-800', icon: <CheckCircle size={22} className="text-green-600" />, msg: 'Your driver’s license has been verified by PASS staff.' },
+    pending_review: { box: 'bg-amber-50 border-amber-200', text: 'text-amber-800', icon: <Clock size={22} className="text-amber-600" />, msg: license?.verification_source === 'staff' ? 'Your submission is awaiting a staff exception review.' : 'The automatic check has not completed. Your submission is not approved. Retry the check; if the service is unavailable, contact PASS staff.' },
+    verified: { box: 'bg-green-50 border-green-200', text: 'text-green-800', icon: <CheckCircle size={22} className="text-green-600" />, msg: license?.verification_source === 'automatic' ? 'Your license submission was approved automatically after the required OCR and document-consistency checks passed.' : 'PASS staff approved your license submission.' },
     needs_correction: {
       box: 'bg-red-50 border-red-200', text: 'text-red-800', icon: <AlertTriangle size={22} className="text-red-600" />,
       msg: returnedByCheck
@@ -88,7 +97,7 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
         <div className="flex items-start gap-3">
           <span className="shrink-0 mt-0.5">{tone.icon}</span>
           <div className="min-w-0">
-            <p className={`font-bold ${tone.text}`}>{LICENSE_STATUS_LABEL[status]}</p>
+            <p className={`font-bold ${tone.text}`}>{status === 'verified' && license?.verification_source === 'automatic' ? 'Approved automatically' : status === 'pending_review' && license?.verification_source !== 'staff' ? 'Automatic check unavailable' : LICENSE_STATUS_LABEL[status]}</p>
             <p className={`text-sm mt-0.5 ${tone.text}`}>{tone.msg}</p>
             {status === 'needs_correction' && license?.verification_reason && (
               <ul className="mt-2 space-y-1 list-disc pl-5 text-sm text-red-800">
@@ -106,6 +115,12 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
             )}
           </div>
         </div>
+        {status === 'pending_review' && license?.verification_source !== 'staff' && <div className="mt-3 space-y-2">
+          <button type="button" disabled={retrying || cooldown > 0} onClick={async () => { if (retrying || cooldown) return; setRetrying(true); setRetryMessage(''); const result = await retry(); setRetryMessage(result.message); if (!result.ok) setCooldown(result.retryAfterSeconds ?? 0); setRetrying(false); }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-[#2563EB] disabled:opacity-50">
+            {retrying ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}{cooldown ? `Try again in ${cooldown}s` : retrying ? 'Checking…' : 'Retry automatic check'}
+          </button>
+          {retryMessage && <p role="status" className="text-sm text-slate-600">{retryMessage}</p>}
+        </div>}
         {!showForm && status !== 'processing' && (
           <button type="button" onClick={() => setEditing(true)} className="mt-3 text-sm font-semibold text-[#2563EB] hover:underline">
             Submit a different license
@@ -137,12 +152,12 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
             onChange={f => { setFile(f); setErrors(e => ({ ...e, file: '' })); }}
             onError={msg => setErrors(e => ({ ...e, file: msg }))} />
           
-          <p className="text-xs text-slate-500">Use a clear, well-lit photo or scan of the front side with all text readable. The name must match your registered name.</p>
+          <p className="text-xs text-slate-500">Use a clear JPG or PNG photo of the full front side for automatic approval. The name, license number, type and expiry must match your entries. PDFs require a JPG/PNG resubmission for the automatic check.</p>
           {formMessage && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">{formMessage}</p>}
-          <div className="flex gap-3">
-            <button type="button" onClick={handleSubmit} disabled={submitting} className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#2563EB] text-white font-semibold hover:bg-[#1D4ED8] transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed">
+          <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={handleSubmit} disabled={submitting || cooldown > 0} className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#2563EB] text-white font-semibold hover:bg-[#1D4ED8] transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed">
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              {submitting ? 'Submitting...' : 'Submit for Verification'}
+              {cooldown ? `Try again in ${cooldown}s` : submitting ? 'Submitting...' : 'Submit for Verification'}
             </button>
             {editing && status !== 'needs_correction' && (
               <button type="button" onClick={() => setEditing(false)} disabled={submitting} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium text-sm">Cancel</button>
@@ -153,7 +168,7 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
 
       <p className="flex items-start gap-2 text-xs text-slate-400">
         <ShieldCheck size={14} className="shrink-0 mt-0.5" />
-        <span>Your document is stored privately and is only visible to you and authorized PASS staff. The automatic check is a preliminary validation; it does not confirm authenticity with the LTO. Verification by PASS staff does not by itself authorize a vehicle or assign an RFID.</span>
+        <span>Your document is stored privately and is only visible to you and authorized PASS staff. Automatic approval checks the document text and image consistency; it does not confirm authenticity with the LTO. Account approval, vehicle authorization and RFID assignment are separate.</span>
       </p>
     </div>
   );

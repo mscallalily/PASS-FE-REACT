@@ -12,6 +12,7 @@ export class ApiError extends Error {
     message: string,
     public status: number,
     public fieldErrors: Record<string, string> = {},
+    public retryAfterSeconds: number = 0,
   ) {
     super(message);
   }
@@ -46,7 +47,11 @@ async function toError(response: Response): Promise<ApiError> {
     fieldErrors[field] = Array.isArray(messages) ? messages[0] : String(messages);
   }
 
-  return new ApiError(data.message || `Request failed with status ${response.status}.`, response.status, fieldErrors);
+  const retryHeader = response.headers.get('Retry-After');
+  const headerSeconds = retryHeader && /^\d+$/.test(retryHeader) ? Number(retryHeader) : retryHeader ? Math.ceil((Date.parse(retryHeader) - Date.now()) / 1000) : 0;
+  const retry = response.status === 429 ? Math.max(1, Math.min(3600, Number.isFinite(headerSeconds) && headerSeconds > 0 ? headerSeconds : Number(data.retry_after) || 60)) : 0;
+  const message = response.status === 429 && (!data.message || /^too many (attempts|requests)\.?$/i.test(data.message)) ? `Please wait ${retry} seconds before trying again.` : data.message;
+  return new ApiError(message || `Request failed with status ${response.status}.`, response.status, fieldErrors, retry);
 }
 
 /** JSON request. A plain-object body is sent as JSON; FormData is sent as multipart. */
@@ -70,7 +75,7 @@ export async function apiRequest<T>(url: string, options: Omit<RequestInit, 'bod
 
 /** Download a protected file (e.g. an uploaded document) as a Blob. */
 export async function apiBlob(url: string): Promise<Blob> {
-  const response = await send(url, { headers: { Accept: '*/*' } });
+  const response = await send(url, { headers: { Accept: 'application/json, */*' } });
 
   if (!response.ok) throw await toError(response);
 

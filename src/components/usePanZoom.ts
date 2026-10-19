@@ -58,7 +58,9 @@ export function usePanZoom(svgRef: React.RefObject<SVGSVGElement | null>, home: 
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    // Capture the hit element so a tap still dispatches its click to the slot.
+    // Capturing the outer SVG retargets the click away from interactive bays.
+    (e.target as Element).setPointerCapture?.(e.pointerId);
 
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];

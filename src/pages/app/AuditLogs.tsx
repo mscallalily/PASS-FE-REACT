@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   PageHeader,
   Card,
@@ -11,6 +11,7 @@ import {
   Toast,
 } from '../../components/ui';
 import { Download, RefreshCw } from 'lucide-react';
+import { formatCampusDateTime } from '../../lib/datetime';
 
 interface AuditLog {
   log_id: number;
@@ -66,19 +67,7 @@ async function apiRequest<T>(url: string): Promise<T> {
 }
 
 function formatDate(value: string): string {
-  if (!value) return '—';
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleString('en-PH', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return formatCampusDateTime(value);
 }
 
 function getModule(log: AuditLog): string {
@@ -101,7 +90,7 @@ function getDescription(log: AuditLog): string {
     log.action.toLowerCase() === 'created' &&
     log.auditable_type?.endsWith('\\User')
   ) {
-    return `Created a Parking Staff account${
+    return `Created an account${
       email ? ` for ${String(email)}` : ''
     }.`;
   }
@@ -166,7 +155,7 @@ export default function AuditLogs() {
 
       try {
         const result = await apiRequest<AuditLogResponse>(
-          `/api/admin/audit-logs?page=${page}`
+          `/api/admin/audit-logs?${new URLSearchParams({ page: String(page), ...(search ? { search } : {}), ...(startDate ? { date_from: startDate } : {}), ...(endDate ? { date_to: endDate } : {}) })}`
         );
 
         if (!cancelled) {
@@ -194,30 +183,11 @@ export default function AuditLogs() {
     return () => {
       cancelled = true;
     };
-  }, [page, refreshKey]);
+  }, [page, refreshKey, search, startDate, endDate]);
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  useEffect(() => { setPage(1); }, [search, startDate, endDate]);
 
-    return logs.filter((log) => {
-      const actor = log.actor_label || `User #${log.user_id ?? ''}`;
-      const module = getModule(log);
-
-      const matchesSearch =
-        !query ||
-        actor.toLowerCase().includes(query) ||
-        log.action.toLowerCase().includes(query) ||
-        module.toLowerCase().includes(query) ||
-        getDescription(log).toLowerCase().includes(query);
-
-      const date = log.created_at.slice(0, 10);
-
-      const matchesStart = !startDate || date >= startDate;
-      const matchesEnd = !endDate || date <= endDate;
-
-      return matchesSearch && matchesStart && matchesEnd;
-    });
-  }, [logs, search, startDate, endDate]);
+  const filtered = logs;
 
   function exportLogs() {
     if (filtered.length === 0) {
@@ -247,8 +217,11 @@ export default function AuditLogs() {
       log.ip_address || '—',
     ]);
 
-    const escapeCsv = (value: unknown) =>
-      `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const escapeCsv = (value: unknown) => {
+      let cell = String(value ?? '');
+      if (/^[\s\x00-\x1f]*[=+@\-]/.test(cell)) cell = "'" + cell;
+      return '"' + cell.replace(/"/g, '""') + '"';
+    };
 
     const csv = [headers, ...rows]
       .map((row) => row.map(escapeCsv).join(','))
@@ -297,9 +270,9 @@ export default function AuditLogs() {
               <RefreshCw size={16} />
               Refresh
             </Button>
-            <Button variant="outline" onClick={exportLogs}>
+            <Button variant="outline" disabled={loading || !!error || !filtered.length} onClick={exportLogs}>
               <Download size={16} />
-              Export Log
+              Export Page CSV
             </Button>
           </div>
         }
@@ -351,7 +324,7 @@ export default function AuditLogs() {
             />
           </div>
           <p className="mt-3 text-xs text-slate-400">
-            Showing {filtered.length} matching records on this page · {total} total records
+            Showing {filtered.length} matching records on this page · {total} matching records across all pages
           </p>
         </div>
 
