@@ -818,7 +818,7 @@ export default function VehicleManagement() {
             {(license.status === 'pending_review' || license.status === 'processing') && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">Your license document check is unfinished. Retry the automatic check in Driver & License, or contact PASS staff. The vehicle cannot be authorized until the license submission is approved.</p>
             )}
-            <FileUpload accept="image/jpeg,image/png" label="Vehicle photo — show the plate clearly (JPG/PNG, up to 5 MB)" file={vehiclePhoto} onChange={setVehiclePhoto} onError={setRegisterError} />
+            <FileUpload accept="image/jpeg,image/png" label="Vehicle photo — show the plate clearly (JPG/PNG, up to 5 MB)" file={vehiclePhoto} onChange={f => { setVehiclePhoto(f); setRegisterError(''); }} onError={setRegisterError} />
             <VehiclePhotoReader file={vehiclePhoto} onBusyChange={setPhotoReading} onApply={fields => setVehicleForm(f => ({ ...f, ...(fields.plate_number ? { plate_number: fields.plate_number } : {}), ...(fields.color ? { color: fields.color } : {}), ...(fields.category === 'motorcycle' ? { vehicle_type: 'Motorcycle' } : fields.category === 'car' && f.vehicle_type === 'Motorcycle' ? { vehicle_type: '' } : {}) }))} />
             <Input label="Plate Number" aria-label="Plate Number" placeholder="ABC-1234" value={vehicleForm.plate_number} onChange={e => setVehicleForm(f => ({ ...f, plate_number: e.target.value.toUpperCase() }))} disabled={registerBusy} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

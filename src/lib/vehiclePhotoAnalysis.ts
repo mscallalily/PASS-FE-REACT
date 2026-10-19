@@ -1,20 +1,30 @@
-import type { ObjectDetection } from '@tensorflow-models/coco-ssd';
-
 export type VehicleDetection = { bbox: [number, number, number, number]; class: string; score: number };
 export type VehicleSuggestions = { plate_number?: string; color?: string; category?: 'motorcycle' | 'car' };
-let detector: Promise<ObjectDetection> | null = null;
+let worker: Worker | null = null;
 let queue: Promise<unknown> = Promise.resolve();
 
-async function loadDetector() {
-  if (!detector) detector = (async () => {
-    const tf = await import('@tensorflow/tfjs-core');
-    await Promise.all([import('@tensorflow/tfjs-backend-cpu'), import('@tensorflow/tfjs-backend-webgl')]);
-    try { if (!(await tf.setBackend('webgl'))) await tf.setBackend('cpu'); } catch { await tf.setBackend('cpu'); }
-    await tf.ready();
-    const coco = await import('@tensorflow-models/coco-ssd');
-    return coco.load({ base: 'lite_mobilenet_v2', modelUrl: '/models/vehicle-detector/model.json' });
-  })().catch(error => { detector = null; throw error; });
-  return detector;
+/** Keep model initialization/inference off the form's event loop, including on CPU-only phones. */
+function recognize(photo: HTMLCanvasElement): Promise<VehicleDetection[]> {
+  const ratio = Math.min(1, 640 / Math.max(photo.width, photo.height));
+  const sample = document.createElement('canvas'); sample.width = Math.round(photo.width * ratio); sample.height = Math.round(photo.height * ratio);
+  const ctx = sample.getContext('2d')!; ctx.drawImage(photo, 0, 0, sample.width, sample.height);
+  const rgba = ctx.getImageData(0, 0, sample.width, sample.height).data;
+  const pixels = new Uint8Array(sample.width * sample.height * 3);
+  for (let i = 0, j = 0; i < rgba.length; i += 4) { pixels[j++] = rgba[i]; pixels[j++] = rgba[i + 1]; pixels[j++] = rgba[i + 2]; }
+  return new Promise((resolve, reject) => {
+    worker ??= new Worker(new URL('./vehicleDetector.worker.ts', import.meta.url), { type: 'module' });
+    const active = worker;
+    const finish = () => { window.clearTimeout(timer); active.onmessage = null; active.onerror = null; };
+    const fail = () => { finish(); active.terminate(); if (worker === active) worker = null; reject(new Error('Vehicle category reader is unavailable.')); };
+    const timer = window.setTimeout(fail, 45000);
+    active.onerror = event => { event.preventDefault(); fail(); };
+    active.onmessage = event => {
+      if (event.data.error || !Array.isArray(event.data.detections)) { fail(); return; }
+      finish();
+      resolve(event.data.detections.map((d: VehicleDetection) => ({ ...d, bbox: d.bbox.map(v => v / ratio) as VehicleDetection['bbox'] })));
+    };
+    active.postMessage({ pixels: pixels.buffer, width: sample.width, height: sample.height, modelUrl: new URL('/models/vehicle-detector/model.json', window.location.origin).href }, [pixels.buffer]);
+  });
 }
 
 export async function loadVehiclePhoto(file: File): Promise<HTMLCanvasElement> {
@@ -30,8 +40,7 @@ export async function loadVehiclePhoto(file: File): Promise<HTMLCanvasElement> {
 
 export async function detectVehicles(photo: HTMLCanvasElement): Promise<VehicleDetection[]> {
   const run = queue.catch(() => {}).then(async () => {
-    const model = await loadDetector();
-    const results = await model.detect(photo, 12, .55);
+    const results = await recognize(photo);
     return results.filter(d => ['car', 'motorcycle', 'truck'].includes(d.class) && d.score >= .65 && d.bbox[2] * d.bbox[3] >= photo.width * photo.height * .03)
       .sort((a, b) => b.bbox[2] * b.bbox[3] - a.bbox[2] * a.bbox[3]);
   });

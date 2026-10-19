@@ -44,11 +44,7 @@ export default function VehiclePhotoReader({ file, onApply, onBusyChange }: { fi
     try {
       const loaded = await loadVehiclePhoto(file); if (token !== sequence.current) return; photo.current = loaded;
       let list: VehicleDetection[] = [];
-      let detectionTimer: number | undefined;
-      try {
-        list = await Promise.race([detectVehicles(photo.current), new Promise<never>((_, reject) => { detectionTimer = window.setTimeout(() => reject(new Error('Vehicle reader timed out.')), 45000); })]);
-      } catch { if (token === sequence.current) setError('Vehicle category reader is unavailable. You can still read the plate and enter the category and color manually.'); }
-      finally { window.clearTimeout(detectionTimer); }
+      try { list = await detectVehicles(photo.current); } catch { if (token === sequence.current) setError('Vehicle category reader is unavailable. You can still read the plate and enter the category and color manually.'); }
       if (token !== sequence.current) return;
       setDetections(list); setReady(true);
       if (list.length > 1) setMessage('More than one vehicle was found. Choose the vehicle to read.');

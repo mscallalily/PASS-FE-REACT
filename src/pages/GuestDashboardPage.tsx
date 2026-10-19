@@ -503,7 +503,7 @@ function Vehicles({ vehicles, types, onAdded }: { vehicles: Vehicle[]; types: Ve
         <Card>
           <h3 className="font-semibold text-[#080677] mb-4 flex items-center gap-2"><Plus size={16} /> Register a vehicle</h3>
           <div className="mb-5 space-y-3">
-            <FileUpload accept="image/jpeg,image/png" label="Vehicle photo for suggestions (optional)" file={analysisPhoto} onChange={setAnalysisPhoto} onError={setError} />
+            <FileUpload accept="image/jpeg,image/png" label="Vehicle photo for suggestions (optional)" file={analysisPhoto} onChange={f => { setAnalysisPhoto(f); setError(''); }} onError={setError} />
             <VehiclePhotoReader file={analysisPhoto} onBusyChange={setPhotoReading} onApply={fields => setForm(f => ({ ...f, ...(fields.plate_number ? { plate_number: fields.plate_number } : {}), ...(fields.color ? { color: fields.color } : {}), ...(fields.category === 'motorcycle' ? { vehicle_type_id: String(types.find(t => t.type_name === 'Motorcycle')?.vehicle_type_id || '') } : fields.category === 'car' && types.find(t => String(t.vehicle_type_id) === f.vehicle_type_id)?.type_name === 'Motorcycle' ? { vehicle_type_id: '' } : {}) }))} />
             <p className="text-xs text-slate-500">Your visitor request will still require a vehicle photo for staff review.</p>
           </div>
