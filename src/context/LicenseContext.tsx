@@ -33,7 +33,7 @@ export interface LicenseSubmission {
 
 export type SubmitResult =
   | { ok: true; message: string }
-  | { ok: false; message: string; fieldErrors: Record<string, string> };
+  | { ok: false; message: string; fieldErrors: Record<string, string>; retryAfterSeconds?: number };
 
 interface LicenseContextType {
   status: LicenseStatus;
@@ -110,7 +110,7 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
       setError('');
       return { ok: true, message: result.message };
     } catch (err) {
-      if (err instanceof ApiError) return { ok: false, message: err.message, fieldErrors: err.fieldErrors };
+      if (err instanceof ApiError) return { ok: false, message: err.message, fieldErrors: err.fieldErrors, retryAfterSeconds: err.retryAfterSeconds };
       return { ok: false, message: 'The license could not be submitted. Please try again.', fieldErrors: {} };
     }
   };
@@ -123,7 +123,7 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
       setError('');
       return { ok: true, message: result.message };
     } catch (err) {
-      return { ok: false, message: err instanceof Error ? err.message : 'The check could not be restarted.', fieldErrors: {} };
+      return { ok: false, message: err instanceof Error ? err.message : 'The check could not be restarted.', fieldErrors: {}, retryAfterSeconds: err instanceof ApiError ? err.retryAfterSeconds : 0 };
     }
   };
 

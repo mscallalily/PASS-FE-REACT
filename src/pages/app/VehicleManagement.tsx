@@ -1,3 +1,4 @@
+import VehiclePhotoReader from '../../components/VehiclePhotoReader';
 import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -201,7 +202,7 @@ function VehiclePhotoPanel({ id, editable, onSaved, hasPhoto }: { id: string | n
     {url && <img src={url} alt="Submitted vehicle photo for plate comparison" className="max-h-80 w-full rounded-xl object-contain bg-slate-50" />}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     {editable && <>
-      <FileUpload label="Vehicle photo — show the plate clearly (JPG/PNG)" file={file} onChange={setFile} onError={setError} />
+      <FileUpload accept="image/jpeg,image/png" label="Vehicle photo — show the plate clearly (JPG/PNG)" file={file} onChange={setFile} onError={setError} />
       <Button onClick={save} disabled={!file || busy}>{busy ? 'Uploading…' : 'Save vehicle photo'}</Button>
       <p className="text-xs text-slate-500">Saving a replacement photo returns this submission to pending review.</p>
     </>}
@@ -292,11 +293,12 @@ export default function VehicleManagement() {
   const [vehicleError, setVehicleError] = useState('');
   const [vehicleReloadKey, setVehicleReloadKey] = useState(0);
   const [registerBusy, setRegisterBusy] = useState(false);
+  const [photoReading, setPhotoReading] = useState(false);
   const [registerError, setRegisterError] = useState('');
-  const [vehicleForm, setVehicleForm] = useState({ plate_number: '', vehicle_type: 'Sedan', year_model: '', make: '', model: '', color: '' });
+  const [vehicleForm, setVehicleForm] = useState({ plate_number: '', vehicle_type: '', year_model: '', make: '', model: '', color: '' });
 
   async function registerVehicle() {
-    if (registerBusy) return;
+    if (registerBusy || photoReading) return;
     if (!vehiclePhoto) { setRegisterError('Upload a vehicle photo showing the plate.'); return; }
     setRegisterBusy(true); setRegisterError('');
     try {
@@ -306,7 +308,7 @@ export default function VehicleManagement() {
       const data = await apiRequest<{ message: string }>('/api/vehicles', { method: 'POST', body });
       setVehiclePhoto(null);
       setShowRegister(false);
-      setVehicleForm({ plate_number: '', vehicle_type: 'Sedan', year_model: '', make: '', model: '', color: '' });
+      setVehicleForm({ plate_number: '', vehicle_type: '', year_model: '', make: '', model: '', color: '' });
       setVehicleReloadKey(k => k + 1); setMyReloadKey(k => k + 1);
       showToast(data.message);
     } catch (error) {
@@ -816,20 +818,22 @@ export default function VehicleManagement() {
             {(license.status === 'pending_review' || license.status === 'processing') && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">Your license document check is unfinished. Retry the automatic check in Driver & License, or contact PASS staff. The vehicle cannot be authorized until the license submission is approved.</p>
             )}
-            <Input label="Plate Number" placeholder="ABC-1234" value={vehicleForm.plate_number} onChange={e => setVehicleForm(f => ({ ...f, plate_number: e.target.value.toUpperCase() }))} disabled={registerBusy} />
+            <FileUpload accept="image/jpeg,image/png" label="Vehicle photo — show the plate clearly (JPG/PNG, up to 5 MB)" file={vehiclePhoto} onChange={setVehiclePhoto} onError={setRegisterError} />
+            <VehiclePhotoReader file={vehiclePhoto} onBusyChange={setPhotoReading} onApply={fields => setVehicleForm(f => ({ ...f, ...(fields.plate_number ? { plate_number: fields.plate_number } : {}), ...(fields.color ? { color: fields.color } : {}), ...(fields.category === 'motorcycle' ? { vehicle_type: 'Motorcycle' } : fields.category === 'car' && f.vehicle_type === 'Motorcycle' ? { vehicle_type: '' } : {}) }))} />
+            <Input label="Plate Number" aria-label="Plate Number" placeholder="ABC-1234" value={vehicleForm.plate_number} onChange={e => setVehicleForm(f => ({ ...f, plate_number: e.target.value.toUpperCase() }))} disabled={registerBusy} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Select label="Vehicle Type" value={vehicleForm.vehicle_type} onChange={e => setVehicleForm(f => ({ ...f, vehicle_type: e.target.value }))} disabled={registerBusy}><option>Sedan</option><option>SUV</option><option>Hatchback</option><option>Pickup</option><option>Motorcycle</option><option>Van</option></Select>
+              <Select label="Vehicle Type" aria-label="Vehicle Type" value={vehicleForm.vehicle_type} onChange={e => setVehicleForm(f => ({ ...f, vehicle_type: e.target.value }))} disabled={registerBusy || photoReading}><option value="">Choose vehicle type…</option><option>Sedan</option><option>SUV</option><option>Hatchback</option><option>Pickup</option><option>Motorcycle</option><option>Van</option></Select>
               <Input label="Year" placeholder="2024" type="number" value={vehicleForm.year_model} onChange={e => setVehicleForm(f => ({ ...f, year_model: e.target.value }))} disabled={registerBusy} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Make" placeholder="Toyota" value={vehicleForm.make} onChange={e => setVehicleForm(f => ({ ...f, make: e.target.value }))} disabled={registerBusy} />
               <Input label="Model" placeholder="Vios" value={vehicleForm.model} onChange={e => setVehicleForm(f => ({ ...f, model: e.target.value }))} disabled={registerBusy} />
             </div>
-            <Input label="Color" placeholder="White" value={vehicleForm.color} onChange={e => setVehicleForm(f => ({ ...f, color: e.target.value }))} disabled={registerBusy} />
-            <FileUpload label="Vehicle photo — show the plate clearly (JPG/PNG, up to 5 MB)" file={vehiclePhoto} onChange={setVehiclePhoto} onError={setRegisterError} />
+            <Input label="Color" aria-label="Color" placeholder="White" value={vehicleForm.color} onChange={e => setVehicleForm(f => ({ ...f, color: e.target.value }))} disabled={registerBusy} />
+
             {registerError && <p role="alert" className="text-sm text-red-700">{registerError}</p>}
             <div className="flex gap-3 pt-2">
-              <Button onClick={registerVehicle} disabled={registerBusy}>{registerBusy ? 'Submitting…' : 'Submit Registration'}</Button>
+              <Button onClick={registerVehicle} disabled={registerBusy || photoReading}>{registerBusy ? 'Submitting…' : 'Submit Registration'}</Button>
               <Button variant="outline" onClick={() => setShowRegister(false)}>Cancel</Button>
             </div>
           </div>

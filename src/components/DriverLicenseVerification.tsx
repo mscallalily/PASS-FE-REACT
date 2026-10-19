@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { IdCard, Clock, CheckCircle, AlertTriangle, Send, Loader2, ShieldCheck, RefreshCw } from 'lucide-react';
 import FileUpload from './FileUpload';
 import { LICENSE_STATUS_LABEL, LICENSE_TYPE_LABEL, LicenseType, useLicense } from '../context/LicenseContext';
@@ -33,10 +33,14 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
   const [formMessage, setFormMessage] = useState('');
   const [retrying, setRetrying] = useState(false);
   const [retryMessage, setRetryMessage] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+  const submitLock = useRef(false);
+  useEffect(() => { if (!cooldown) return; const timer = window.setTimeout(() => setCooldown(v => Math.max(0, v - 1)), 1000); return () => window.clearTimeout(timer); }, [cooldown]);
 
   const showForm = status === 'not_submitted' || status === 'needs_correction' || (editing && status !== 'processing');
 
   const handleSubmit = async () => {
+    if (submitLock.current || cooldown > 0) return;
     const e: Record<string, string> = {};
     if (!licenseNo.trim()) e.licenseNo = "Driver's license number is required";
     else if (!/^[A-Za-z]\d{2}[-\s]?\d{2}[-\s]?\d{6}$/.test(licenseNo.trim())) e.licenseNo = 'Use the LTO format, for example N01-23-456789';
@@ -47,11 +51,14 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
     setFormMessage('');
     if (Object.keys(e).length) return;
 
+    submitLock.current = true;
     setSubmitting(true);
     const result = await submit({ licenseNumber: licenseNo.trim(), licenseType, expiryDate: expiry, file: file! });
     setSubmitting(false);
+    submitLock.current = false;
 
     if (!result.ok) {
+      setCooldown(result.retryAfterSeconds ?? 0);
       const fieldErrors: Record<string, string> = {};
       for (const [field, message] of Object.entries(result.fieldErrors)) fieldErrors[FIELD_MAP[field] ?? field] = message;
       setErrors(fieldErrors);
@@ -109,8 +116,8 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
           </div>
         </div>
         {status === 'pending_review' && license?.verification_source !== 'staff' && <div className="mt-3 space-y-2">
-          <button type="button" disabled={retrying} onClick={async () => { setRetrying(true); setRetryMessage(''); const result = await retry(); setRetryMessage(result.message); setRetrying(false); }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-[#2563EB] disabled:opacity-50">
-            {retrying ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}{retrying ? 'Checking…' : 'Retry automatic check'}
+          <button type="button" disabled={retrying || cooldown > 0} onClick={async () => { if (retrying || cooldown) return; setRetrying(true); setRetryMessage(''); const result = await retry(); setRetryMessage(result.message); if (!result.ok) setCooldown(result.retryAfterSeconds ?? 0); setRetrying(false); }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-[#2563EB] disabled:opacity-50">
+            {retrying ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}{cooldown ? `Try again in ${cooldown}s` : retrying ? 'Checking…' : 'Retry automatic check'}
           </button>
           {retryMessage && <p role="status" className="text-sm text-slate-600">{retryMessage}</p>}
         </div>}
@@ -148,9 +155,9 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
           <p className="text-xs text-slate-500">Use a clear JPG or PNG photo of the full front side for automatic approval. The name, license number, type and expiry must match your entries. PDFs require a JPG/PNG resubmission for the automatic check.</p>
           {formMessage && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">{formMessage}</p>}
           <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={handleSubmit} disabled={submitting} className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#2563EB] text-white font-semibold hover:bg-[#1D4ED8] transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed">
+            <button type="button" onClick={handleSubmit} disabled={submitting || cooldown > 0} className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#2563EB] text-white font-semibold hover:bg-[#1D4ED8] transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed">
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              {submitting ? 'Submitting...' : 'Submit for Verification'}
+              {cooldown ? `Try again in ${cooldown}s` : submitting ? 'Submitting...' : 'Submit for Verification'}
             </button>
             {editing && status !== 'needs_correction' && (
               <button type="button" onClick={() => setEditing(false)} disabled={submitting} className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium text-sm">Cancel</button>

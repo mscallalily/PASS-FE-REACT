@@ -11,6 +11,11 @@
   },
   "dependencies": {
     "@react-three/fiber": "^9.8.2",
+    "@tensorflow-models/coco-ssd": "2.2.3",
+    "@tensorflow/tfjs-backend-cpu": "4.22.0",
+    "@tensorflow/tfjs-backend-webgl": "4.22.0",
+    "@tensorflow/tfjs-converter": "4.22.0",
+    "@tensorflow/tfjs-core": "4.22.0",
     "lucide-react": "^1.48.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
