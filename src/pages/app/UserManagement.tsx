@@ -640,9 +640,11 @@ async function handleAddUser() {
                 {[
                   { perm: 'Manage Users', vals: [true, false, false, false, false] },
                   { perm: 'Manage Own Vehicles', vals: [false, false, true, true, true] },
-                  { perm: 'Verify Vehicle Access', vals: [false, true, false, false, false] },
+                  { perm: 'Review Vehicle Authorizations / Licenses', vals: [true, true, false, false, false] },
+                  { perm: 'Record Gate Entry / Exit', vals: [false, true, false, false, false] },
                   { perm: 'Manage RFID Assignments', vals: [true, false, false, false, false] },
-                  { perm: 'Manage Visitor Access', vals: [false, true, false, false, false] },
+                  { perm: 'View Visitor Requests / Passes', vals: [true, true, false, false, false] },
+                  { perm: 'Approve / Reject Visitor Requests', vals: [true, false, false, false, false] },
                   { perm: 'View Administrative Reports', vals: [true, false, false, false, false] },
                   { perm: 'System Settings', vals: [true, false, false, false, false] },
                   { perm: 'View Parking Info', vals: [true, true, true, true, true] },
