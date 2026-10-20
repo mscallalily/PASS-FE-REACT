@@ -145,7 +145,8 @@ function UserServices() {
   const routes = <Suspense fallback={<SessionLoading />}><AppRoutes /></Suspense>;
   // Pending accounts may read /me and logout only. Mount their status page
   // without protected background services, which would be denied by the API.
-  if (user && (user.accountStatus !== 'active' || user.emailVerified === false)) return routes;
+  const emailRequired = ['student', 'faculty', 'employee', 'guest'].includes(user?.role || '');
+  if (user && (user.accountStatus !== 'active' || (emailRequired && user.emailVerified === false))) return routes;
   return <LiveSyncProvider key={user?.id || 'anonymous'}><LicenseProvider>{routes}</LicenseProvider></LiveSyncProvider>;
 }
 export default function App() {
