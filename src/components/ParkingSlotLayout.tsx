@@ -1,3 +1,4 @@
+import { jsonFetch } from '../lib/http';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 type VehicleType = 'motorcycle' | 'car';
@@ -156,7 +157,7 @@ export default function ParkingSlotLayout() {
     const token = localStorage.getItem('pass_auth_token') || sessionStorage.getItem('pass_auth_token');
     if (!token) { setError('No login token found. Please log in again.'); return; }
     try {
-      const response = await fetch('/api/admin/parking/slots', {
+      const response = await jsonFetch('/api/admin/parking/slots', {
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error(`Unable to load slots (${response.status})`);
@@ -182,7 +183,7 @@ export default function ParkingSlotLayout() {
     setUpdating(slot.slot_code);
     const token = localStorage.getItem('pass_auth_token') || sessionStorage.getItem('pass_auth_token');
     try {
-      const response = await fetch('/api/admin/parking/slots', {
+      const response = await jsonFetch('/api/admin/parking/slots', {
         method: 'PATCH',
         headers: {
           Accept: 'application/json',

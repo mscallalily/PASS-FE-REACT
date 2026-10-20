@@ -1,3 +1,4 @@
+import { jsonFetch } from '../../lib/http';
 import { PAGE_SECTIONS, selectedSection } from '../../lib/pageSections';
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -79,11 +80,11 @@ function getToken(): string | null {
 function displayRole(role?: string | null, userType?: string | null) {
   const value = (role || userType || 'user').toLowerCase();
 
-  if (['parking_admin', 'parking_staff', 'security', 'parking'].includes(value)) {
+  if (['parking_staff', 'security', 'parking'].includes(value)) {
     return 'parking_staff';
   }
 
-  if (value === 'administrator') {
+  if (['administrator', 'parking_admin'].includes(value)) {
     return 'admin';
   }
 
@@ -132,7 +133,7 @@ async function apiRequest<T>(
     throw new Error('Your session has expired. Please log in again.');
   }
 
-  const response = await fetch(url, {
+  const response = await jsonFetch(url, {
     ...options,
     headers: {
       Accept: 'application/json',
@@ -158,6 +159,8 @@ export default function UserManagement() {
 
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState('');
+  const [page, setPage] = useState(1), [lastPage, setLastPage] = useState(1), [total, setTotal] = useState(0);
+
   const [filterStatus, setFilterStatus] = useState('');
 
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -215,7 +218,8 @@ const [addUserError, setAddUserError] = useState('');
       setError('');
 
       try {
-        const params = new URLSearchParams();
+        const params = new URLSearchParams({ page: String(page) });
+        if (filterRole) params.set('role', filterRole);
 
         if (tab === 'Pending Approval') {
           params.set('status', 'pending');
@@ -234,7 +238,7 @@ const [addUserError, setAddUserError] = useState('');
         const rows = (result.users?.data || []).map(mapUser);
 
         if (!cancelled) {
-          setUsers(rows);
+          setUsers(rows); setLastPage(result.users?.last_page ?? 1); setTotal(result.users?.total ?? 0);
         }
       } catch (err) {
         if (!cancelled) {
@@ -256,7 +260,8 @@ const [addUserError, setAddUserError] = useState('');
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [tab, search, filterStatus, refreshKey]);
+  }, [tab, search, filterStatus, filterRole, page, refreshKey]);
+  useEffect(() => { setPage(1); }, [tab, search, filterStatus, filterRole]);
 
   const filtered = users.filter((user) => {
     const matchRole = !filterRole || user.role === filterRole;
@@ -273,8 +278,7 @@ async function handleAddUser() {
     !newUser.user_code.trim() ||
     !newUser.email.trim() ||
     !newUser.password ||
-    !newUser.password_confirmation ||
-    !newUser.department_id
+    !newUser.password_confirmation
   ) {
     setAddUserError('Please complete all required fields.');
     return;
@@ -297,7 +301,6 @@ async function handleAddUser() {
         },
         body: JSON.stringify({
           ...newUser,
-          department_id: 9,
         }),
       }
     );
@@ -673,6 +676,7 @@ async function handleAddUser() {
         </Card>
       )}
 
+      {['All Users', 'Pending Approval'].includes(tab) && <div className="my-4 flex flex-wrap items-center justify-between gap-3 text-sm"><span>{total} records · Page {page} of {lastPage}</span><div className="flex gap-2"><Button variant="outline" disabled={loading || page <= 1} onClick={() => setPage(v => v - 1)}>Previous</Button><Button variant="outline" disabled={loading || page >= lastPage} onClick={() => setPage(v => v + 1)}>Next</Button></div></div>}
       <Modal
         open={!!selected}
         onClose={() => setSelected(null)}

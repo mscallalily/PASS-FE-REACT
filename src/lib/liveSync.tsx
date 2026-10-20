@@ -39,21 +39,28 @@ export function LiveSyncProvider({ children }: { children: React.ReactNode }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
   const queued = useRef(false);
+  const enabled = useRef(isAuthenticated);
+  const currentRequest = useRef<AbortController | null>(null);
 
   const check = useCallback(async () => {
+    if (!enabled.current) return;
     if (inFlight.current) { queued.current = true; return; }
     inFlight.current = true;
+    const request = new AbortController(); currentRequest.current = request;
     let failed = false;
     try {
-      const { topics } = await apiRequest<{ topics: Partial<Record<Topic, string>> }>('/api/sync/revision');
+      const { topics } = await apiRequest<{ topics: Partial<Record<Topic, string>> }>('/api/sync/revision', { signal: request.signal });
+      if (!enabled.current || currentRequest.current !== request) return;
       const changed = (Object.keys(topics) as Topic[]).filter(t => markers.current[t] !== undefined && markers.current[t] !== topics[t]);
       markers.current = { ...markers.current, ...topics };
       if (changed.length) setVersions(v => { const next = { ...v }; changed.forEach(t => { next[t] += 1; }); return next; });
       setOffline(false);
     } catch {
+      if (!enabled.current || currentRequest.current !== request) return;
       failed = true;
       setOffline(true);
     } finally {
+      if (currentRequest.current !== request || !enabled.current) return;
       inFlight.current = false;
     }
 
@@ -64,6 +71,7 @@ export function LiveSyncProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    enabled.current = isAuthenticated;
     if (!isAuthenticated) return;
     markers.current = {};
     void check();
@@ -72,6 +80,7 @@ export function LiveSyncProvider({ children }: { children: React.ReactNode }) {
     document.addEventListener('visibilitychange', wake);
     window.addEventListener('focus', wake);
     return () => {
+      enabled.current = false; currentRequest.current?.abort(); currentRequest.current = null; inFlight.current = false; queued.current = false;
       document.removeEventListener('visibilitychange', wake);
       window.removeEventListener('focus', wake);
       if (timer.current) clearTimeout(timer.current);
@@ -104,16 +113,18 @@ export function useLiveLoad<T>(load: () => Promise<T>, topics: Topic[], onData: 
   onDataRef.current = onData;
   onErrorRef.current = onError;
 
+  const sequence = useRef(0);
+  const mounted = useRef(false);
   const run = useCallback(async () => {
+    const id = ++sequence.current;
     try {
-      onDataRef.current(await load());
-      onErrorRef.current('');
+      const data = await load();
+      if (!mounted.current || id !== sequence.current) return;
+      onDataRef.current(data); onErrorRef.current('');
     } catch (err) {
-      onErrorRef.current(err instanceof Error ? err.message : 'Unable to load data.');
+      if (mounted.current && id === sequence.current) onErrorRef.current(err instanceof Error ? err.message : 'Unable to load data.');
     }
   }, [load]);
-
-  useEffect(() => { void run(); }, [run, version]);
-
+  useEffect(() => { mounted.current = true; void run(); return () => { mounted.current = false; sequence.current++; }; }, [run, version]);
   return run;
 }

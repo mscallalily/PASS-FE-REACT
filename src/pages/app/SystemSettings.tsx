@@ -1,3 +1,4 @@
+import { jsonFetch } from '../../lib/http';
 import { useLocation } from 'react-router-dom';
 import { PAGE_SECTIONS, selectedSection } from '../../lib/pageSections';
 import React, { useEffect, useRef, useState } from 'react';
@@ -134,7 +135,7 @@ export default function SystemSettings() {
       try {
         const token = getAuthToken();
         if (!token) throw new Error('No login token found. Please log in again.');
-        const response = await fetch('/api/admin/system-settings', {
+        const response = await jsonFetch('/api/admin/system-settings', {
           headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
         });
         if (!response.ok) throw new Error(`Unable to load system settings (${response.status}).`);
@@ -201,7 +202,7 @@ export default function SystemSettings() {
         // Keep all numeric values numeric for Laravel validation.
         body[key] = NUMBER_KEYS.includes(key) ? Number(value) : value;
       }
-      const response = await fetch('/api/admin/system-settings', {
+      const response = await jsonFetch('/api/admin/system-settings', {
         method: 'PUT',
         headers: {
           Accept: 'application/json',
@@ -236,7 +237,7 @@ export default function SystemSettings() {
       if (!token) throw new Error('No login token found. Please log in again.');
       const body = new FormData();
       body.append('logo', file);
-      const response = await fetch('/api/admin/system-settings/logo', {
+      const response = await jsonFetch('/api/admin/system-settings/logo', {
         method: 'POST',
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
         body,

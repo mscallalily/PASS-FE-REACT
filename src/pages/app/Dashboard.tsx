@@ -1,3 +1,4 @@
+import { jsonFetch } from '../../lib/http';
 import ParkingAvailabilityMap from '../../components/ParkingAvailabilityMap';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -70,7 +71,7 @@ const loadDashboard = async () => {
   console.log('Starting dashboard API request');
 
   try {
-    const response = await fetch('/api/admin/dashboard', {
+    const response = await jsonFetch('/api/admin/dashboard', {
       method: 'GET',
       headers: {
         Accept: 'application/json',
@@ -107,7 +108,7 @@ loadDashboard();
 
 const loadRecentLogs = async () => {
   try {
-    const response = await fetch('/api/admin/audit-logs?page=1', {
+    const response = await jsonFetch('/api/admin/audit-logs?page=1', {
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,

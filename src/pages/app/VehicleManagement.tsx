@@ -1,3 +1,4 @@
+import { jsonFetch } from '../../lib/http';
 import VehiclePhotoReader from '../../components/VehiclePhotoReader';
 import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
 import React, { useEffect, useState } from 'react';
@@ -90,7 +91,7 @@ async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T>
     throw new Error('Your session has expired. Please log in again.');
   }
 
-  const response = await fetch(url, {
+  const response = await jsonFetch(url, {
     ...options,
     headers: {
       Accept: 'application/json',
@@ -155,7 +156,7 @@ async function fetchVehicles(): Promise<VehicleRow[]> {
     throw new Error('Session expired. Please log in again.');
   }
 
-  const response = await fetch('/api/vehicles', {
+  const response = await jsonFetch('/api/vehicles', {
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,

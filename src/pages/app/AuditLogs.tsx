@@ -1,3 +1,4 @@
+import { jsonFetch } from '../../lib/http';
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -48,7 +49,7 @@ async function apiRequest<T>(url: string): Promise<T> {
     throw new Error('Your session has expired. Please log in again.');
   }
 
-  const response = await fetch(url, {
+  const response = await jsonFetch(url, {
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
