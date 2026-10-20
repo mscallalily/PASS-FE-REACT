@@ -26,8 +26,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (expected && expected !== token()) return;
       clear(); setUser(null); setError('');
     };
+    const restoredPage = (event: PageTransitionEvent) => { if (event.persisted) { setUser(null); setRestoring(true); setRevision(v => v + 1); } };
+    window.addEventListener('pageshow', restoredPage);
     window.addEventListener('storage', storage); window.addEventListener('pass-session-expired', expired);
-    return () => { window.removeEventListener('storage', storage); window.removeEventListener('pass-session-expired', expired); };
+    return () => { window.removeEventListener('pageshow', restoredPage); window.removeEventListener('storage', storage); window.removeEventListener('pass-session-expired', expired); };
   }, []);
   useEffect(() => {
     const controller = new AbortController(), saved = token(); setError('');
