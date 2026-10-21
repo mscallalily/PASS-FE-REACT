@@ -58,25 +58,31 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
 
 // Input
 export function Input({ label, error, className = '', ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label?: string; error?: string }) {
+  const generatedId = React.useId(), id = props.id || generatedId;
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      {label && <label className="text-sm font-medium text-slate-700">{label}</label>}
+      {label && <label htmlFor={id} className="text-sm font-medium text-slate-700">{label}</label>}
       <input
         {...props}
+        id={id}
+        aria-invalid={error ? true : props['aria-invalid']}
+        aria-describedby={[props['aria-describedby'], error ? id + '-error' : null].filter(Boolean).join(' ') || undefined}
         className={`w-full min-w-0 min-h-11 border ${error ? 'border-red-400' : 'border-slate-200'} rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent bg-white ${className}`}
       />
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p id={id + '-error'} className="text-xs text-red-500">{error}</p>}
     </div>
   );
 }
 
 // Select
 export function Select({ label, children, className = '', ...props }: React.SelectHTMLAttributes<HTMLSelectElement> & { label?: string }) {
+  const generatedId = React.useId(), id = props.id || generatedId;
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      {label && <label className="text-sm font-medium text-slate-700">{label}</label>}
+      {label && <label htmlFor={id} className="text-sm font-medium text-slate-700">{label}</label>}
       <select
         {...props}
+        id={id}
         className={`w-full min-w-0 min-h-11 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent bg-white ${className}`}
       >
         {children}

@@ -1,3 +1,4 @@
+import { jsonFetch } from '../lib/http';
 import EmailCodeVerification from '../components/EmailCodeVerification';
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -15,7 +16,7 @@ export default function GuestRegisterPage() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const set = (k: string, v: string | boolean) => setForm(f => ({ ...f, [k]: v }));
+  const set = (k: string, v: string | boolean) => setForm(f => ({ ...f, [k]: k === 'fullName' && typeof v === 'string' ? v.toUpperCase() : v }));
 
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState('');
@@ -40,7 +41,7 @@ export default function GuestRegisterPage() {
     if (busy || !form.agree || !validate()) return;
     setBusy(true);
     try {
-      const response = await fetch('/api/guest/register', {
+      const response = await jsonFetch('/api/guest/register', {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -100,26 +101,26 @@ export default function GuestRegisterPage() {
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-1.5">Full Name <span className="text-red-500">*</span></label>
-                <input value={form.fullName} onChange={e => set('fullName', e.target.value)} placeholder="Juan dela Cruz"
+                <input aria-label="Full Name" value={form.fullName} onChange={e => set('fullName', e.target.value)} placeholder="Juan dela Cruz"
                   className={`w-full border ${errors.fullName ? 'border-red-400' : 'border-slate-200'} rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]`} />
                 {errors.fullName && <p className="text-xs text-red-500 mt-1">{errors.fullName}</p>}
               </div>
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-1.5">Email Address <span className="text-red-500">*</span></label>
-                <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="juan@email.com"
+                <input aria-label="Email Address" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="juan@email.com"
                   className={`w-full border ${errors.email ? 'border-red-400' : 'border-slate-200'} rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]`} />
                 {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
               </div>
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-1.5">Contact Number <span className="text-red-500">*</span></label>
-                <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="09XX XXX XXXX"
+                <input aria-label="Contact Number" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="09XX XXX XXXX"
                   className={`w-full border ${errors.phone ? 'border-red-400' : 'border-slate-200'} rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]`} />
                 {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone}</p>}
               </div>
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-1.5">Password <span className="text-red-500">*</span></label>
                 <div className="relative">
-                  <input type={showPwd ? 'text' : 'password'} value={form.password} onChange={e => set('password', e.target.value)} placeholder="At least 8 characters, letters and numbers"
+                  <input aria-label="Password" type={showPwd ? 'text' : 'password'} value={form.password} onChange={e => set('password', e.target.value)} placeholder="At least 8 characters, letters and numbers"
                     className={`w-full border ${errors.password ? 'border-red-400' : 'border-slate-200'} rounded-xl px-4 py-3 text-sm pr-12 focus:outline-none focus:ring-2 focus:ring-[#2563EB]`} />
                   <button type="button" onClick={() => setShowPwd(v => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
                     {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -129,7 +130,7 @@ export default function GuestRegisterPage() {
               </div>
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-1.5">Confirm Password <span className="text-red-500">*</span></label>
-                <input type="password" value={form.confirmPwd} onChange={e => set('confirmPwd', e.target.value)} placeholder="Repeat password"
+                <input aria-label="Confirm Password" type="password" value={form.confirmPwd} onChange={e => set('confirmPwd', e.target.value)} placeholder="Repeat password"
                   className={`w-full border ${errors.confirmPwd ? 'border-red-400' : 'border-slate-200'} rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]`} />
                 {errors.confirmPwd && <p className="text-xs text-red-500 mt-1">{errors.confirmPwd}</p>}
               </div>

@@ -1,3 +1,4 @@
+import { jsonFetch } from '../lib/http';
 
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -49,7 +50,7 @@ export default function ResetPasswordPage() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/reset-password', {
+      const response = await jsonFetch('/api/reset-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

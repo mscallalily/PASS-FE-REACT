@@ -1,5 +1,6 @@
+import ParkingLayoutExport from '../../components/ParkingLayoutExport';
 import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, Card, Badge, Button, Table, SearchBar, Select, Modal, StatCard, Toast, Input } from '../../components/ui';
@@ -7,7 +8,7 @@ import { apiRequest } from '../../lib/apiClient';
 import { CAMPUS_TIMEZONE, formatCampusDateTime } from '../../lib/datetime';
 import { useLiveLoad, useLiveSync, POLL_MS, type Topic } from '../../lib/liveSync';
 import { MapData, MapSlot, slotFill, proposedSlotSize, withProposedLayout } from '../../components/ParkingMap';
-import ParkingLot3D from '../../components/ParkingLot3D';
+const ParkingLot3D = lazy(() => import('../../components/ParkingLot3D'));
 import ParkingAvailabilityMap from '../../components/ParkingAvailabilityMap';
 import { ParkingSquare, Car, CheckCircle, Wrench, AlertTriangle, LogIn, LogOut, RefreshCw, MapPin, Box, Map as MapIcon, Bike, Layers } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -680,6 +681,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
   highlight: string | null;
   onHighlight: (slotCode: string | null) => void;
 }) {
+  const { user } = useAuth();
   const [data, setData] = useState<MapResponse | null>(null);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -786,7 +788,8 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
               </button>
             ))}
           </div>
-          <div className="flex gap-2 ml-auto">
+          <div className="flex flex-wrap gap-2 ml-auto">
+            {user?.role === 'admin' && <ParkingLayoutExport />}
             <Button size="sm" variant="success" onClick={() => setGate('entry')}><LogIn size={14} /> Record Entry</Button>
             <Button size="sm" variant="primary" onClick={() => setGate('exit')}><LogOut size={14} /> Record Exit</Button>
           </div>
@@ -808,8 +811,8 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
           !error && <p className="py-16 text-center text-sm text-slate-400">Loading parking map...</p>
         ) : (
           <>
-            <ParkingLot3D viewMode={view} data={data} highlight={highlight} selectedId={selectedId} recent={recent} gateOnline={gateOnline}
-              focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} onGate={() => setGateMenu(true)} />
+            <Suspense fallback={<p role="status" className="p-8 text-sm text-slate-500">Loading parking layout…</p>}><ParkingLot3D viewMode={view} data={data} highlight={highlight} selectedId={selectedId} recent={recent} gateOnline={gateOnline}
+              focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} onGate={() => setGateMenu(true)} /></Suspense>
             <p className="text-xs text-slate-400">
               Drag to pan · scroll, pinch or use the buttons to zoom · select a slot for details{view === '3d' ? ' · select the Main Entrance / Exit to record an entry or exit' : ''}. Updates automatically: checks for changes every {POLL_MS / 1000} seconds while this tab is open.{' '}
               {highlight && (
@@ -1097,7 +1100,7 @@ export default function ParkingOperations() {
       <PageHeader backToDashboard
         title={isRegularUser ? 'Parking Information' : tab}
         subtitle={!canOperate ? 'View current campus parking availability' : 'Review access records, occupancy, and the parking layout'}
-        action={canOperate ? <Button size="sm" variant="ghost" onClick={refreshOverview}><RefreshCw size={14} /> Refresh</Button> : undefined}
+        action={user?.role === 'admin' && tab === 'Parking Layout' ? <ParkingLayoutExport /> : canOperate ? <Button size="sm" variant="ghost" onClick={refreshOverview}><RefreshCw size={14} /> Refresh</Button> : undefined}
       />
 
 

@@ -1,3 +1,4 @@
+import { jsonFetch } from '../lib/http';
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -22,7 +23,7 @@ export default function EmailCodeVerification({ initialEmail = '', notice = '' }
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 25000);
     try {
-      const response = await fetch(verify ? '/api/email/verify-code' : '/api/email/verification-notification', {
+      const response = await jsonFetch(verify ? '/api/email/verify-code' : '/api/email/verification-notification', {
         method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim(), ...(verify ? { code } : {}) }), signal: controller.signal,
       });

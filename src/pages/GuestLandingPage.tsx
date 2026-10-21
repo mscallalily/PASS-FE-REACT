@@ -143,7 +143,7 @@ export default function GuestLandingPage() {
                 <Link to="/" className="block hover:text-white transition-colors">Home</Link>
                 <Link to="/login" className="block hover:text-white transition-colors">Sign In</Link>
                 <Link to="/register" className="block hover:text-white transition-colors">Register</Link>
-                <Link to="/mobile" className="block hover:text-white transition-colors">Mobile App</Link>
+                <Link to="/mobile" className="block hover:text-white transition-colors">Mobile Access</Link>
               </div>
             </div>
             <div>

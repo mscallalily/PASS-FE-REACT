@@ -1,7 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { Box, Map as MapIcon, RefreshCw, ParkingSquare } from 'lucide-react';
 import { Button, Card, Modal, StatCard } from './ui';
-import ParkingLot3D from './ParkingLot3D';
+import ParkingMap from './ParkingMap';
+import ParkingMeasurements from './ParkingMeasurements';
+const ParkingLot3D = lazy(() => import('./ParkingLot3D'));
 import type { MapData, MapSlot } from './ParkingMap';
 import { proposedSlotSize, withProposedLayout } from './ParkingMap';
 import { apiRequest } from '../lib/apiClient';
@@ -20,7 +22,8 @@ const NO_CHANGES = new Set<number>();
 export default function ParkingAvailabilityMap() {
   const [data, setData] = useState<AvailabilityMap | null>(null);
   const [error, setError] = useState('');
-  const [view, setView] = useState<'3d' | 'plan'>('3d');
+  const [view, setView] = useState<'3d' | 'plan'>('plan');
+  const [measurements, setMeasurements] = useState(false);
   const [focus, setFocus] = useState<{ code: string; key: number } | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const inFlight = useRef(false);
@@ -75,7 +78,13 @@ export default function ParkingAvailabilityMap() {
         <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-600">
           {[['#22C55E', 'Available'], ['#EF4444', 'Occupied'], ['#9CA3AF', 'Maintenance'], ['#FFFFFF', 'Unassigned painted bay']].map(([color, label]) => <span key={label} className="flex items-center gap-2"><i className="h-3 w-3 rounded border border-slate-300" style={{background: color}} />{label}</span>)}
         </div>
-        <ParkingLot3D data={data} viewMode={view} highlight={null} selectedId={selectedId} recent={NO_CHANGES} gateOnline={false} onSelect={choose} onGate={() => {}} focusArea={focus} />
+        {view === 'plan' ? <>
+          <Button size="sm" variant="outline" aria-pressed={measurements} onClick={() => setMeasurements(value => !value)}>{measurements ? 'Hide measurements' : 'Show measurements'}</Button>
+          <ParkingMap data={data} highlight={null} onSelect={choose} focusArea={focus} showMeasurements={measurements} />
+          {measurements && <ParkingMeasurements geometry={data.geometry} slots={data.slots} />}
+        </> : <Suspense fallback={<p role="status" className="p-8 text-sm text-slate-500">Loading 3D parking layout…</p>}>
+          <ParkingLot3D data={data} viewMode="3d" highlight={null} selectedId={selectedId} recent={NO_CHANGES} gateOnline={false} onSelect={choose} onGate={() => {}} focusArea={focus} />
+        </Suspense>}
         <p className="text-xs text-slate-500">Drag to move · pinch or use +/− to zoom · select a slot for availability.</p>
         <p className="text-xs text-slate-500">Counts follow the configured slot inventory and recorded entries/exits. The parking layout is a proposal; physical slot sensors are not connected. Availability does not reserve a space.</p>
         {unplaced > 0 && <p className="text-xs text-slate-500">Totals include {unplaced} configured slots awaiting map positions. Only mapped bays appear on this layout.</p>}

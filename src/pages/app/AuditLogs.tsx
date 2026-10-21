@@ -1,3 +1,5 @@
+import AuditPriorityAlerts from '../../components/AuditPriorityAlerts';
+import { jsonFetch } from '../../lib/http';
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -48,7 +50,7 @@ async function apiRequest<T>(url: string): Promise<T> {
     throw new Error('Your session has expired. Please log in again.');
   }
 
-  const response = await fetch(url, {
+  const response = await jsonFetch(url, {
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
@@ -268,6 +270,7 @@ export default function AuditLogs() {
               onClick={() => setRefreshKey((value) => value + 1)}
             >
               <RefreshCw size={16} />
+      <AuditPriorityAlerts refreshKey={refreshKey} />
               Refresh
             </Button>
             <Button variant="outline" disabled={loading || !!error || !filtered.length} onClick={exportLogs}>

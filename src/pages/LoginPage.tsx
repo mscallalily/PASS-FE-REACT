@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useRef } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, LogIn, AlertCircle, Loader } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -13,6 +13,7 @@ import {
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [search] = useSearchParams();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,9 +21,11 @@ export default function LoginPage() {
   const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const lock = useRef(false);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (lock.current) return; lock.current = true;
     setError('');
     setLoading(true);
 
@@ -45,7 +48,7 @@ export default function LoginPage() {
           : 'Unable to connect to PASS. Please try again.'
       );
     } finally {
-      setLoading(false);
+      lock.current = false; setLoading(false);
     }
   };
 
@@ -102,6 +105,7 @@ export default function LoginPage() {
               </div>
             )}
 
+            {search.get('password') === 'changed' && <p role="status" className="mb-4 rounded-xl bg-green-50 p-3 text-sm text-green-800">Password changed. Sign in with your new password.</p>}
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
                 <label

@@ -1,3 +1,4 @@
+import { jsonFetch } from '../../lib/http';
 import ParkingAvailabilityMap from '../../components/ParkingAvailabilityMap';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -52,33 +53,25 @@ function AdminDashboard() {
     const [recentLogs, setRecentLogs] = useState<any[]>([]);
     const [recentLogsError, setRecentLogsError] = useState('');
 
-  console.log('AdminDashboard rendered');
-
   useEffect(() => {
-    console.log('AdminDashboard useEffect running');
     const token =
       localStorage.getItem('pass_auth_token') ||
       sessionStorage.getItem('pass_auth_token');
-
-      console.log('Token found:', !!token);
 
     if (!token) {
       setDashboardError('No login token found. Please log in again.');
       return;
     }
 const loadDashboard = async () => {
-  console.log('Starting dashboard API request');
 
   try {
-    const response = await fetch('/api/admin/dashboard', {
+    const response = await jsonFetch('/api/admin/dashboard', {
       method: 'GET',
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
       },
     });
-
-    console.log('Dashboard API status:', response.status);
 
         if (!response.ok) {
           throw new Error(
@@ -89,10 +82,6 @@ const loadDashboard = async () => {
         }
 
         const data: DashboardData = await response.json();
-        console.log(
-  'Dashboard data:',
-  JSON.stringify(data, null, 2)
-);
         setDashboardData(data);
       } catch (error) {
         setDashboardError(
@@ -107,7 +96,7 @@ loadDashboard();
 
 const loadRecentLogs = async () => {
   try {
-    const response = await fetch('/api/admin/audit-logs?page=1', {
+    const response = await jsonFetch('/api/admin/audit-logs?page=1', {
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,

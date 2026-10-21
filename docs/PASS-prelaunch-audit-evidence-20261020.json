@@ -1,0 +1,138 @@
+{
+  "date_utc": "2026-10-20",
+  "release_decision": "NOT_READY",
+  "source": {
+    "branch": "feature/prelaunch-audit-20261020",
+    "backend_baseline": "edf07ad",
+    "frontend_baseline": "aec965d",
+    "backend_main": "dc7d48d",
+    "backend_runtime": "09e8b8fcc77072840f4c3f9a84c3fb3ea0910b68",
+    "frontend_runtime": "ce58e004e8696d0f0e437586995bc37c77b036cb"
+  },
+  "backend_tests": {
+    "passed": 211,
+    "assertions": 53353,
+    "runtime": "PHP 8.3.6 / isolated MariaDB"
+  },
+  "browser_layout": {
+    "checks": 348,
+    "role_route_pairs": 87,
+    "widths_px": [
+      320,
+      390,
+      768,
+      1440
+    ],
+    "page_errors": 0,
+    "whole_page_overflow": 0,
+    "scope": "Synthetic/empty local fixtures; headless Chromium; real devices not certified"
+  },
+  "browser_flows": {
+    "flows": 10,
+    "registration": 14,
+    "selection": 6,
+    "guards": 12
+  },
+  "http_failure_tests": {
+    "passed": 10,
+    "failed": 0
+  },
+  "concurrency": {
+    "requests": 50,
+    "scenarios": 7,
+    "cases": {
+      "same_vehicle_entry": {
+        "already_inside": 7,
+        "granted": 1
+      },
+      "same_vehicle_exit": {
+        "completed": 1,
+        "not_inside": 7
+      },
+      "eight_owners_five_slots": {
+        "denied": 3,
+        "granted": 5
+      },
+      "same_vehicle_rfid_assignment": {
+        "assigned": 1,
+        "validation_422": 7
+      },
+      "same_guest_across_two_areas": {
+        "denied": 1,
+        "granted": 1
+      },
+      "same_visitor_request_approval": {
+        "approved": 1,
+        "conflict_409": 7
+      },
+      "conflicting_account_decisions": {
+        "conflict_409": 7,
+        "decided": 1
+      }
+    }
+  },
+  "concurrency_limit": "Separate PHP service/controller operations, not an HTTP throughput test",
+  "frontend_build": "passed; optional large-chunk warnings remain",
+  "typescript": "passed",
+  "dependency_audits": {
+    "frontend_reported_advisories": 0,
+    "backend_reported_advisories": 0,
+    "backend_abandoned": 0
+  },
+  "secret_scan": {
+    "nonplaceholder_candidates": 0,
+    "scope": "Performed tracked-source patterns and tracked .env path checks; production secrets were not inspected"
+  },
+  "live_smoke": [
+    {
+      "path": "/up",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "cache": "no-cache, private",
+      "keys": [],
+      "debug_fields": false
+    },
+    {
+      "path": "/api/registration/options",
+      "status": 200,
+      "type": "application/json",
+      "cache": "no-cache, private",
+      "keys": [
+        "current_year",
+        "policy_version",
+        "categories",
+        "receipt_minutes"
+      ],
+      "debug_fields": false
+    },
+    {
+      "path": "/api/me",
+      "status": 500,
+      "type": "text/html; charset=utf-8",
+      "cache": "no-cache, private",
+      "keys": [],
+      "debug_fields": false
+    },
+    {
+      "path": "/api/pass-audit-missing-route",
+      "status": 404,
+      "type": "text/html; charset=utf-8",
+      "cache": "no-cache, private",
+      "keys": [],
+      "debug_fields": false
+    }
+  ],
+  "open_blockers": [
+    "L1 deployment/source alignment",
+    "L2 real unmarked OCR accuracy and affiliation trust",
+    "L3 account correction and active-account lifecycle",
+    "L4 unfinished settings/logo",
+    "L5 unreadable/missing Terms and Privacy pages",
+    "L6 shared-IP/OCR rollout limits and scaled load"
+  ],
+  "deferred": [
+    "native device certification",
+    "physical RFID/servo/sensor integration"
+  ],
+  "prior_unrestored_v4_v5_ocr_work_counted_as_evidence": false
+}
