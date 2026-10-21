@@ -10,7 +10,7 @@ const FEATURES = [
   { icon: <Wifi size={24} />, title: 'QR Visitor Passes', desc: 'Generate temporary digital QR passes for campus visitors with time-limited access.' },
   { icon: <BarChart3 size={24} />, title: 'Analytics Dashboard', desc: 'Comprehensive reports and occupancy analytics for parking administrators.' },
   { icon: <Bell size={24} />, title: 'Smart Notifications', desc: 'Automated alerts for parking availability, violations, and access updates.' },
-  { icon: <Smartphone size={24} />, title: 'Mobile Application', desc: 'A dedicated mobile app is planned. Use the responsive web portal on your phone today.' },
+  { icon: <Smartphone size={24} />, title: 'Mobile Access', desc: 'Access PASS through your phone’s browser using the same account.' },
 ];
 
 export default function LandingPage() {
@@ -34,7 +34,7 @@ export default function LandingPage() {
               className="hidden sm:flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-[#080677] text-white rounded-lg hover:bg-[#0F2E56] transition-colors"
             >
               <Smartphone size={15} />
-              Mobile App
+              Mobile Access
             </Link>
           </div>
         </div>
@@ -127,18 +127,18 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Mobile App CTA */}
+      {/* Mobile Access CTA */}
       <section className="py-16 bg-[#080677] text-white">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
           <Smartphone size={48} className="mx-auto mb-5 text-[#38BDF8]" />
-          <h2 className="text-3xl font-bold mb-3">PASS Mobile App</h2>
+          <h2 className="text-3xl font-bold mb-3">PASS on Your Phone</h2>
           <p className="text-blue-100 mb-8 max-w-lg mx-auto">Check parking availability, view your parking history and manage your profile from your phone.</p>
           <Link
             to="/mobile"
             className="inline-flex items-center gap-2 px-6 py-3 bg-[#96D1F2] hover:bg-[#b4def6] text-[#080677] font-bold rounded-lg transition-colors"
           >
             <Smartphone size={22} />
-            Open Mobile App
+            Open Mobile Access
           </Link>
           <p className="text-blue-200 text-xs mt-3">No download required — web-based mobile experience</p>
         </div>
@@ -158,7 +158,7 @@ export default function LandingPage() {
                 <Link to="/login" className="block hover:text-white transition-colors">Sign In</Link>
                 <Link to="/register" className="block hover:text-white transition-colors">Register</Link>
                 <Link to="/guest" className="block hover:text-white transition-colors">Guest Access</Link>
-                <Link to="/mobile" className="block hover:text-white transition-colors">Mobile App</Link>
+                <Link to="/mobile" className="block hover:text-white transition-colors">Mobile Access</Link>
               </div>
             </div>
             <div>

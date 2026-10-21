@@ -5,7 +5,6 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { REGULAR_USER_ROLES, useAuth } from '../../context/AuthContext';
 import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input,  Toast, EmptyState } from '../../components/ui';
-import { MOCK_VEHICLES } from '../../data/mock';
 import { Car, Plus, AlertTriangle, RefreshCw } from 'lucide-react';
 import DriverLicenseVerification from '../../components/DriverLicenseVerification';
 import LicenseReviewQueue from '../../components/LicenseReviewQueue';
@@ -220,8 +219,6 @@ export default function VehicleManagement() {
   const sections = isRegularUser ? PAGE_SECTIONS.vehicleUser : PAGE_SECTIONS.vehicleStaff;
   const tab = selectedSection(sections, pathname);
   const setTab = (label: string) => navigate(sectionPath(sections, label));
-  const [rfidRequests, setRfidRequests] = useState<{ plate: string; status: string; submitted: string }[]>([]);
-  const [requestVehicle, setRequestVehicle] = useState('');
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -493,7 +490,7 @@ export default function VehicleManagement() {
       {tab === 'My Vehicles' && isRegularUser && !licenseOnFile && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <AlertTriangle size={18} className="text-amber-600 shrink-0" />
-          <p className="flex-1 min-w-[200px] text-sm text-amber-800">Submit your driverâ€™s license before registering a vehicle.</p>
+          <p className="flex-1 min-w-[200px] text-sm text-amber-800">Submit your driver’s license before registering a vehicle.</p>
           <Button size="sm" onClick={() => setTab('Driver & License')}>Submit License</Button>
         </div>
       )}
@@ -558,30 +555,21 @@ export default function VehicleManagement() {
         </Card>
       )}
 
-      {tab === 'RFID Requests' && isRegularUser && (
-        <Card className="p-5 sm:p-6">
-          <div className="max-w-2xl space-y-4">
-            <div>
-              <h3 className="font-semibold text-[#080677]">Request RFID Assignment</h3>
-              <p className="text-sm text-slate-500 mt-1">Vehicle registration and RFID assignment are separate processes. An RFID is not assigned until authorized staff records it.</p>
-            </div>
-            <Select label="Registered vehicle" value={requestVehicle} onChange={e => setRequestVehicle(e.target.value)}>
-              <option value="">Select a vehicle</option>
-              {roleScopedVehicles.map(v => <option key={v.id} value={v.plate}>{v.plate} â€” {v.make} {v.model}</option>)}
-            </Select>
-            <Button disabled={!requestVehicle || rfidRequests.some(r => r.plate === requestVehicle)} onClick={() => {
-              setRfidRequests(prev => [...prev, { plate: requestVehicle, status: 'Pending Admin Processing', submitted: new Date().toLocaleDateString() }]);
-              showToast('Demo request added locally. Backend submission is not connected.');
-            }}>Submit RFID Request</Button>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Prototype only: requests are stored in this page's temporary state and will not persist after refresh.</div>
-            <div className="overflow-x-auto">
-              <Table columns={[
-                { key: 'plate', label: 'Vehicle Plate' },
-                { key: 'submitted', label: 'Submitted' },
-                { key: 'status', label: 'Processing Status', render: r => <Badge variant="warning">{r.status}</Badge> },
-              ]} data={rfidRequests} />
-            </div>
+      {tab === 'RFID Assignment' && isRegularUser && (
+        <Card className="p-5 sm:p-6 space-y-4">
+          <div>
+            <h3 className="font-semibold text-[#080677]">RFID Assignment</h3>
+            <p className="text-sm text-slate-500 mt-1">After your license and vehicle are approved, contact PASS staff for your physical RFID tag. The administrator records its assignment to your vehicle.</p>
           </div>
+          {loadingVehicles && <p role="status" className="text-sm text-slate-500">Loading assigned tags…</p>}
+          {vehicleError && <p role="alert" className="text-sm text-red-700">{vehicleError}</p>}
+          {!loadingVehicles && !vehicleError && <Table columns={[
+            { key: 'plate', label: 'Vehicle Plate' },
+            { key: 'status', label: 'Authorization', render: (vehicle: VehicleRow) => <Badge variant={statusBadge(vehicle.status)}>{vehicle.status}</Badge> },
+            { key: 'rfid', label: 'RFID Tag', render: (vehicle: VehicleRow) => <span className="font-mono text-xs break-all">{vehicle.rfid || 'Not assigned'}</span> },
+          ]} data={roleScopedVehicles} />}
+          <p className="text-xs text-slate-500">A tag assignment does not record an entry. Choose your vehicle under My Vehicles before using it at the gate.</p>
+          <Button variant="outline" onClick={() => setTab('My Vehicles')}>View my vehicles</Button>
         </Card>
       )}
 
@@ -807,7 +795,7 @@ export default function VehicleManagement() {
           <div className="space-y-4">
             <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-              <p>A driverâ€™s license is required before you can register a vehicle. Submit it first; you can register the vehicle while it is waiting for review.</p>
+              <p>A driver’s license is required before you can register a vehicle. Submit it first; you can register the vehicle while it is waiting for review.</p>
             </div>
             <div className="flex gap-3">
               <Button onClick={() => { setShowRegister(false); setTab('Driver & License'); }}>Go to Driver & License</Button>

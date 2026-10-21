@@ -53,22 +53,16 @@ function AdminDashboard() {
     const [recentLogs, setRecentLogs] = useState<any[]>([]);
     const [recentLogsError, setRecentLogsError] = useState('');
 
-  console.log('AdminDashboard rendered');
-
   useEffect(() => {
-    console.log('AdminDashboard useEffect running');
     const token =
       localStorage.getItem('pass_auth_token') ||
       sessionStorage.getItem('pass_auth_token');
-
-      console.log('Token found:', !!token);
 
     if (!token) {
       setDashboardError('No login token found. Please log in again.');
       return;
     }
 const loadDashboard = async () => {
-  console.log('Starting dashboard API request');
 
   try {
     const response = await jsonFetch('/api/admin/dashboard', {
@@ -79,8 +73,6 @@ const loadDashboard = async () => {
       },
     });
 
-    console.log('Dashboard API status:', response.status);
-
         if (!response.ok) {
           throw new Error(
             response.status === 403
@@ -90,10 +82,6 @@ const loadDashboard = async () => {
         }
 
         const data: DashboardData = await response.json();
-        console.log(
-  'Dashboard data:',
-  JSON.stringify(data, null, 2)
-);
         setDashboardData(data);
       } catch (error) {
         setDashboardError(

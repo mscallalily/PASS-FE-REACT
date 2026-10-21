@@ -1,3 +1,4 @@
+import { PrivilegedAccountInviteModal, PrivilegedInvitationStatus } from '../../components/PrivilegedAccountInvitations';
 import { jsonFetch } from '../../lib/http';
 import { PAGE_SECTIONS, selectedSection } from '../../lib/pageSections';
 
@@ -13,7 +14,6 @@ import {
   SearchBar,
   Select,
   Modal,
-  Input,
 
   Toast,
 } from '../../components/ui';
@@ -40,6 +40,8 @@ interface UserRow {
   status: UserStatus;
   registered: string;
   registrationCategory?: string | null;
+  yearLevel?: string | null;
+  section?: string | null;
   schoolIdCheck?: SchoolIdCheck | null;
   schoolIdSubmitted?: boolean;
 }
@@ -56,6 +58,8 @@ interface ApiUser {
   status: UserStatus;
   registered?: string | null;
   registrationCategory?: string | null;
+  yearLevel?: string | null;
+  section?: string | null;
   schoolIdCheck?: SchoolIdCheck | null;
   schoolIdSubmitted?: boolean;
 }
@@ -103,7 +107,7 @@ function mapUser(user: ApiUser): UserRow {
     contact: user.contact || '—',
     status: user.status,
     registered: user.registered || '',
-    registrationCategory: user.registrationCategory, schoolIdCheck: user.schoolIdCheck, schoolIdSubmitted: user.schoolIdSubmitted,
+    registrationCategory: user.registrationCategory, yearLevel: user.yearLevel, section: user.section, schoolIdCheck: user.schoolIdCheck, schoolIdSubmitted: user.schoolIdSubmitted,
   };
 }
 
@@ -187,20 +191,6 @@ export default function UserManagement() {
   const [error, setError] = useState('');
   const [actionId, setActionId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [newUser, setNewUser] = useState({
-  full_name: '',
-  user_code: '',
-  email: '',
-  password: '',
-  password_confirmation: '',
-  department_id: '',
-  contact_number: '',
-});
-
-const [savingUser, setSavingUser] = useState(false);
-const [addUserError, setAddUserError] = useState('');
-
-
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(''), 3500);
@@ -270,63 +260,6 @@ const [addUserError, setAddUserError] = useState('');
 
   const pending = users.filter((user) => user.status === 'pending');
 
-async function handleAddUser() {
-  setAddUserError('');
-
-  if (
-    !newUser.full_name.trim() ||
-    !newUser.user_code.trim() ||
-    !newUser.email.trim() ||
-    !newUser.password ||
-    !newUser.password_confirmation
-  ) {
-    setAddUserError('Please complete all required fields.');
-    return;
-  }
-
-  if (newUser.password !== newUser.password_confirmation) {
-    setAddUserError('Passwords do not match.');
-    return;
-  }
-
-  setSavingUser(true);
-
-  try {
-    const result = await apiRequest<{ message: string; user: ApiUser }>(
-      '/api/admin/users',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...newUser,
-        }),
-      }
-    );
-
-    showToast(result.message || 'Parking Staff account created.');
-    setShowAdd(false);
-    setNewUser({
-      full_name: '',
-      user_code: '',
-      email: '',
-      password: '',
-      password_confirmation: '',
-      department_id: '',
-      contact_number: '',
-    });
-    setRefreshKey((value) => value + 1);
-  } catch (err) {
-    setAddUserError(
-      err instanceof Error ? err.message : 'Unable to create account.'
-    );
-  } finally {
-    setSavingUser(false);
-  }
-}
-
-
   async function handleDecision(
     user: UserRow,
     decision: 'approve' | 'reject'
@@ -386,7 +319,7 @@ async function handleAddUser() {
         action={
           <Button onClick={() => setShowAdd(true)}>
             <UserPlus size={16} />
-            Add User
+            Invite Admin / Staff
           </Button>
         }
       />
@@ -609,7 +542,7 @@ async function handleAddUser() {
       {tab === 'Roles & Permissions' && (
         <Card className="p-6">
           <p className="text-sm text-slate-500 mb-6">
-            Manage system roles and their access permissions.
+            Role access reference. PASS enforces these permissions on the server.
           </p>
 
           <div className="overflow-x-auto">
@@ -710,6 +643,7 @@ async function handleAddUser() {
               ['Role', selected.role],
               ['User Type', selected.userType],
               ['Department', selected.dept],
+              ...(selected.registrationCategory === 'shs' ? [['Grade / Year Level', selected.yearLevel ? `GRADE ${selected.yearLevel}` : '—'], ['Section', selected.section || '—']] : []),
               ['Contact', selected.contact],
               ['Registered', formatDate(selected.registered)],
             ].map(([label, value]) => (
@@ -724,6 +658,7 @@ async function handleAddUser() {
               </div>
             ))}
 
+            {['admin', 'parking_staff'].includes(selected.role) && <PrivilegedInvitationStatus userId={selected.id} />}
             {selected.registrationCategory && <p className="text-sm text-slate-600">Registration category: <strong>{selected.registrationCategory === 'college' ? 'College Student' : selected.registrationCategory === 'shs' ? 'SHS Student' : 'Employee'}</strong></p>}
             {selected.schoolIdCheck && <section className="rounded-xl border border-blue-100 bg-blue-50 p-3 space-y-2 text-sm">
               <h3 className="font-semibold text-[#080677]">ID document check · {ID_CHECK_LABELS[selected.schoolIdCheck.status] || selected.schoolIdCheck.status}</h3>
@@ -741,102 +676,7 @@ async function handleAddUser() {
         )}
       </Modal>
 
-      <Modal
-        open={showAdd}
-        onClose={() => setShowAdd(false)}
-        title="Add New User"
-        size="md"
-      >
-        <div className="space-y-4">
-  <p className="text-sm text-slate-500">
-    Create a new Parking Staff account.
-  </p>
-
-  {addUserError && (
-    <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-      {addUserError}
-    </p>
-  )}
-
-  <Input
-    label="Full Name"
-    placeholder="Juan dela Cruz"
-    value={newUser.full_name}
-    onChange={(e) =>
-      setNewUser({ ...newUser, full_name: e.target.value })
-    }
-  />
-
-  <Input
-    label="Staff ID"
-    placeholder="e.g. PST-0001"
-    value={newUser.user_code}
-    onChange={(e) =>
-      setNewUser({ ...newUser, user_code: e.target.value })
-    }
-  />
-
-  <Input
-    label="Email"
-    type="email"
-    placeholder="staff@university.edu"
-    value={newUser.email}
-    onChange={(e) =>
-      setNewUser({ ...newUser, email: e.target.value })
-    }
-  />
-
-  <Input
-    label="Password"
-    type="password"
-    value={newUser.password}
-    onChange={(e) =>
-      setNewUser({ ...newUser, password: e.target.value })
-    }
-  />
-
-  <Input
-    label="Confirm Password"
-    type="password"
-    value={newUser.password_confirmation}
-    onChange={(e) =>
-      setNewUser({ ...newUser, password_confirmation: e.target.value })
-    }
-  />
-
-  <div>
-  <label className="mb-1 block text-sm font-medium text-slate-700">
-    Department
-  </label>
-  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
-    Security Office
-  </div>
-</div>
-
-  <Input
-    label="Contact Number (optional)"
-    placeholder="09XXXXXXXXX"
-    value={newUser.contact_number}
-    onChange={(e) =>
-      setNewUser({ ...newUser, contact_number: e.target.value })
-    }
-  />
-
-  <div className="flex gap-3 pt-2">
-    <Button
-      variant="outline"
-      onClick={() => setShowAdd(false)}
-      disabled={savingUser}
-    >
-      Cancel
-    </Button>
-
-    <Button onClick={handleAddUser} disabled={savingUser}>
-      {savingUser ? 'Creating...' : 'Create Account'}
-    </Button>
-  </div>
-</div>
-      </Modal>
+      <PrivilegedAccountInviteModal open={showAdd} onClose={() => setShowAdd(false)} onCreated={message => { showToast(message); setRefreshKey(value => value + 1); }} />
     </div>
   );
 }

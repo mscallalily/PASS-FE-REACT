@@ -17,7 +17,7 @@ export const PAGE_SECTIONS = {
     { label: 'My Vehicles', to: '/app/vehicles' },
     { label: 'Driver & License', to: '/app/drivers' },
     { label: 'Authorization Status', to: '/app/vehicles/status' },
-    { label: 'RFID Requests', to: '/app/vehicles/rfid-requests' },
+    { label: 'RFID Assignment', to: '/app/vehicles/rfid-requests' },
     { label: 'Emergency Vehicle Release', to: '/app/vehicle-releases' },
   ],
   rfid: [
@@ -37,13 +37,8 @@ export const PAGE_SECTIONS = {
     { label: 'QR Verification', to: '/app/qr-verify' },
   ],
   reports: REPORT_CATEGORIES.map(([key, label]) => ({ label, to: key === 'overview' ? '/app/reports' : `/app/reports/${key}` })),
-  settings: [
-    { label: 'General', to: '/app/settings' },
-    { label: 'Parking', to: '/app/settings/parking' },
-    { label: 'Access Control', to: '/app/settings/access' },
-    { label: 'Notifications', to: '/app/settings/notifications' },
-    { label: 'Security', to: '/app/settings/security' },
-  ],
+  records: [{ label: 'Account Archive', to: '/app/records/accounts' }, { label: 'Vehicle Archive', to: '/app/records/vehicles' }, { label: 'Record History', to: '/app/records/history' }],
+  settings: [{ label: 'General', to: '/app/settings' }],
 } satisfies Record<string, PageSection[]>;
 
 export function selectedSection(sections: PageSection[], pathname: string, fallback = sections[0].label): string {

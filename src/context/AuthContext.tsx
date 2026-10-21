@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { ApiError, jsonRequest } from '../lib/http';
 export type UserRole = 'admin' | 'parking_staff' | 'student' | 'faculty' | 'employee' | 'guest' | null;
-interface AuthUser { id: string; name: string; email: string; role: UserRole; idNum?: string; dept?: string; accountStatus?: string; emailVerified?: boolean; schoolIdSubmitted?: boolean; }
+interface AuthUser { id: string; name: string; email: string; role: UserRole; idNum?: string; dept?: string; accountStatus?: string; emailVerified?: boolean; schoolIdSubmitted?: boolean; registrationCategory?: string | null; yearLevel?: string | null; section?: string | null; }
 interface AuthContextType { user: AuthUser | null; login: (identifier: string, password: string, remember?: boolean) => Promise<{ success: boolean; role: UserRole }>; logout: () => Promise<void>; isAuthenticated: boolean; ready: boolean; }
 interface ApiUser extends Omit<AuthUser, 'role'> { role: string | null; }
 interface ApiResponse { token?: string; user?: ApiUser; }

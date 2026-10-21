@@ -1,3 +1,4 @@
+import { PrivilegedSetupGate } from './components/PrivilegedAccountSetup';
 import React, { lazy, Suspense } from 'react';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import EmailCodeVerification from './components/EmailCodeVerification';
@@ -25,6 +26,7 @@ const RFIDManagement = lazy(() => import('./pages/app/RFIDManagement'));
 const ParkingOperations = lazy(() => import('./pages/app/ParkingOperations'));
 const VisitorQR = lazy(() => import('./pages/app/VisitorQR'));
 const Reports = lazy(() => import('./pages/app/Reports'));
+const Records = lazy(() => import('./pages/app/Records'));
 const AuditLogs = lazy(() => import('./pages/app/AuditLogs'));
 const Violations = lazy(() => import('./pages/app/Violations'));
 const SystemSettings = lazy(() => import('./pages/app/SystemSettings'));
@@ -128,9 +130,12 @@ function AppRoutes() {
         <Route path="qr-verify" element={<RoleRoute roles={['admin', 'parking_staff']}><VisitorQR /></RoleRoute>} />
         <Route path="reports" element={<RoleRoute roles={['admin']}><Reports /></RoleRoute>} />
         <Route path="reports/:category" element={<RoleRoute roles={['admin']}><Reports /></RoleRoute>} />
+        <Route path="records/accounts" element={<RoleRoute roles={['admin']}><Records /></RoleRoute>} />
+        <Route path="records/vehicles" element={<RoleRoute roles={['admin']}><Records /></RoleRoute>} />
+        <Route path="records/history" element={<RoleRoute roles={['admin']}><Records /></RoleRoute>} />
         <Route path="audit" element={<RoleRoute roles={['admin']}><AuditLogs /></RoleRoute>} />
         <Route path="violations" element={<RoleRoute roles={['parking_staff']}><Violations /></RoleRoute>} />
-        <Route path="settings/:section" element={<RoleRoute roles={['admin']}><SystemSettings /></RoleRoute>} />
+        <Route path="settings/:section" element={<RoleRoute roles={['admin']}><Navigate to="/app/settings" replace /></RoleRoute>} />
         <Route path="settings" element={<RoleRoute roles={['admin']}><SystemSettings /></RoleRoute>} />
         <Route path="*" element={<AccessDenied />} />
       </Route>
@@ -150,5 +155,7 @@ function UserServices() {
   return <LiveSyncProvider key={user?.id || 'anonymous'}><LicenseProvider>{routes}</LicenseProvider></LiveSyncProvider>;
 }
 export default function App() {
-  return <AppErrorBoundary><BrowserRouter><AuthProvider><UserServices /></AuthProvider></BrowserRouter></AppErrorBoundary>;
+  return <AppErrorBoundary><BrowserRouter><AuthProvider>
+        <PrivilegedSetupGate><UserServices /></PrivilegedSetupGate>
+      </AuthProvider></BrowserRouter></AppErrorBoundary>;
 }
