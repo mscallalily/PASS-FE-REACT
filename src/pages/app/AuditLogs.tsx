@@ -1,3 +1,5 @@
+import AuditPriorityAlerts from '../../components/AuditPriorityAlerts';
+import { jsonFetch } from '../../lib/http';
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -11,7 +13,7 @@ import {
   Toast,
 } from '../../components/ui';
 import { Download, RefreshCw } from 'lucide-react';
-import { formatCampusDateTime } from '../../lib/datetime';
+import { campusDateKey, campusDateTimeReplacer, formatCampusDateTime } from '../../lib/datetime';
 
 interface AuditLog {
   log_id: number;
@@ -48,7 +50,7 @@ async function apiRequest<T>(url: string): Promise<T> {
     throw new Error('Your session has expired. Please log in again.');
   }
 
-  const response = await fetch(url, {
+  const response = await jsonFetch(url, {
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
@@ -128,7 +130,7 @@ function safeDetails(values: Record<string, unknown> | null): string {
       ([key]) =>
         !['password', 'password_confirmation'].includes(key.toLowerCase())
     )
-    .map(([key, value]) => `${key}: ${String(value ?? '—')}`)
+    .map(([key, value]) => `${key}: ${String(campusDateTimeReplacer(key, value) ?? '—')}`)
     .join(', ') || '—';
 }
 
@@ -235,9 +237,7 @@ export default function AuditLogs() {
     const link = document.createElement('a');
 
     link.href = url;
-    link.download = `PASS-Audit-Logs-${new Date()
-      .toISOString()
-      .slice(0, 10)}.csv`;
+    link.download = `PASS-Audit-Logs-${campusDateKey()}.csv`;
 
     document.body.appendChild(link);
     link.click();
@@ -268,6 +268,7 @@ export default function AuditLogs() {
               onClick={() => setRefreshKey((value) => value + 1)}
             >
               <RefreshCw size={16} />
+      <AuditPriorityAlerts refreshKey={refreshKey} />
               Refresh
             </Button>
             <Button variant="outline" disabled={loading || !!error || !filtered.length} onClick={exportLogs}>

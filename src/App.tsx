@@ -1,37 +1,42 @@
-import React from 'react';
+import { PrivilegedSetupGate } from './components/PrivilegedAccountSetup';
+import React, { lazy, Suspense } from 'react';
+import AppErrorBoundary from './components/AppErrorBoundary';
 import EmailCodeVerification from './components/EmailCodeVerification';
-import PendingAccountPage from './pages/PendingAccountPage';
+const PendingAccountPage = lazy(() => import('./pages/PendingAccountPage'));
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth, UserRole } from './context/AuthContext';
 import { LicenseProvider } from './context/LicenseContext';
 import { LiveSyncProvider } from './lib/liveSync';
 import Layout from './components/Layout';
 
-import LandingPage from './pages/LandingPage';
-import GuestLandingPage from './pages/GuestLandingPage';
-import GuestDashboardPage from './pages/GuestDashboardPage';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import GuestRegisterPage from './pages/GuestRegisterPage';
-import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import MobileApp from './pages/MobileApp';
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+const GuestLandingPage = lazy(() => import('./pages/GuestLandingPage'));
+const GuestDashboardPage = lazy(() => import('./pages/GuestDashboardPage'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const GuestRegisterPage = lazy(() => import('./pages/GuestRegisterPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const MobileApp = lazy(() => import('./pages/MobileAccessPage'));
 
-import Dashboard from './pages/app/Dashboard';
-import UserManagement from './pages/app/UserManagement';
-import VehicleManagement from './pages/app/VehicleManagement';
-import VehicleRelease from './pages/app/VehicleRelease';
-import RFIDManagement from './pages/app/RFIDManagement';
-import ParkingOperations from './pages/app/ParkingOperations';
-import VisitorQR from './pages/app/VisitorQR';
-import Reports from './pages/app/Reports';
-import AuditLogs from './pages/app/AuditLogs';
-import Violations from './pages/app/Violations';
-import SystemSettings from './pages/app/SystemSettings';
-import Profile from './pages/app/Profile';
-import Notifications from './pages/app/Notifications';
-import ParkingHistory from './pages/app/ParkingHistory';
+const Dashboard = lazy(() => import('./pages/app/Dashboard'));
+const UserManagement = lazy(() => import('./pages/app/UserManagement'));
+const VehicleManagement = lazy(() => import('./pages/app/VehicleManagement'));
+const VehicleRelease = lazy(() => import('./pages/app/VehicleRelease'));
+const RFIDManagement = lazy(() => import('./pages/app/RFIDManagement'));
+const ParkingOperations = lazy(() => import('./pages/app/ParkingOperations'));
+const VisitorQR = lazy(() => import('./pages/app/VisitorQR'));
+const Reports = lazy(() => import('./pages/app/Reports'));
+const Records = lazy(() => import('./pages/app/Records'));
+const AuditLogs = lazy(() => import('./pages/app/AuditLogs'));
+const Violations = lazy(() => import('./pages/app/Violations'));
+const SystemSettings = lazy(() => import('./pages/app/SystemSettings'));
+const Profile = lazy(() => import('./pages/app/Profile'));
+const Notifications = lazy(() => import('./pages/app/Notifications'));
+const ParkingHistory = lazy(() => import('./pages/app/ParkingHistory'));
 
 /** Shown briefly while a saved session is restored, instead of redirecting to /login. */
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+
 function SessionLoading() {
   return <div className="min-h-screen flex items-center justify-center text-sm text-slate-400">Loading your session…</div>;
 }
@@ -42,6 +47,7 @@ function ProtectedApp() {
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (user?.emailVerified === false && ['student', 'faculty', 'employee', 'guest'].includes(user?.role ?? '')) return <Navigate to="/verify-email" replace />;
   if (user?.accountStatus === 'pending') return <PendingAccountPage />;
+  if (user?.accountStatus && user.accountStatus !== 'active') return <AccessDenied />;
   if (user?.role === 'guest') return <Navigate to="/guest-dashboard" replace />;
   return <Layout><Outlet /></Layout>;
 }
@@ -51,6 +57,7 @@ function GuestRoute() {
   if (!ready) return <SessionLoading />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (user?.emailVerified === false) return <Navigate to="/verify-email" replace />;
+  if (user?.accountStatus && user.accountStatus !== 'active') return <AccessDenied />;
   if (user?.role !== 'guest') return <Navigate to="/app/dashboard" replace />;
   return <Outlet />;
 }
@@ -61,11 +68,13 @@ function RoleRoute({ roles, children }: { roles: UserRole[]; children: React.Rea
 }
 
 function AccessDenied() {
+  const { logout } = useAuth();
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
       <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-5 text-red-600 font-bold text-2xl">!</div>
       <h2 className="text-2xl font-bold text-navy mb-2">Access Denied</h2>
       <p className="text-slate-500 max-w-sm">You don't have permission to view this page. Contact your administrator if you believe this is an error.</p>
+      <button className="mt-5 text-blue-700" onClick={() => { void logout(); }}>Sign out</button>
     </div>
   );
 }
@@ -81,6 +90,7 @@ function AppRoutes() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/register/guest" element={<GuestRegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/mobile" element={<MobileApp />} />
 
       {/* Guest dashboard (separate from regular user) */}
@@ -120,28 +130,32 @@ function AppRoutes() {
         <Route path="qr-verify" element={<RoleRoute roles={['admin', 'parking_staff']}><VisitorQR /></RoleRoute>} />
         <Route path="reports" element={<RoleRoute roles={['admin']}><Reports /></RoleRoute>} />
         <Route path="reports/:category" element={<RoleRoute roles={['admin']}><Reports /></RoleRoute>} />
+        <Route path="records/accounts" element={<RoleRoute roles={['admin']}><Records /></RoleRoute>} />
+        <Route path="records/vehicles" element={<RoleRoute roles={['admin']}><Records /></RoleRoute>} />
+        <Route path="records/history" element={<RoleRoute roles={['admin']}><Records /></RoleRoute>} />
         <Route path="audit" element={<RoleRoute roles={['admin']}><AuditLogs /></RoleRoute>} />
         <Route path="violations" element={<RoleRoute roles={['parking_staff']}><Violations /></RoleRoute>} />
-        <Route path="settings/:section" element={<RoleRoute roles={['admin']}><SystemSettings /></RoleRoute>} />
+        <Route path="settings/:section" element={<RoleRoute roles={['admin']}><Navigate to="/app/settings" replace /></RoleRoute>} />
         <Route path="settings" element={<RoleRoute roles={['admin']}><SystemSettings /></RoleRoute>} />
         <Route path="*" element={<AccessDenied />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<main className="min-h-screen p-6 flex items-center justify-center"><div><h1 className="text-xl font-bold">Page not found</h1><a href="/" className="block text-blue-700 mt-4">Back to Home</a></div></main>} />
     </Routes>
   );
 }
 
+function UserServices() {
+  const { user } = useAuth();
+  const routes = <Suspense fallback={<SessionLoading />}><AppRoutes /></Suspense>;
+  // Pending accounts may read /me and logout only. Mount their status page
+  // without protected background services, which would be denied by the API.
+  const emailRequired = ['student', 'faculty', 'employee', 'guest'].includes(user?.role || '');
+  if (user && (user.accountStatus !== 'active' || (emailRequired && user.emailVerified === false))) return routes;
+  return <LiveSyncProvider key={user?.id || 'anonymous'}><LicenseProvider>{routes}</LicenseProvider></LiveSyncProvider>;
+}
 export default function App() {
-  return (
-    <BrowserRouter>
-      <AuthProvider>
-        <LiveSyncProvider>
-        <LicenseProvider>
-          <AppRoutes />
-        </LicenseProvider>
-        </LiveSyncProvider>
-      </AuthProvider>
-    </BrowserRouter>
-  );
+  return <AppErrorBoundary><BrowserRouter><AuthProvider>
+        <PrivilegedSetupGate><UserServices /></PrivilegedSetupGate>
+      </AuthProvider></BrowserRouter></AppErrorBoundary>;
 }

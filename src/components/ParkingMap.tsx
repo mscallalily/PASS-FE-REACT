@@ -224,7 +224,7 @@ export default function ParkingMap({ data, highlight, onSelect, focusArea, showM
         ref={svgRef}
         viewBox={view.join(' ')}
         preserveAspectRatio="xMidYMid meet"
-        className="w-full h-[min(70vh,640px)] min-h-[320px] select-none cursor-grab active:cursor-grabbing"
+        className="w-full h-[280px] sm:h-[min(70vh,640px)] min-h-[240px] select-none cursor-grab active:cursor-grabbing"
         style={{ touchAction: 'none' }}
         {...handlers}
         role="application"

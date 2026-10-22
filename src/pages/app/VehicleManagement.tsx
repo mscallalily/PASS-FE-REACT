@@ -1,10 +1,11 @@
-import VehiclePhotoReader from '../../components/VehiclePhotoReader';
+import { useTopicVersion } from '../../lib/liveSync';
+import { formatCampusDate } from '../../lib/datetime';
+import { jsonFetch, jsonRequest } from '../../lib/http';
 import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { REGULAR_USER_ROLES, useAuth } from '../../context/AuthContext';
 import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input,  Toast, EmptyState } from '../../components/ui';
-import { MOCK_VEHICLES } from '../../data/mock';
 import { Car, Plus, AlertTriangle, RefreshCw } from 'lucide-react';
 import DriverLicenseVerification from '../../components/DriverLicenseVerification';
 import LicenseReviewQueue from '../../components/LicenseReviewQueue';
@@ -90,41 +91,25 @@ async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T>
     throw new Error('Your session has expired. Please log in again.');
   }
 
-  const response = await fetch(url, {
+  return jsonRequest<T>(url, {
     ...options,
     headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
+      Accept: 'application/json', Authorization: `Bearer ${token}`,
       ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers as Record<string, string> | undefined),
     },
-  });
+  }, options.method === 'POST' && /^\/api\/vehicles(?:\/\d+\/(?:photo|resubmit))?$/.test(url) ? 45000 : 30000);
 
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new ApiError(data.message || `Request failed with status ${response.status}.`, response.status);
-  }
-
-  return data as T;
 }
 
 function formatDate(value: string | null) {
-  if (!value) return '—';
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleDateString('en-PH', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+  return formatCampusDate(value);
 }
 
 interface VehicleRow {
   hasPhoto?: boolean;
+  rejectionReason?: string | null;
+  canResubmit?: boolean;
   selectedForUse?: boolean;
   switchLocked?: boolean;
   id: string;
@@ -155,7 +140,7 @@ async function fetchVehicles(): Promise<VehicleRow[]> {
     throw new Error('Session expired. Please log in again.');
   }
 
-  const response = await fetch('/api/vehicles', {
+  const response = await jsonFetch('/api/vehicles', {
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
@@ -199,12 +184,12 @@ function VehiclePhotoPanel({ id, editable, onSaved, hasPhoto }: { id: string | n
   }
   return <div className="space-y-3">
     {hasPhoto === false && version === 0 && <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">No vehicle photo on file.</p>}
-    {url && <img src={url} alt="Submitted vehicle photo for plate comparison" className="max-h-80 w-full rounded-xl object-contain bg-slate-50" />}
+    {url && <img src={url} alt="Submitted vehicle photo for PASS staff reference" className="max-h-80 w-full rounded-xl object-contain bg-slate-50" />}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     {editable && <>
       <FileUpload accept="image/jpeg,image/png" label="Vehicle photo — show the plate clearly (JPG/PNG)" file={file} onChange={setFile} onError={setError} />
-      <Button onClick={save} disabled={!file || busy}>{busy ? 'Uploading…' : 'Save vehicle photo'}</Button>
-      <p className="text-xs text-slate-500">Saving a replacement photo returns this submission to pending review.</p>
+      <Button onClick={save} disabled={!file || busy}>{busy ? 'Submitting…' : 'Submit vehicle photo'}</Button>
+      <p className="text-xs text-slate-500">The replacement photo will be sent for staff review. Your vehicle stays Pending review until a staff decision. RFID assignment remains separate.</p>
     </>}
   </div>;
 }
@@ -212,6 +197,7 @@ function VehiclePhotoPanel({ id, editable, onSaved, hasPhoto }: { id: string | n
 export default function VehicleManagement() {
   const { user } = useAuth();
   const { pathname } = useLocation();
+  const vehicleVersion = useTopicVersion(['vehicles']);
   const license = useLicense();
   const licenseOnFile = isLicenseOnFile(license.status);
   const isRegularUser = REGULAR_USER_ROLES.includes(user?.role ?? null);
@@ -219,13 +205,12 @@ export default function VehicleManagement() {
   const sections = isRegularUser ? PAGE_SECTIONS.vehicleUser : PAGE_SECTIONS.vehicleStaff;
   const tab = selectedSection(sections, pathname);
   const setTab = (label: string) => navigate(sectionPath(sections, label));
-  const [rfidRequests, setRfidRequests] = useState<{ plate: string; status: string; submitted: string }[]>([]);
-  const [requestVehicle, setRequestVehicle] = useState('');
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [selected, setSelected] = useState<any>(null);
   const [showRegister, setShowRegister] = useState(false);
+  const [correctingVehicle, setCorrectingVehicle] = useState<VehicleRow | null>(null);
   const [photoVehicleId, setPhotoVehicleId] = useState<number | null>(null);
   const [vehiclePhoto, setVehiclePhoto] = useState<File | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -286,33 +271,53 @@ export default function VehicleManagement() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isRegularUser, tab, authSearch, authStatus, authReloadKey]);
+  }, [isRegularUser, tab, authSearch, authStatus, authReloadKey, vehicleVersion]);
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
   const [switchingVehicle, setSwitchingVehicle] = useState<string | null>(null);
   const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [vehicleError, setVehicleError] = useState('');
   const [vehicleReloadKey, setVehicleReloadKey] = useState(0);
   const [registerBusy, setRegisterBusy] = useState(false);
-  const [photoReading, setPhotoReading] = useState(false);
   const [registerError, setRegisterError] = useState('');
   const [vehicleForm, setVehicleForm] = useState({ plate_number: '', vehicle_type: '', year_model: '', make: '', model: '', color: '' });
 
+  function openRegistration(vehicle: VehicleRow | null = null) {
+    setSelected(null); setCorrectingVehicle(vehicle); setVehiclePhoto(null); setRegisterError('');
+    setVehicleForm(vehicle ? { plate_number: vehicle.plate, vehicle_type: vehicle.type,
+      year_model: vehicle.year == null ? '' : String(vehicle.year), make: vehicle.make, model: vehicle.model, color: vehicle.color }
+      : { plate_number: '', vehicle_type: '', year_model: '', make: '', model: '', color: '' });
+    setShowRegister(true);
+  }
+  function closeRegistration() {
+    if (registerBusy) return;
+    setShowRegister(false); setCorrectingVehicle(null);
+  }
+  function correctionAction(vehicle: VehicleRow) {
+    if (!isRegularUser || !['pending', 'rejected'].includes(vehicle.authorizationStatus || vehicle.status)) return null;
+    return <div className="space-y-2">
+      {vehicle.rejectionReason && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 break-words"><span className="font-semibold">Correction requested: </span>{vehicle.rejectionReason}</p>}
+      <Button className="w-full min-h-12" onClick={() => openRegistration(vehicle)}>{vehicle.status === 'rejected' ? 'Correct & resubmit' : 'Update & resubmit'}</Button>
+      <p className="text-xs text-slate-500">Correct this existing record and upload a new matching photo.</p>
+    </div>;
+  }
+
   async function registerVehicle() {
-    if (registerBusy || photoReading) return;
+    if (registerBusy) return;
     if (!vehiclePhoto) { setRegisterError('Upload a vehicle photo showing the plate.'); return; }
     setRegisterBusy(true); setRegisterError('');
     try {
       const body = new FormData();
       Object.entries(vehicleForm).forEach(([key, value]) => { if (value) body.append(key, value); });
       body.append('vehicle_photo', vehiclePhoto);
-      const data = await apiRequest<{ message: string }>('/api/vehicles', { method: 'POST', body });
+      const data = await apiRequest<{ message: string }>(correctingVehicle ? `/api/vehicles/${correctingVehicle.id}/resubmit` : '/api/vehicles', { method: 'POST', body });
       setVehiclePhoto(null);
-      setShowRegister(false);
+      setShowRegister(false); setCorrectingVehicle(null); setSelected(null);
+      setAuthReloadKey(k => k + 1);
       setVehicleForm({ plate_number: '', vehicle_type: '', year_model: '', make: '', model: '', color: '' });
       setVehicleReloadKey(k => k + 1); setMyReloadKey(k => k + 1);
       showToast(data.message);
     } catch (error) {
-      setRegisterError(error instanceof Error ? error.message : 'Vehicle registration failed.');
+      setRegisterError(error instanceof ApiError && Object.keys(error.fieldErrors).length ? Object.values(error.fieldErrors).join(' ') : error instanceof Error ? error.message : 'Vehicle registration failed.');
     } finally { setRegisterBusy(false); }
   }
 
@@ -347,7 +352,7 @@ export default function VehicleManagement() {
       cancelled = true;
       window.removeEventListener('focus', onFocus);
     };
-  }, [isRegularUser, tab, myReloadKey]);
+  }, [isRegularUser, tab, myReloadKey, vehicleVersion]);
 
   const openAction = (action: AuthAction) => {
     setPendingAction(action);
@@ -467,7 +472,14 @@ export default function VehicleManagement() {
   return () => {
     cancelled = true;
   };
-}, [vehicleReloadKey]);
+}, [vehicleReloadKey, vehicleVersion]);
+
+  useEffect(() => {
+    if (selected?.id) {
+      const current = vehicles.find(v => v.id === selected.id);
+      if (current) setSelected(current);
+    }
+  }, [vehicles, selected?.id]);
 
   const roleScopedVehicles = vehicles;
   const filtered = roleScopedVehicles.filter(v => {
@@ -484,7 +496,7 @@ export default function VehicleManagement() {
       <PageHeader backToDashboard
         title={tab === 'My Vehicles' ? 'My Vehicle' : tab === 'Authorization' ? 'Vehicle Authorization' : tab}
         subtitle={isRegularUser ? 'Manage your vehicle, driver information, and authorization status' : 'Review campus vehicle records and authorization status'}
-        action={isRegularUser ? <Button onClick={() => setShowRegister(true)}><Plus size={16} /> Register Vehicle</Button> : undefined}
+        action={isRegularUser ? <Button onClick={() => openRegistration()}><Plus size={16} /> Register Vehicle</Button> : undefined}
       />
 
 
@@ -492,7 +504,7 @@ export default function VehicleManagement() {
       {tab === 'My Vehicles' && isRegularUser && !licenseOnFile && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <AlertTriangle size={18} className="text-amber-600 shrink-0" />
-          <p className="flex-1 min-w-[200px] text-sm text-amber-800">Submit your driverâ€™s license before registering a vehicle.</p>
+          <p className="flex-1 min-w-[200px] text-sm text-amber-800">Submit your driver’s license before registering a vehicle.</p>
           <Button size="sm" onClick={() => setTab('Driver & License')}>Submit License</Button>
         </div>
       )}
@@ -537,6 +549,7 @@ export default function VehicleManagement() {
                 {vehicle.selectedForUse && <p className="text-xs leading-relaxed text-slate-500">This is your selected vehicle for entry. Normal RFID, license and authorization checks still apply.</p>}
                 {vehicle.switchLocked && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">A vehicle is still inside. Record its exit, then refresh to switch vehicles.</p>}
                 {!vehicle.rfid && <p className="text-xs text-slate-500">Staff must assign an active RFID before you can select this vehicle.</p>}
+                {correctionAction(vehicle)}
                 <Button className="w-full" variant="outline" onClick={() => setSelected(vehicle)}>View vehicle details</Button>
               </div>
             </article>)}
@@ -557,30 +570,21 @@ export default function VehicleManagement() {
         </Card>
       )}
 
-      {tab === 'RFID Requests' && isRegularUser && (
-        <Card className="p-5 sm:p-6">
-          <div className="max-w-2xl space-y-4">
-            <div>
-              <h3 className="font-semibold text-[#080677]">Request RFID Assignment</h3>
-              <p className="text-sm text-slate-500 mt-1">Vehicle registration and RFID assignment are separate processes. An RFID is not assigned until authorized staff records it.</p>
-            </div>
-            <Select label="Registered vehicle" value={requestVehicle} onChange={e => setRequestVehicle(e.target.value)}>
-              <option value="">Select a vehicle</option>
-              {roleScopedVehicles.map(v => <option key={v.id} value={v.plate}>{v.plate} â€” {v.make} {v.model}</option>)}
-            </Select>
-            <Button disabled={!requestVehicle || rfidRequests.some(r => r.plate === requestVehicle)} onClick={() => {
-              setRfidRequests(prev => [...prev, { plate: requestVehicle, status: 'Pending Admin Processing', submitted: new Date().toLocaleDateString() }]);
-              showToast('Demo request added locally. Backend submission is not connected.');
-            }}>Submit RFID Request</Button>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Prototype only: requests are stored in this page's temporary state and will not persist after refresh.</div>
-            <div className="overflow-x-auto">
-              <Table columns={[
-                { key: 'plate', label: 'Vehicle Plate' },
-                { key: 'submitted', label: 'Submitted' },
-                { key: 'status', label: 'Processing Status', render: r => <Badge variant="warning">{r.status}</Badge> },
-              ]} data={rfidRequests} />
-            </div>
+      {tab === 'RFID Assignment' && isRegularUser && (
+        <Card className="p-5 sm:p-6 space-y-4">
+          <div>
+            <h3 className="font-semibold text-[#080677]">RFID Assignment</h3>
+            <p className="text-sm text-slate-500 mt-1">After your license and vehicle are approved, contact PASS staff for your physical RFID tag. The administrator records its assignment to your vehicle.</p>
           </div>
+          {loadingVehicles && <p role="status" className="text-sm text-slate-500">Loading assigned tags…</p>}
+          {vehicleError && <p role="alert" className="text-sm text-red-700">{vehicleError}</p>}
+          {!loadingVehicles && !vehicleError && <Table columns={[
+            { key: 'plate', label: 'Vehicle Plate' },
+            { key: 'status', label: 'Authorization', render: (vehicle: VehicleRow) => <Badge variant={statusBadge(vehicle.status)}>{vehicle.status}</Badge> },
+            { key: 'rfid', label: 'RFID Tag', render: (vehicle: VehicleRow) => <span className="font-mono text-xs break-all">{vehicle.rfid || 'Not assigned'}</span> },
+          ]} data={roleScopedVehicles} />}
+          <p className="text-xs text-slate-500">A tag assignment does not record an entry. Choose your vehicle under My Vehicles before using it at the gate.</p>
+          <Button variant="outline" onClick={() => setTab('My Vehicles')}>View my vehicles</Button>
         </Card>
       )}
 
@@ -707,6 +711,16 @@ export default function VehicleManagement() {
                     ? <span className="whitespace-nowrap">{formatDate(r.valid_from)} – {formatDate(r.valid_until)}</span>
                     : '—'
                 )},
+                { key: 'actions', label: 'Actions', render: (r: VehicleRecord) => {
+                  if (!['pending', 'rejected'].includes(r.authorization_status || '')) return <span className="text-xs text-slate-400">—</span>;
+                  const vehicle = vehicles.find(v => v.id === String(r.vehicle_id)) || {
+                    id: String(r.vehicle_id), plate: r.plate_number, type: r.vehicle_type || '', owner: '',
+                    make: r.make || '', model: r.model || '', year: r.year_model, color: r.color || '', rfid: null,
+                    status: r.authorization_status || 'pending', authorizationStatus: r.authorization_status,
+                    rejectionReason: r.authorization_status === 'rejected' ? r.remarks : null,
+                  };
+                  return <Button size="sm" onClick={() => openRegistration(vehicle)}>{r.authorization_status === 'rejected' ? 'Correct & resubmit' : 'Update & resubmit'}</Button>;
+                }},
                 { key: 'requested_at', label: 'Requested', render: (r: VehicleRecord) => formatDate(r.requested_at) },
                 { key: 'remarks', label: 'Remarks', render: (r: VehicleRecord) => r.remarks
                   ? <span className="block max-w-xs truncate text-slate-500" title={r.remarks}>{r.remarks}</span>
@@ -788,7 +802,8 @@ export default function VehicleManagement() {
               </div>
             ))}
             {isRegularUser && vehicleUseControl(selected)}
-            <VehiclePhotoPanel key={selected.id} id={selected.id} hasPhoto={selected.hasPhoto} editable={isRegularUser && ['pending', 'rejected'].includes(selected.authorizationStatus || selected.status)} onSaved={() => { setVehicleReloadKey(k => k + 1); setMyReloadKey(k => k + 1); showToast('Photo saved; pending staff review.'); }} />
+            {correctionAction(selected)}
+            <VehiclePhotoPanel key={selected.id} id={selected.id} hasPhoto={selected.hasPhoto} editable={false} onSaved={() => {}} />
             <div className="flex gap-3 pt-2">
               <Button variant="outline" onClick={() => setSelected(null)}>Close</Button>
             </div>
@@ -801,12 +816,12 @@ export default function VehicleManagement() {
       </Modal>
 
       {/* Register Vehicle Modal */}
-      <Modal open={showRegister} onClose={() => setShowRegister(false)} title="Register Vehicle" size="md">
-        {!licenseOnFile ? (
+      <Modal open={showRegister} onClose={closeRegistration} title={correctingVehicle ? 'Correct & resubmit vehicle' : 'Register Vehicle'} size="md">
+        {license.status !== 'verified' ? (
           <div className="space-y-4">
             <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-              <p>A driverâ€™s license is required before you can register a vehicle. Submit it first; you can register the vehicle while it is waiting for review.</p>
+              <p>Complete driver’s license verification before registering a vehicle. Your license must be verified and unexpired before you submit a vehicle for staff review.</p>
             </div>
             <div className="flex gap-3">
               <Button onClick={() => { setShowRegister(false); setTab('Driver & License'); }}>Go to Driver & License</Button>
@@ -815,26 +830,26 @@ export default function VehicleManagement() {
           </div>
         ) : (
           <div className="space-y-4">
-            {(license.status === 'pending_review' || license.status === 'processing') && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">Your license document check is unfinished. Retry the automatic check in Driver & License, or contact PASS staff. The vehicle cannot be authorized until the license submission is approved.</p>
-            )}
-            <FileUpload accept="image/jpeg,image/png" label="Vehicle photo — show the plate clearly (JPG/PNG, up to 5 MB)" file={vehiclePhoto} onChange={f => { setVehiclePhoto(f); setRegisterError(''); }} onError={setRegisterError} />
-            <VehiclePhotoReader file={vehiclePhoto} onBusyChange={setPhotoReading} onApply={fields => setVehicleForm(f => ({ ...f, ...(fields.plate_number ? { plate_number: fields.plate_number } : {}), ...(fields.color ? { color: fields.color } : {}), ...(fields.category === 'motorcycle' ? { vehicle_type: 'Motorcycle' } : fields.category === 'car' && f.vehicle_type === 'Motorcycle' ? { vehicle_type: '' } : {}) }))} />
+            {correctingVehicle && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 break-words">{correctingVehicle.rejectionReason || 'Review and correct this existing vehicle registration.'}</p>}
+            <p className="text-sm text-slate-600">{correctingVehicle ? 'Correct the details below and upload a new vehicle photo. Your previous submission stays in history.' : 'Enter your details, then upload a clear vehicle photo with the complete plate visible.'} Your submission will stay Pending review until PASS staff review the details and photo.</p>
             <Input label="Plate Number" aria-label="Plate Number" placeholder="ABC-1234" value={vehicleForm.plate_number} onChange={e => setVehicleForm(f => ({ ...f, plate_number: e.target.value.toUpperCase() }))} disabled={registerBusy} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Select label="Vehicle Type" aria-label="Vehicle Type" value={vehicleForm.vehicle_type} onChange={e => setVehicleForm(f => ({ ...f, vehicle_type: e.target.value }))} disabled={registerBusy || photoReading}><option value="">Choose vehicle type…</option><option>Sedan</option><option>SUV</option><option>Hatchback</option><option>Pickup</option><option>Motorcycle</option><option>Van</option></Select>
-              <Input label="Year" placeholder="2024" type="number" value={vehicleForm.year_model} onChange={e => setVehicleForm(f => ({ ...f, year_model: e.target.value }))} disabled={registerBusy} />
+              <Select label="Vehicle Type" aria-label="Vehicle Type" value={vehicleForm.vehicle_type} onChange={e => setVehicleForm(f => ({ ...f, vehicle_type: e.target.value }))} disabled={registerBusy}><option value="">Choose vehicle type…</option><option>Sedan</option><option>SUV</option><option>Hatchback</option><option>Pickup</option><option>Motorcycle</option><option>Van</option></Select>
+              <Input label="Year" placeholder="2024" type="number" value={vehicleForm.year_model} onChange={e => setVehicleForm(f => ({ ...f, year_model: e.target.value.toUpperCase() }))} disabled={registerBusy} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Make" placeholder="Toyota" value={vehicleForm.make} onChange={e => setVehicleForm(f => ({ ...f, make: e.target.value }))} disabled={registerBusy} />
-              <Input label="Model" placeholder="Vios" value={vehicleForm.model} onChange={e => setVehicleForm(f => ({ ...f, model: e.target.value }))} disabled={registerBusy} />
+              <Input label="Make" placeholder="Toyota" value={vehicleForm.make} onChange={e => setVehicleForm(f => ({ ...f, make: e.target.value.toUpperCase() }))} disabled={registerBusy} />
+              <Input label="Model" placeholder="Vios" value={vehicleForm.model} onChange={e => setVehicleForm(f => ({ ...f, model: e.target.value.toUpperCase() }))} disabled={registerBusy} />
             </div>
-            <Input label="Color" aria-label="Color" placeholder="White" value={vehicleForm.color} onChange={e => setVehicleForm(f => ({ ...f, color: e.target.value }))} disabled={registerBusy} />
+            <Input label="Color" aria-label="Color" placeholder="WHITE" value={vehicleForm.color} onChange={e => setVehicleForm(f => ({ ...f, color: e.target.value.toUpperCase() }))} disabled={registerBusy} />
 
+            <p className="text-xs text-slate-500">{vehicleForm.vehicle_type === 'Motorcycle' ? 'Motorcycle parking lot' : vehicleForm.vehicle_type ? 'Car parking lot — four-wheel vehicles' : 'Motorcycles use the motorcycle lot; supported four-wheel vehicles use the car lot.'}</p>
+            <fieldset disabled={registerBusy}><FileUpload accept="image/jpeg,image/png" label="Vehicle photo — show the complete plate (JPG/PNG, up to 5 MB)" file={vehiclePhoto} onChange={f => { if (!registerBusy) { setVehiclePhoto(f); setRegisterError(''); } }} onError={setRegisterError} /></fieldset>
+            <p className="text-xs text-slate-500">PASS staff will review the vehicle details and photo before approving or returning your submission. RFID assignment is a separate step after approval.</p>
             {registerError && <p role="alert" className="text-sm text-red-700">{registerError}</p>}
             <div className="flex gap-3 pt-2">
-              <Button onClick={registerVehicle} disabled={registerBusy || photoReading}>{registerBusy ? 'Submitting…' : 'Submit Registration'}</Button>
-              <Button variant="outline" onClick={() => setShowRegister(false)}>Cancel</Button>
+              <Button onClick={registerVehicle} disabled={registerBusy}>{registerBusy ? 'Submitting…' : correctingVehicle ? 'Submit corrected registration' : 'Submit Registration'}</Button>
+              <Button variant="outline" disabled={registerBusy} onClick={closeRegistration}>Cancel</Button>
             </div>
           </div>
         )}

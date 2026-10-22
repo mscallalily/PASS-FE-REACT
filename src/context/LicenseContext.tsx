@@ -7,13 +7,11 @@ import { apiRequest, ApiError } from '../lib/apiClient';
 // same status. Only the server (automatic check or PASS staff) changes it.
 export type LicenseStatus = 'not_submitted' | 'processing' | 'needs_correction' | 'pending_review' | 'verified';
 
-export type LicenseType = 'student_permit' | 'non_professional' | 'professional' | 'international';
-
 export interface LicenseRecord {
   license_id: number;
   license_number: string;
-  license_type: LicenseType;
   expiry_date: string | null;
+  can_resubmit?: boolean;
   original_file_name: string | null;
   has_file: boolean;
   submitted_at: string | null;
@@ -26,7 +24,6 @@ export interface LicenseRecord {
 
 export interface LicenseSubmission {
   licenseNumber: string;
-  licenseType: LicenseType;
   expiryDate: string;
   file: File;
 }
@@ -100,7 +97,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
   const submit = async (s: LicenseSubmission): Promise<SubmitResult> => {
     const form = new FormData();
     form.append('license_number', s.licenseNumber);
-    form.append('license_type', s.licenseType);
     form.append('expiry_date', s.expiryDate);
     form.append('license_file', s.file);
 
@@ -150,12 +146,6 @@ export const LICENSE_STATUS_LABEL: Record<LicenseStatus, string> = {
   verified: 'Approved',
 };
 
-export const LICENSE_TYPE_LABEL: Record<LicenseType, string> = {
-  non_professional: 'Non-Professional',
-  professional: 'Professional',
-  student_permit: 'Student Permit',
-  international: 'International',
-};
 
 /** A submitted license that is not waiting on the user. */
 export function licenseOnFile(status: LicenseStatus) {

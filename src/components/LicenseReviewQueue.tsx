@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2, FileText, RefreshCw, CheckCircle, XCircle, HelpCircle } from 'lucide-react';
 import { Card, Badge, Button, Table, Modal, Select, SearchBar } from './ui';
-import { LICENSE_STATUS_LABEL, LICENSE_TYPE_LABEL, LicenseType } from '../context/LicenseContext';
+import { LICENSE_STATUS_LABEL } from '../context/LicenseContext';
 import { apiBlob, apiRequest, ApiError } from '../lib/apiClient';
 import { formatCampusDate, formatCampusDateTime } from '../lib/datetime';
 import { useTopicVersion } from '../lib/liveSync';
@@ -26,7 +26,6 @@ interface OcrResult {
 interface Row {
   license_id: number;
   license_number: string;
-  license_type: LicenseType;
   expiry_date: string | null;
   original_file_name: string | null;
   has_file: boolean;
@@ -223,7 +222,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
   return (
     <Card>
       <div className="p-5 border-b border-slate-50 space-y-3">
-        <p className="text-sm text-slate-500">Uploads receive an automatic document decision. All required OCR, image-quality and matching checks must pass for automatic approval; failed or unreadable submissions are returned with correction reasons. An unavailable reading service leaves the submission unapproved and retryable. Staff exception reviews are recorded separately. This does not confirm authenticity with the LTO or grant vehicle/RFID access.</p>
+        <p className="text-sm text-slate-500">Uploads receive an automatic document decision. All required OCR, image-quality and matching checks must pass for automatic approval. Matching identity details with uncertain OCR confidence or incomplete headings remain unapproved for staff review. Mismatched, expired or unreadable required fields receive correction reasons. An unavailable reading service also leaves the submission unapproved and retryable. Staff exception reviews are recorded separately. This does not confirm authenticity with the LTO or grant vehicle/RFID access.</p>
         <SearchBar value={search} onChange={setSearch} placeholder="Search by owner, ID, or license number...">
           <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="">All Status</option>
@@ -288,7 +287,6 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
               {[
                 ['Owner', `${selected.owner_name || '—'}${selected.owner_code ? ` (${selected.owner_code})` : ''}`],
                 ['License No.', selected.license_number],
-                ['Type', LICENSE_TYPE_LABEL[selected.license_type] ?? selected.license_type],
                 ['Expiry', formatDate(selected.expiry_date)],
                 ['Submitted', formatDate(selected.submitted_at, true)],
                 ['Last decision', selected.verification_source === 'staff'
