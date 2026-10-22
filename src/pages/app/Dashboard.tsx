@@ -1,5 +1,5 @@
+import PersonalDashboard from '../../components/PersonalDashboard';
 import { jsonFetch } from '../../lib/http';
-import ParkingAvailabilityMap from '../../components/ParkingAvailabilityMap';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -313,15 +313,7 @@ if (dashboardData) {
 }
 
 function UserDashboard() {
-  const { user } = useAuth();
-  return <div className="animate-fadein space-y-6">
-    <div className="flex flex-wrap justify-between gap-4 items-start">
-      <div><h1 className="text-2xl font-bold text-[#080677]">Hello, {user?.name?.split(' ')[0]}</h1><p className="text-sm text-slate-500 mt-1">Check campus parking before your trip.</p></div>
-      <Link to="/app/vehicles" className="inline-flex items-center gap-2 rounded-xl bg-[#080677] px-4 py-3 text-sm font-semibold text-white"><Car size={16} />My vehicles</Link>
-    </div>
-    <ParkingAvailabilityMap />
-    <Link to="/app/my-history" className="inline-flex items-center gap-2 text-sm font-medium text-[#2563EB]">View my parking history <ArrowRight size={14} /></Link>
-  </div>;
+  return <PersonalDashboard />;
 }
 
 // ============================================
