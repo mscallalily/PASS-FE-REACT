@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { IdCard, Clock, CheckCircle, AlertTriangle, Send, Loader2, ShieldCheck, RefreshCw } from 'lucide-react';
 import FileUpload from './FileUpload';
-import { LICENSE_STATUS_LABEL, LICENSE_TYPE_LABEL, LicenseType, useLicense } from '../context/LicenseContext';
-import { formatCampusDateTime } from '../lib/datetime';
+import { LICENSE_STATUS_LABEL, useLicense } from '../context/LicenseContext';
+import { campusDateKey, formatCampusDateTime } from '../lib/datetime';
 
 const maskNo = (n: string) => (n.length > 4 ? `•••• ${n.slice(-4)}` : n);
 
@@ -11,7 +11,6 @@ const formatDateTime = (value: string | null) => formatCampusDateTime(value);
 // Maps API field names to this form's fields.
 const FIELD_MAP: Record<string, string> = {
   license_number: 'licenseNo',
-  license_type: 'licenseType',
   expiry_date: 'expiry',
   license_file: 'file',
 };
@@ -25,7 +24,6 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
   const m = variant === 'mobile';
   const [editing, setEditing] = useState(false);
   const [licenseNo, setLicenseNo] = useState('');
-  const [licenseType, setLicenseType] = useState<LicenseType>('non_professional');
   const [expiry, setExpiry] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -37,15 +35,17 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
   const submitLock = useRef(false);
   useEffect(() => { if (!cooldown) return; const timer = window.setTimeout(() => setCooldown(v => Math.max(0, v - 1)), 1000); return () => window.clearTimeout(timer); }, [cooldown]);
 
-  const showForm = status === 'not_submitted' || status === 'needs_correction' || (editing && status !== 'processing');
+  const renewalAvailable = status === 'verified' && license?.can_resubmit === true;
+  const canSubmit = status !== 'processing' && (status !== 'verified' || renewalAvailable);
+  const showForm = canSubmit && (status === 'not_submitted' || status === 'needs_correction' || editing);
 
   const handleSubmit = async () => {
-    if (submitLock.current || cooldown > 0) return;
+    if (!canSubmit || submitLock.current || cooldown > 0) return;
     const e: Record<string, string> = {};
     if (!licenseNo.trim()) e.licenseNo = "Driver's license number is required";
     else if (!/^[A-Za-z]\d{2}[-\s]?\d{2}[-\s]?\d{6}$/.test(licenseNo.trim())) e.licenseNo = 'Use the LTO format, for example N01-23-456789';
     if (!expiry) e.expiry = 'Expiry date is required';
-    else if (new Date(expiry) < new Date(new Date().toDateString())) e.expiry = 'This license is already expired';
+    else if (expiry < campusDateKey()) e.expiry = 'This license is already expired';
     if (!file) e.file = "Upload a photo or scan of your driver's license";
     setErrors(e);
     setFormMessage('');
@@ -53,7 +53,7 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
 
     submitLock.current = true;
     setSubmitting(true);
-    const result = await submit({ licenseNumber: licenseNo.trim(), licenseType, expiryDate: expiry, file: file! });
+    const result = await submit({ licenseNumber: licenseNo.trim(), expiryDate: expiry, file: file! });
     setSubmitting(false);
     submitLock.current = false;
 
@@ -74,7 +74,7 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
   const tone = {
     not_submitted: { box: 'bg-slate-50 border-slate-200', text: 'text-slate-700', icon: <IdCard size={22} className="text-slate-500" />, msg: "No driver's license on file. Submit it to register a vehicle." },
     processing: { box: 'bg-blue-50 border-blue-200', text: 'text-blue-800', icon: <Loader2 size={22} className="text-blue-600 animate-spin" />, msg: 'Checking your document. This usually takes a few seconds.' },
-    pending_review: { box: 'bg-amber-50 border-amber-200', text: 'text-amber-800', icon: <Clock size={22} className="text-amber-600" />, msg: license?.verification_source === 'staff' ? 'Your submission is awaiting a staff exception review.' : 'The automatic check has not completed. Your submission is not approved. Retry the check; if the service is unavailable, contact PASS staff.' },
+    pending_review: { box: 'bg-amber-50 border-amber-200', text: 'text-amber-800', icon: <Clock size={22} className="text-amber-600" />, msg: license?.verification_source === 'staff' ? 'Your submission is awaiting a staff exception review.' : 'Some required document details could not be confirmed automatically. Your submission remains unapproved. Retry the check or contact PASS staff for review.' },
     verified: { box: 'bg-green-50 border-green-200', text: 'text-green-800', icon: <CheckCircle size={22} className="text-green-600" />, msg: license?.verification_source === 'automatic' ? 'Your license submission was approved automatically after the required OCR and document-consistency checks passed.' : 'PASS staff approved your license submission.' },
     needs_correction: {
       box: 'bg-red-50 border-red-200', text: 'text-red-800', icon: <AlertTriangle size={22} className="text-red-600" />,
@@ -97,8 +97,8 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
         <div className="flex items-start gap-3">
           <span className="shrink-0 mt-0.5">{tone.icon}</span>
           <div className="min-w-0">
-            <p className={`font-bold ${tone.text}`}>{status === 'verified' && license?.verification_source === 'automatic' ? 'Approved automatically' : status === 'pending_review' && license?.verification_source !== 'staff' ? 'Automatic check unavailable' : LICENSE_STATUS_LABEL[status]}</p>
-            <p className={`text-sm mt-0.5 ${tone.text}`}>{tone.msg}</p>
+            <p className={`font-bold ${tone.text}`}>{renewalAvailable ? 'License renewal needed' : status === 'verified' && license?.verification_source === 'automatic' ? 'Approved automatically' : status === 'pending_review' && license?.verification_source !== 'staff' ? 'Automatic check needs review' : LICENSE_STATUS_LABEL[status]}</p>
+            <p className={`text-sm mt-0.5 ${tone.text}`}>{renewalAvailable ? 'Your previous license has expired. Submit your renewed license for a new document check.' : tone.msg}</p>
             {status === 'needs_correction' && license?.verification_reason && (
               <ul className="mt-2 space-y-1 list-disc pl-5 text-sm text-red-800">
                 {license.verification_reason.split('\n').filter(Boolean).map(reason => <li key={reason}>{reason}</li>)}
@@ -107,7 +107,6 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
             {license && (
               <div className="mt-3 text-xs text-slate-600 space-y-0.5">
                 <p>License no.: <span className="font-mono font-semibold">{maskNo(license.license_number)}</span></p>
-                <p>Type: <span className="font-semibold">{LICENSE_TYPE_LABEL[license.license_type] ?? license.license_type}</span></p>
                 <p>Expiry: <span className="font-semibold">{license.expiry_date ?? '—'}</span></p>
                 {license.original_file_name && <p>File: <span className="font-semibold break-all">{license.original_file_name}</span></p>}
                 <p>Submitted: {formatDateTime(license.submitted_at)}</p>
@@ -121,9 +120,9 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
           </button>
           {retryMessage && <p role="status" className="text-sm text-slate-600">{retryMessage}</p>}
         </div>}
-        {!showForm && status !== 'processing' && (
+        {!showForm && canSubmit && (
           <button type="button" onClick={() => setEditing(true)} className="mt-3 text-sm font-semibold text-[#2563EB] hover:underline">
-            Submit a different license
+            {renewalAvailable ? 'Submit renewed license' : 'Submit a different license'}
           </button>
         )}
       </div>
@@ -137,13 +136,6 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
             {errors.licenseNo && <p className="text-xs text-red-500 mt-1">{errors.licenseNo}</p>}
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">License Type</label>
-            <select value={licenseType} onChange={e => setLicenseType(e.target.value as LicenseType)} className={inputCls('licenseType')} disabled={submitting}>
-              {(Object.keys(LICENSE_TYPE_LABEL) as LicenseType[]).map(t => <option key={t} value={t}>{LICENSE_TYPE_LABEL[t]}</option>)}
-            </select>
-            {errors.licenseType && <p className="text-xs text-red-500 mt-1">{errors.licenseType}</p>}
-          </div>
-          <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Expiry Date</label>
             <input type="date" value={expiry} onChange={e => setExpiry(e.target.value)} className={inputCls('expiry')} disabled={submitting} />
             {errors.expiry && <p className="text-xs text-red-500 mt-1">{errors.expiry}</p>}
@@ -152,7 +144,7 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
             onChange={f => { setFile(f); setErrors(e => ({ ...e, file: '' })); }}
             onError={msg => setErrors(e => ({ ...e, file: msg }))} />
           
-          <p className="text-xs text-slate-500">Use a clear JPG or PNG photo of the full front side for automatic approval. The name, license number, type and expiry must match your entries. PDFs require a JPG/PNG resubmission for the automatic check.</p>
+          <p className="text-xs text-slate-500">Use a clear JPG or PNG photo of the full front side for automatic approval. The name, license number and expiry must match your entries. PDFs require a JPG/PNG resubmission for the automatic check.</p>
           {formMessage && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">{formMessage}</p>}
           <div className="flex flex-wrap gap-3">
             <button type="button" onClick={handleSubmit} disabled={submitting || cooldown > 0} className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#2563EB] text-white font-semibold hover:bg-[#1D4ED8] transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed">

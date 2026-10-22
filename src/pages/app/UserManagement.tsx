@@ -1,3 +1,4 @@
+import { formatCampusDateTime } from '../../lib/datetime';
 import { PrivilegedAccountInviteModal, PrivilegedInvitationStatus } from '../../components/PrivilegedAccountInvitations';
 import { jsonFetch } from '../../lib/http';
 import { PAGE_SECTIONS, selectedSection } from '../../lib/pageSections';
@@ -112,19 +113,7 @@ function mapUser(user: ApiUser): UserRow {
 }
 
 function formatDate(value: string) {
-  if (!value) return '—';
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleString('en-PH', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return formatCampusDateTime(value);
 }
 
 async function apiRequest<T>(

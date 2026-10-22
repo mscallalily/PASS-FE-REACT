@@ -9,7 +9,7 @@ import {
   TrendingUp, Activity, Shield, Bell, ArrowRight, CheckCircle, Clock
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { formatCampusDateTime } from '../../lib/datetime';
+import { formatCampusDate, formatCampusDateTime } from '../../lib/datetime';
 import { apiRequest } from '../../lib/apiClient';
 import { useLiveLoad, useLiveSync } from '../../lib/liveSync';
 
@@ -151,7 +151,7 @@ if (dashboardData) {
     <div className="animate-fadein space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-[#080677]">Administrative Dashboard</h1>
-        <p className="text-sm text-slate-500 mt-1">System overview — {new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        <p className="text-sm text-slate-500 mt-1">System overview — {formatCampusDate(new Date(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
       </div>
 
       {/* Summary Cards */}

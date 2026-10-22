@@ -21,6 +21,7 @@ function normalize(input: Record<string, unknown>): GeneralSettings {
   for (const key of Object.keys(DEFAULTS) as (keyof GeneralSettings)[]) {
     if (typeof input[key] === 'string') value[key] = input[key];
   }
+  value.timezone = 'Asia/Manila';
   return value;
 }
 
@@ -80,7 +81,7 @@ export default function SystemSettings() {
         <Input label="Institution Name" required maxLength={150} error={errors.institution_name} {...field('institution_name')} />
         <Input label="Contact Email" type="email" required maxLength={255} error={errors.contact_email} {...field('contact_email')} />
         <Input label="Contact Phone" maxLength={30} error={errors.contact_phone} {...field('contact_phone')} />
-        <p className="text-xs text-slate-500">Parking schedules and transaction timestamps are displayed in campus time: Asia/Manila.</p>
+        <p className="text-xs text-slate-500">All schedules and transaction times use Philippine Time (PHT / UTC+08:00), Asia/Manila.</p>
         <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
           <Button type="button" variant="outline" disabled={busy || !dirty} onClick={() => { setForm(saved && { ...saved }); setErrors({}); setError(''); setMessage(''); }}>Cancel</Button>
           <Button type="submit" disabled={busy || !dirty}>{saving ? 'Saving…' : 'Save General Settings'}</Button>

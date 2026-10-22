@@ -9,6 +9,6 @@ function headers(source?: HeadersInit): Headers {
 export async function apiRequest<T>(url: string, options: Omit<RequestInit, 'body'> & { body?: unknown } = {}): Promise<T> {
   const { body, ...rest } = options; const h = headers(rest.headers), form = body instanceof FormData;
   if (body !== undefined && !form) h.set('Content-Type', 'application/json');
-  return jsonRequest<T>(url, { ...rest, headers: h, body: body === undefined ? undefined : form ? body : JSON.stringify(body) }, /\/licenses(?:\/|$)|\/read-photo/.test(url) ? 120000 : 30000);
+  return jsonRequest<T>(url, { ...rest, headers: h, body: body === undefined ? undefined : form ? body : JSON.stringify(body) }, /\/licenses(?:\/|$)/.test(url) ? 120000 : 30000);
 }
 export function apiBlob(url: string): Promise<Blob> { return blobRequest(url, { headers: headers() }); }
