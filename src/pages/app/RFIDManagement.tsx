@@ -247,6 +247,7 @@ function RfidCredentials() {
     <Card>
       {admin && <div className="m-5 space-y-3 rounded-xl border border-slate-200 p-4">
         <h3 className="font-semibold">Assign RFID to approved vehicle</h3>
+        <p className="text-sm text-slate-600">Before issuing a tag, compare the actual vehicle, plate and driver with their submitted records. Vehicle registration requires staff approval before an RFID tag can be assigned.</p>
         <Select label="Vehicle" value={vehicleId} onChange={e => setVehicleId(e.target.value)} disabled={busy}>
           <option value="">Select an approved vehicle</option>
           {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} — {v.owner}</option>)}

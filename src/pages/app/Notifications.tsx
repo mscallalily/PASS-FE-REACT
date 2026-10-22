@@ -3,7 +3,7 @@ import { PageHeader, Card, Button } from '../../components/ui';
 import { apiRequest } from '../../lib/apiClient';
 import { useTopicVersion } from '../../lib/liveSync';
 import { CheckCircle, AlertTriangle, Info, XCircle, MailCheck, Bell } from 'lucide-react';
-import { formatCampusDateTime } from '../../lib/datetime';
+import { formatCampusDateTime, parseApiDateTime } from '../../lib/datetime';
 
 interface NotificationRow {
   notification_id: number;
@@ -30,8 +30,9 @@ function toneOf(type: string): keyof typeof TYPE_CFG {
 }
 
 function timeAgo(iso: string | null) {
-  if (!iso) return '';
-  const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  const date = parseApiDateTime(iso);
+  if (!date) return '';
+  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
   if (seconds < 60) return 'just now';
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`;
