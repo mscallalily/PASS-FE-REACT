@@ -1,0 +1,191 @@
+pipeline {
+    agent any
+
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
+    environment {
+        COMPOSE_FILE = 'compose.production.yml'
+        FE_SERVICE = 'pass-fe'
+        LOCAL_FE_URL = 'http://127.0.0.1:8091'
+        PUBLIC_FE_URL = 'https://pass-fe.edu-nexus.org'
+        PUBLIC_API_URL = 'https://pass-fe.edu-nexus.org/api/departments'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Validate Compose') {
+            steps {
+                sh '''
+                    set -e
+
+                    docker compose \
+                        -f "$COMPOSE_FILE" \
+                        config --quiet
+
+                    echo "Docker Compose configuration is valid."
+                '''
+            }
+        }
+
+        stage('Build FE') {
+            steps {
+                sh '''
+                    set -e
+
+                    docker compose \
+                        -f "$COMPOSE_FILE" \
+                        build "$FE_SERVICE"
+                '''
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    set -e
+
+                    docker compose \
+                        -f "$COMPOSE_FILE" \
+                        up -d
+                '''
+            }
+        }
+
+        stage('Wait for FE') {
+            steps {
+                sh '''
+                    set -e
+
+                    ATTEMPT=1
+                    MAX_ATTEMPTS=20
+
+                    while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+                        FE_HEALTH=$(docker inspect \
+                            --format='{{.State.Health.Status}}' \
+                            pass-fe 2>/dev/null || echo "missing")
+
+                        echo "Attempt $ATTEMPT/$MAX_ATTEMPTS"
+                        echo "PASS FE: $FE_HEALTH"
+
+                        if [ "$FE_HEALTH" = "healthy" ]; then
+                            echo "PASS FE is healthy."
+                            exit 0
+                        fi
+
+                        ATTEMPT=$((ATTEMPT + 1))
+                        sleep 3
+                    done
+
+                    echo "PASS FE did not become healthy."
+
+                    docker compose \
+                        -f "$COMPOSE_FILE" \
+                        ps
+
+                    docker compose \
+                        -f "$COMPOSE_FILE" \
+                        logs \
+                        --tail=200 \
+                        "$FE_SERVICE"
+
+                    exit 1
+                '''
+            }
+        }
+
+        stage('Local Health Check') {
+            steps {
+                sh '''
+                    set -e
+
+                    curl \
+                        --fail \
+                        --silent \
+                        --show-error \
+                        "$LOCAL_FE_URL" \
+                        > /tmp/pass-fe.html
+
+                    grep -qi "<html" /tmp/pass-fe.html
+
+                    echo "Local PASS FE health check passed."
+                '''
+            }
+        }
+
+        stage('Public FE Health Check') {
+            steps {
+                sh '''
+                    set -e
+
+                    curl \
+                        --fail \
+                        --silent \
+                        --show-error \
+                        "$PUBLIC_FE_URL" \
+                        > /tmp/pass-fe-public.html
+
+                    grep -qi "<html" /tmp/pass-fe-public.html
+
+                    echo "Public PASS FE health check passed."
+                '''
+            }
+        }
+
+        stage('Public API Proxy Check') {
+            steps {
+                sh '''
+                    set -e
+
+                    RESPONSE=$(curl \
+                        --fail \
+                        --silent \
+                        --show-error \
+                        "$PUBLIC_API_URL")
+
+                    echo "$RESPONSE"
+
+                    echo "$RESPONSE" | grep -q '"data"'
+
+                    echo "PASS FE API proxy check passed."
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'PASS FE UAT deployment successful.'
+        }
+
+        failure {
+            sh '''
+                echo "PASS FE UAT deployment failed."
+
+                docker compose \
+                    -f "$COMPOSE_FILE" \
+                    ps || true
+
+                docker compose \
+                    -f "$COMPOSE_FILE" \
+                    logs \
+                    --tail=200 \
+                    pass-fe || true
+            '''
+        }
+
+        cleanup {
+            sh '''
+                rm -f /tmp/pass-fe.html || true
+                rm -f /tmp/pass-fe-public.html || true
+            '''
+        }
+    }
+}
