@@ -7,6 +7,7 @@ import { apiRequest } from '../../lib/apiClient';
 import { useTopicVersion, useLiveSync } from '../../lib/liveSync';
 import { formatCampusDateTime } from '../../lib/datetime';
 import GateSimulator, { useSimulatorAvailable } from '../../components/GateSimulator';
+import RfidInventoryPanel from '../../components/RfidInventoryPanel';
 import { XCircle, LogIn, LogOut, ShieldCheck, CreditCard } from 'lucide-react';
 
 // Gate access records and RFID credentials, from access_events, rfid_tags and
@@ -301,10 +302,10 @@ export default function RFIDManagement() {
 
   return (
     <div className="animate-fadein">
-      <PageHeader backToDashboard title={tab === 'Access Records' ? 'RFID Access Records' : tab} subtitle="Entry and exit records at the shared Main Entrance / Exit, from the PASS database" />
+      <PageHeader backToDashboard title={tab === 'Access Records' ? 'RFID Access Records' : tab} subtitle={tab === 'RFID Inventory' ? 'Physical RFID stickers for new campus vehicle registrations: registration, automatic assignment and hand-over' : 'Entry and exit records at the shared Main Entrance / Exit, from the PASS database'} />
 
       {/* PASS: local USB reader shortcut. */}
-      {(user?.role === 'parking_staff' || user?.role === 'admin') && <Card className="mb-5 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+      {(user?.role === 'parking_staff' || user?.role === 'admin') && tab !== 'RFID Inventory' && <Card className="mb-5 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0"><p className="text-sm font-semibold text-[#080677]">Physical USB RFID reader</p><p className="mt-1 text-xs leading-relaxed text-slate-500">Open on the gate PC with the reader connected and the local reader service running. Use the reader window to record actual entries and exits.</p></div>
         <a href="http://127.0.0.1:8787/" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#080677] px-4 py-2 text-sm font-medium text-white hover:bg-[#0a0a99] focus:outline-none focus:ring-2 focus:ring-[#080677] focus:ring-offset-2"><CreditCard size={16}/>Open USB reader</a>
       </Card>}
@@ -313,6 +314,7 @@ export default function RFIDManagement() {
 
       {tab === 'Access Records' && <AccessRecords reloadKey={reloadKey} />}
       {tab === 'RFID Credentials' && <RfidCredentials />}
+      {tab === 'RFID Inventory' && user?.role === 'admin' && <RfidInventoryPanel />}
       {tab === 'Gate Simulator' && simulator === false && <p role="alert" className="text-sm text-slate-500">The development gate simulator is not available for this account.</p>}
       {tab === 'Gate Simulator' && simulator && <GateSimulator onScanned={() => setReloadKey(k => k + 1)} />}
     </div>

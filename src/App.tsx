@@ -121,6 +121,7 @@ function AppRoutes() {
         <Route path="rfid" element={<RoleRoute roles={['admin', 'parking_staff']}><RFIDManagement /></RoleRoute>} />
         <Route path="rfid/simulator" element={<RoleRoute roles={['admin', 'parking_staff']}><RFIDManagement /></RoleRoute>} />
         <Route path="rfid/monitor" element={<RoleRoute roles={['admin', 'parking_staff']}><RFIDManagement /></RoleRoute>} />
+        <Route path="rfid/inventory" element={<RoleRoute roles={['admin']}><RFIDManagement /></RoleRoute>} />
         <Route path="parking/transactions" element={<RoleRoute roles={['parking_staff']}><ParkingOperations /></RoleRoute>} />
         <Route path="parking/layout" element={<RoleRoute roles={['admin', 'parking_staff', 'student', 'faculty', 'employee']}><ParkingOperations /></RoleRoute>} />
         <Route path="parking/occupancy" element={<RoleRoute roles={['parking_staff']}><ParkingOperations /></RoleRoute>} />
