@@ -102,7 +102,7 @@ export default function Layout({ children, navigation, profileTo = '/app/profile
   }, [pathname, notificationsVersion]);
 
   const role = user?.role ?? 'student';
-  const visibleNav = (navigation ?? NAV_ITEMS).filter(item => !item.roles || item.roles.includes(role)).map(item => ({ ...item, children: item.children?.filter(child => !child.simulatorOnly || simulatorAvailable === true) }));
+  const visibleNav = (navigation ?? NAV_ITEMS).filter(item => !item.roles || item.roles.includes(role)).map(item => ({ ...item, children: item.children?.filter(child => (!child.simulatorOnly || simulatorAvailable === true) && (!child.adminOnly || role === 'admin')) }));
 
   const handleLogout = () => {
     logout();

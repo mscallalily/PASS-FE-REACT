@@ -2,7 +2,7 @@ import { useTopicVersion } from '../../lib/liveSync';
 import { formatCampusDate } from '../../lib/datetime';
 import { jsonFetch, jsonRequest } from '../../lib/http';
 import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { REGULAR_USER_ROLES, useAuth } from '../../context/AuthContext';
 import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input,  Toast, EmptyState } from '../../components/ui';
@@ -11,7 +11,13 @@ import DriverLicenseVerification from '../../components/DriverLicenseVerificatio
 import LicenseReviewQueue from '../../components/LicenseReviewQueue';
 import { useLicense, licenseOnFile as isLicenseOnFile } from '../../context/LicenseContext';
 import { ApiError, apiBlob } from '../../lib/apiClient';
-import FileUpload from '../../components/FileUpload';
+import FileUpload, { IMAGE_ACCEPT } from '../../components/FileUpload';
+import DocumentAutofill, { type DocumentStatus, type ExtractedFields, type FieldFlag } from '../../components/DocumentAutofill';
+import { type VehicleDetails, EMPTY_DETAILS, DETAIL_LABEL, combineReadings, reviewStatus, sourceOf as detailSource } from '../../lib/orcrReview';
+
+/** What was read from one OR/CR photo ("reading" until the server answers). */
+type DocReading = { status: DocumentStatus | 'reading'; fields: ExtractedFields; flags: Record<string, FieldFlag>; notes: Record<string, string> };
+const READING: DocReading = { status: 'reading', fields: {}, flags: {}, notes: {} };
 
 type AuthorizationStatus = 'pending' | 'approved' | 'rejected' | 'revoked' | 'expired' | 'suspended';
 
@@ -20,6 +26,8 @@ interface VehicleRecord {
   authorization_id: number | null;
   sticker_number: string | null;
   authorization_status: AuthorizationStatus | null;
+  document_check_status?: DocumentCheckStatus | null;
+  approval_source?: 'automatic' | 'staff' | null;
   valid_from: string | null;
   valid_until: string | null;
   requested_at: string | null;
@@ -43,7 +51,8 @@ interface VehicleAuthorizationRow extends VehicleRecord {
   owner_name: string | null;
 }
 
-type AuthAction = { kind: 'suspend' | 'lift' | 'approve' | 'reject'; row: VehicleAuthorizationRow };
+// Vehicle approval is automatic (OR/CR check); staff can only suspend or lift a suspension.
+type AuthAction = { kind: 'suspend' | 'lift'; row: VehicleAuthorizationRow };
 
 const AUTH_STATUS_LABEL: Record<AuthorizationStatus, string> = {
   pending: 'Pending Review',
@@ -98,7 +107,7 @@ async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T>
       ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers as Record<string, string> | undefined),
     },
-  }, options.method === 'POST' && /^\/api\/vehicles(?:\/\d+\/(?:photo|resubmit))?$/.test(url) ? 45000 : 30000);
+  }, options.method === 'POST' && /^\/api\/vehicles(?:\/\d+\/(?:photo|resubmit|document-check\/retry))?$/.test(url) ? 120000 : 30000);
 
 }
 
@@ -106,10 +115,20 @@ function formatDate(value: string | null) {
   return formatCampusDate(value);
 }
 
+type DocumentCheckStatus = 'processing' | 'passed' | 'retake_required' | 'needs_correction' | 'unavailable';
+interface DocumentCheck { status: DocumentCheckStatus; reasons: string[]; checkedAt: string | null; approvalSource: string | null }
+const DOCUMENT_CHECK_LABEL: Record<DocumentCheckStatus, string> = {
+  processing: 'Automatic OR/CR check in progress', passed: 'OR/CR check passed', retake_required: 'Clearer OR/CR photos needed',
+  needs_correction: 'Correction needed', unavailable: 'Check could not finish',
+};
+
 interface VehicleRow {
   hasPhoto?: boolean;
   rejectionReason?: string | null;
   canResubmit?: boolean;
+  hasOr?: boolean;
+  hasCr?: boolean;
+  documentCheck?: DocumentCheck | null;
   selectedForUse?: boolean;
   switchLocked?: boolean;
   id: string;
@@ -121,6 +140,8 @@ interface VehicleRow {
   type: string;
   color: string;
   rfid: string | null;
+  /** issued | assigned (collect from Admin) | pending_assignment (no sticker available yet) */
+  rfidStatus?: 'issued' | 'assigned' | 'pending_assignment' | null;
   status: string;
   registrationStatus?: string;
   authorizationStatus?: string | null;
@@ -132,6 +153,13 @@ interface VehiclesApiResponse {
   message?: string;
 }
 
+
+/** RFID shown to the owner: the UID once assigned, with its hand-over state. */
+function rfidLabel(vehicle: VehicleRow): string {
+  if (vehicle.rfid && vehicle.rfidStatus === 'assigned') return `${vehicle.rfid} · collect your sticker from the PASS Admin office`;
+  if (vehicle.rfid) return vehicle.rfid;
+  return vehicle.rfidStatus === 'pending_assignment' ? 'Pending RFID Assignment' : 'Not assigned';
+}
 
 async function fetchVehicles(): Promise<VehicleRow[]> {
   const token = getToken();
@@ -189,7 +217,7 @@ function VehiclePhotoPanel({ id, editable, onSaved, hasPhoto }: { id: string | n
     {editable && <>
       <FileUpload accept="image/jpeg,image/png" label="Vehicle photo — show the plate clearly (JPG/PNG)" file={file} onChange={setFile} onError={setError} />
       <Button onClick={save} disabled={!file || busy}>{busy ? 'Submitting…' : 'Submit vehicle photo'}</Button>
-      <p className="text-xs text-slate-500">The replacement photo will be sent for staff review. Your vehicle stays Pending review until a staff decision. RFID assignment remains separate.</p>
+      <p className="text-xs text-slate-500">Replacing the photo re-runs the automatic OR/CR check with the documents on file. RFID assignment remains separate.</p>
     </>}
   </div>;
 }
@@ -212,7 +240,17 @@ export default function VehicleManagement() {
   const [showRegister, setShowRegister] = useState(false);
   const [correctingVehicle, setCorrectingVehicle] = useState<VehicleRow | null>(null);
   const [photoVehicleId, setPhotoVehicleId] = useState<number | null>(null);
-  const [vehiclePhoto, setVehiclePhoto] = useState<File | null>(null);
+  const [orFile, setOrFile] = useState<File | null>(null);
+  const [crFile, setCrFile] = useState<File | null>(null);
+  // What was read from each document; null when no photo is selected.
+  const [orReading, setOrReading] = useState<DocReading | null>(null);
+  const [crReading, setCrReading] = useState<DocReading | null>(null);
+  // Only the details the owner corrected; everything else comes from the OR/CR.
+  const [detailEdits, setDetailEdits] = useState<Partial<VehicleDetails>>({});
+  const [editingDetails, setEditingDetails] = useState(false);
+  // Low-certainty values the owner confirmed against the document (kept by value, so a new reading needs a new check).
+  const [checkedDetails, setCheckedDetails] = useState<Partial<VehicleDetails>>({});
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const [authRows, setAuthRows] = useState<VehicleAuthorizationRow[]>([]);
@@ -231,9 +269,9 @@ export default function VehicleManagement() {
   const [myError, setMyError] = useState('');
   const [myReloadKey, setMyReloadKey] = useState(0);
 
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+  const showToast = (message: string, type: 'success' | 'error' = 'success', ms?: number) => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), type === 'error' ? 5000 : 3000);
+    setTimeout(() => setToast(null), ms ?? (type === 'error' ? 5000 : 3000));
   };
 
   // Staff "Authorization" tab: all authorizations, filtered server-side.
@@ -279,45 +317,97 @@ export default function VehicleManagement() {
   const [vehicleReloadKey, setVehicleReloadKey] = useState(0);
   const [registerBusy, setRegisterBusy] = useState(false);
   const [registerError, setRegisterError] = useState('');
-  const [vehicleForm, setVehicleForm] = useState({ plate_number: '', vehicle_type: '', year_model: '', make: '', model: '', color: '' });
+  // The registration details: the owner's corrections, else the OR and CR readings
+  // combined field by field (either document may supply a detail), else (when
+  // correcting a saved record) its current values. A replaced photo's old values
+  // disappear with its reading, so they never linger.
+  const fromDocuments = useMemo(() => combineReadings(orReading, crReading), [orReading, crReading]);
+  const savedDetails: VehicleDetails = correctingVehicle ? { plate_number: correctingVehicle.plate, vehicle_type: correctingVehicle.type,
+    year_model: correctingVehicle.year == null ? '' : String(correctingVehicle.year), make: correctingVehicle.make, model: correctingVehicle.model, color: correctingVehicle.color } : EMPTY_DETAILS;
+  const details = Object.fromEntries((Object.keys(EMPTY_DETAILS) as (keyof VehicleDetails)[]).map(key =>
+    [key, detailEdits[key] ?? (fromDocuments[key].value || (fromDocuments[key].state === 'conflict' ? '' : savedDetails[key])) ?? ''])) as VehicleDetails;
+  // One review status for the whole OR/CR result (see lib/orcrReview): OCR certainty
+  // ("check") is kept apart from real problems (mismatch, missing detail, retake).
+  const review = reviewStatus({ or: orReading, cr: crReading, hasOr: !!orFile, hasCr: !!crFile, combined: fromDocuments, details, edits: detailEdits, checked: checkedDetails });
+  const readingDocuments = review.tone === 'reading';
+  const { conflicts: conflictDetails, missing: missingDetails, toCheck: uncertainDetails, plateConflict, plateTaken } = review;
+  const orPlate = fromDocuments.plate_number.or, crPlate = fromDocuments.plate_number.cr;
+  const sourceOf = (key: keyof VehicleDetails) => detailSource(key, { combined: fromDocuments, edits: detailEdits, checked: checkedDetails, details });
+  const confirmChecked = () => setCheckedDetails(c => ({ ...c, ...Object.fromEntries(uncertainDetails.map(key => [key, details[key]])) }));
 
   function openRegistration(vehicle: VehicleRow | null = null) {
-    setSelected(null); setCorrectingVehicle(vehicle); setVehiclePhoto(null); setRegisterError('');
-    setVehicleForm(vehicle ? { plate_number: vehicle.plate, vehicle_type: vehicle.type,
-      year_model: vehicle.year == null ? '' : String(vehicle.year), make: vehicle.make, model: vehicle.model, color: vehicle.color }
-      : { plate_number: '', vehicle_type: '', year_model: '', make: '', model: '', color: '' });
+    setSelected(null); setCorrectingVehicle(vehicle); setOrFile(null); setCrFile(null); setOrReading(null); setCrReading(null);
+    setDetailEdits({}); setCheckedDetails({}); setEditingDetails(false); setRegisterError('');
     setShowRegister(true);
   }
   function closeRegistration() {
     if (registerBusy) return;
     setShowRegister(false); setCorrectingVehicle(null);
   }
+  async function retryDocumentCheck(vehicle: VehicleRow) {
+    if (retryingId) return;
+    setRetryingId(vehicle.id);
+    try {
+      const data = await apiRequest<{ message: string; document_check?: DocumentCheck | null }>(`/api/vehicles/${vehicle.id}/document-check/retry`, { method: 'POST' });
+      showToast(data.message, data.document_check?.status === 'passed' ? 'success' : 'error');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'The check could not be restarted.', 'error');
+    } finally {
+      setRetryingId(null); setSelected(null); setVehicleReloadKey(k => k + 1); setMyReloadKey(k => k + 1);
+    }
+  }
   function correctionAction(vehicle: VehicleRow) {
     if (!isRegularUser || !['pending', 'rejected'].includes(vehicle.authorizationStatus || vehicle.status)) return null;
+    const check = vehicle.documentCheck;
     return <div className="space-y-2">
-      {vehicle.rejectionReason && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 break-words"><span className="font-semibold">Correction requested: </span>{vehicle.rejectionReason}</p>}
-      <Button className="w-full min-h-12" onClick={() => openRegistration(vehicle)}>{vehicle.status === 'rejected' ? 'Correct & resubmit' : 'Update & resubmit'}</Button>
-      <p className="text-xs text-slate-500">Correct this existing record and upload a new matching photo.</p>
+      {check && <div className={`rounded-xl border p-3 text-sm break-words ${check.status === 'processing' ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
+        <p className="font-semibold">{DOCUMENT_CHECK_LABEL[check.status] ?? check.status}</p>
+        {check.reasons.length > 0 && <ul className="mt-1 list-disc pl-5 space-y-0.5">{check.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+      </div>}
+      {!check && vehicle.rejectionReason && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 break-words"><span className="font-semibold">Correction requested: </span>{vehicle.rejectionReason}</p>}
+      {check?.status === 'unavailable' && <Button className="w-full min-h-12" variant="outline" disabled={!!retryingId} onClick={() => retryDocumentCheck(vehicle)}>{retryingId === vehicle.id ? 'Checking…' : 'Retry automatic check'}</Button>}
+      {check?.status !== 'processing' && <Button className="w-full min-h-12" onClick={() => openRegistration(vehicle)}>{check?.status === 'retake_required' ? 'Retake or re-upload OR/CR' : 'Correct & resubmit'}</Button>}
+      <p className="text-xs text-slate-500">Correct this record and upload the OR and CR again. Approval is automatic once every check passes.</p>
     </div>;
   }
 
   async function registerVehicle() {
     if (registerBusy) return;
-    if (!vehiclePhoto) { setRegisterError('Upload a vehicle photo showing the plate.'); return; }
+    if (!orFile || !crFile) { setRegisterError('Upload photos of both the Official Receipt (OR) and the Certificate of Registration (CR).'); return; }
+    if (readingDocuments) { setRegisterError('Wait until both documents have been read.'); return; }
+    if (plateConflict) { setRegisterError(`The OR shows plate ${orPlate} but the CR shows ${crPlate}. Upload the OR and CR of the same vehicle.`); return; }
+    if (plateTaken) { setRegisterError(`Plate ${details.plate_number} is already registered to another account. Correct the plate if it was misread, or contact PASS staff.`); return; }
+    if (conflictDetails.length) {
+      setEditingDetails(true);
+      setRegisterError(`The OR and CR show different ${conflictDetails.map(key => DETAIL_LABEL[key].toLowerCase()).join(', ')}. Enter the value printed on your documents below, or retake the photo that was misread.`);
+      return;
+    }
+    if (missingDetails.length) {
+      setEditingDetails(true);
+      setRegisterError(`${missingDetails.map(key => DETAIL_LABEL[key]).join(', ')} could not be read. Retake the photo or enter ${missingDetails.length > 1 ? 'them' : 'it'} below.`);
+      return;
+    }
+    if (uncertainDetails.length) { setRegisterError(`${review.message} Use “These values match my documents” or Correct details.`); return; }
     setRegisterBusy(true); setRegisterError('');
     try {
       const body = new FormData();
-      Object.entries(vehicleForm).forEach(([key, value]) => { if (value) body.append(key, value); });
-      body.append('vehicle_photo', vehiclePhoto);
-      const data = await apiRequest<{ message: string }>(correctingVehicle ? `/api/vehicles/${correctingVehicle.id}/resubmit` : '/api/vehicles', { method: 'POST', body });
-      setVehiclePhoto(null);
+      Object.entries(details).forEach(([key, value]) => { if (value.trim()) body.append(key, key === 'vehicle_type' ? value : value.trim().toUpperCase()); });
+      body.append('or_document', orFile); body.append('cr_document', crFile);
+      const data = await apiRequest<{ message: string; document_check?: DocumentCheck | null }>(correctingVehicle ? `/api/vehicles/${correctingVehicle.id}/resubmit` : '/api/vehicles', { method: 'POST', body });
+      // Reached only after the server saved the registration and its documents.
+      setOrFile(null); setCrFile(null); setOrReading(null); setCrReading(null); setDetailEdits({}); setCheckedDetails({});
       setShowRegister(false); setCorrectingVehicle(null); setSelected(null);
-      setAuthReloadKey(k => k + 1);
-      setVehicleForm({ plate_number: '', vehicle_type: '', year_model: '', make: '', model: '', color: '' });
-      setVehicleReloadKey(k => k + 1); setMyReloadKey(k => k + 1);
-      showToast(data.message);
+      setAuthReloadKey(k => k + 1); setVehicleReloadKey(k => k + 1); setMyReloadKey(k => k + 1);
+      const check = data.document_check?.status === 'passed' ? 'It was approved automatically after the OR/CR check.'
+        : `${data.message}${data.document_check?.reasons?.length ? ' ' + data.document_check.reasons.join(' ') : ''}`;
+      showToast(correctingVehicle
+        ? `Vehicle registration updated. ${check}`
+        : `Vehicle Registration Successful! Your vehicle details have been read from your OR/CR and successfully registered. ${check}`, 'success', 9000);
     } catch (error) {
-      setRegisterError(error instanceof ApiError && Object.keys(error.fieldErrors).length ? Object.values(error.fieldErrors).join(' ') : error instanceof Error ? error.message : 'Vehicle registration failed.');
+      // The selected files and details stay in place so the owner can retry. When the OR/CR
+      // did not confirm the details nothing was saved; open the editor beside the reasons.
+      if (error instanceof ApiError && error.fieldErrors.documents) setEditingDetails(true);
+      setRegisterError(error instanceof ApiError && Object.keys(error.fieldErrors).length ? Object.values(error.fieldErrors).join(' ') : error instanceof Error ? error.message : 'Vehicle registration failed. Your documents are still selected; try again.');
     } finally { setRegisterBusy(false); }
   }
 
@@ -369,7 +459,7 @@ export default function VehicleManagement() {
     if (!pendingAction) return;
 
     const { kind, row } = pendingAction;
-    const endpoint = kind === 'approve' || kind === 'reject' ? 'review' : kind === 'suspend' ? 'suspend' : 'lift-suspension';
+    const endpoint = kind === 'suspend' ? 'suspend' : 'lift-suspension';
 
     setActionBusy(true);
     setActionError('');
@@ -379,7 +469,7 @@ export default function VehicleManagement() {
         `/api/vehicles/authorizations/${row.authorization_id}/${endpoint}`,
         {
           method: 'PATCH',
-          body: JSON.stringify(kind === 'approve' || kind === 'reject' ? { decision: kind === 'approve' ? 'approved' : 'rejected', reason: actionReason.trim() || null } : kind === 'suspend' ? { reason: actionReason.trim() || null } : {}),
+          body: JSON.stringify(kind === 'suspend' ? { reason: actionReason.trim() || null } : {}),
         }
       );
 
@@ -435,7 +525,8 @@ export default function VehicleManagement() {
       <Badge variant={vehicle.selectedForUse ? 'success' : 'default'}>{vehicle.selectedForUse ? 'Selected for use' : 'Inactive for entry'}</Badge>
       {!vehicle.selectedForUse && <div><Button className="w-full min-h-12 text-base" disabled={!!switchingVehicle || vehicle.switchLocked || !vehicle.rfid || vehicle.status !== 'approved' || vehicle.registrationStatus !== 'registered'} onClick={() => selectVehicleForUse(vehicle)}>{switchingVehicle === vehicle.id ? 'Switching…' : 'Use this vehicle'}</Button></div>}
       {vehicle.switchLocked && <p className="text-xs text-amber-700">Exit first to switch vehicles.</p>}
-      {!vehicle.rfid && <p className="text-xs text-slate-400">Active RFID assignment required.</p>}
+      {!vehicle.rfid && <p className="text-xs text-slate-400">{vehicle.rfidStatus === 'pending_assignment' ? 'Pending RFID Assignment: a sticker is assigned automatically when one is available.' : 'Active RFID assignment required.'}</p>}
+      {vehicle.rfid && vehicle.rfidStatus === 'assigned' && <p className="text-xs text-amber-700">Collect your RFID sticker from the PASS Admin office. It works at the gate after Admin confirms the hand-over.</p>}
     </div>;
   }
 
@@ -544,11 +635,11 @@ export default function VehicleManagement() {
               </div>
               <div className="p-4 sm:p-5 space-y-4">
                 <div className={`rounded-lg px-3 py-2 text-sm font-semibold ${vehicle.selectedForUse ? 'bg-green-50 text-green-800' : 'bg-slate-100 text-slate-600'}`}>{vehicle.selectedForUse ? '✓ Selected for use' : 'Inactive for entry'}</div>
-                <dl className="grid grid-cols-2 gap-3 text-sm"><div className="min-w-0"><dt className="text-xs text-slate-400">Vehicle type</dt><dd className="mt-1 break-words">{vehicle.type}</dd></div><div><dt className="text-xs text-slate-400">Authorization</dt><dd className="mt-1"><Badge variant={statusBadge(vehicle.status)}>{vehicle.status}</Badge></dd></div><div className="col-span-2 min-w-0"><dt className="text-xs text-slate-400">Assigned RFID</dt><dd className="font-mono text-xs mt-1 break-all">{vehicle.rfid || 'Not assigned'}</dd></div></dl>
+                <dl className="grid grid-cols-2 gap-3 text-sm"><div className="min-w-0"><dt className="text-xs text-slate-400">Vehicle type</dt><dd className="mt-1 break-words">{vehicle.type}</dd></div><div><dt className="text-xs text-slate-400">Authorization</dt><dd className="mt-1"><Badge variant={statusBadge(vehicle.status)}>{vehicle.status}</Badge></dd></div><div className="col-span-2 min-w-0"><dt className="text-xs text-slate-400">Assigned RFID</dt><dd className="font-mono text-xs mt-1 break-all">{rfidLabel(vehicle)}</dd></div></dl>
                 {!vehicle.selectedForUse && <Button className="w-full min-h-12 text-base" disabled={!!switchingVehicle || vehicle.switchLocked || !vehicle.rfid || vehicle.status !== 'approved' || vehicle.registrationStatus !== 'registered'} onClick={() => selectVehicleForUse(vehicle)}>{switchingVehicle === vehicle.id ? 'Switching…' : 'Use this vehicle'}</Button>}
                 {vehicle.selectedForUse && <p className="text-xs leading-relaxed text-slate-500">This is your selected vehicle for entry. Normal RFID, license and authorization checks still apply.</p>}
                 {vehicle.switchLocked && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">A vehicle is still inside. Record its exit, then refresh to switch vehicles.</p>}
-                {!vehicle.rfid && <p className="text-xs text-slate-500">Staff must assign an active RFID before you can select this vehicle.</p>}
+                {!vehicle.rfid && <p className="text-xs text-slate-500">{vehicle.rfidStatus === 'pending_assignment' ? 'Pending RFID Assignment: a sticker is assigned automatically when one is available.' : 'Staff must assign an active RFID before you can select this vehicle.'}</p>}
                 {correctionAction(vehicle)}
                 <Button className="w-full" variant="outline" onClick={() => setSelected(vehicle)}>View vehicle details</Button>
               </div>
@@ -559,7 +650,7 @@ export default function VehicleManagement() {
               { key: 'vehicle', label: 'Vehicle', render: v => `${v.year} ${v.make} ${v.model}` },
               { key: 'type', label: 'Type' },
               { key: 'color', label: 'Color' },
-              { key: 'rfid', label: 'RFID', render: v => v.rfid ? <span className="text-xs font-mono text-slate-500">{v.rfid}</span> : <span className="text-xs text-slate-300">Unassigned</span> },
+              { key: 'rfid', label: 'RFID', render: v => v.rfid ? <span className="text-xs font-mono text-slate-500">{v.rfid}{v.rfidStatus === 'assigned' ? ' · not issued' : ''}</span> : <span className="text-xs text-slate-300">{v.rfidStatus === 'pending_assignment' ? 'Pending RFID Assignment' : 'Unassigned'}</span> },
               { key: 'status', label: 'Authorization', render: v => <Badge variant={statusBadge(v.status)}>{v.status}</Badge> },
               ...(isRegularUser ? [{ key: 'entry_selection', label: 'Entry selection', render: (v: VehicleRow) => vehicleUseControl(v) }] : []),
               { key: 'actions', label: 'Actions', render: v => <Button size="sm" variant="ghost" onClick={() => setSelected(v)}>View</Button> },
@@ -574,14 +665,15 @@ export default function VehicleManagement() {
         <Card className="p-5 sm:p-6 space-y-4">
           <div>
             <h3 className="font-semibold text-[#080677]">RFID Assignment</h3>
-            <p className="text-sm text-slate-500 mt-1">After your license and vehicle are approved, contact PASS staff for your physical RFID tag. The administrator records its assignment to your vehicle.</p>
+            <p className="text-sm text-slate-500 mt-1">When a new vehicle registration is approved, PASS assigns an RFID sticker to it automatically if one is available; otherwise it shows Pending RFID Assignment. Collect the physical sticker from the PASS Admin office: it works at the gate after Admin confirms the hand-over.</p>
           </div>
           {loadingVehicles && <p role="status" className="text-sm text-slate-500">Loading assigned tags…</p>}
           {vehicleError && <p role="alert" className="text-sm text-red-700">{vehicleError}</p>}
           {!loadingVehicles && !vehicleError && <Table columns={[
             { key: 'plate', label: 'Vehicle Plate' },
             { key: 'status', label: 'Authorization', render: (vehicle: VehicleRow) => <Badge variant={statusBadge(vehicle.status)}>{vehicle.status}</Badge> },
-            { key: 'rfid', label: 'RFID Tag', render: (vehicle: VehicleRow) => <span className="font-mono text-xs break-all">{vehicle.rfid || 'Not assigned'}</span> },
+            { key: 'rfid', label: 'RFID Tag', render: (vehicle: VehicleRow) => <span className="font-mono text-xs break-all">{vehicle.rfid || (vehicle.rfidStatus === 'pending_assignment' ? 'Pending RFID Assignment' : 'Not assigned')}</span> },
+            { key: 'rfidStatus', label: 'Sticker', render: (vehicle: VehicleRow) => vehicle.rfidStatus === 'issued' ? <Badge variant="success">Issued</Badge> : vehicle.rfidStatus === 'assigned' ? <Badge variant="warning">Assigned · collect from Admin</Badge> : vehicle.rfidStatus === 'pending_assignment' ? <Badge variant="info">Pending RFID Assignment</Badge> : <span className="text-xs text-slate-300">—</span> },
           ]} data={roleScopedVehicles} />}
           <p className="text-xs text-slate-500">A tag assignment does not record an entry. Choose your vehicle under My Vehicles before using it at the gate.</p>
           <Button variant="outline" onClick={() => setTab('My Vehicles')}>View my vehicles</Button>
@@ -647,7 +739,8 @@ export default function VehicleManagement() {
                 { key: 'photo', label: 'Photo', render: (r: VehicleAuthorizationRow) => <Button size="sm" variant="outline" onClick={() => setPhotoVehicleId(r.vehicle_id)}>View photo</Button> },
                 { key: 'actions', label: 'Actions', render: (r: VehicleAuthorizationRow) => {
                   if (r.authorization_status === 'pending') {
-                    return <div className="flex gap-2"><Button size="sm" onClick={() => openAction({ kind: 'approve', row: r })}>Approve</Button><Button size="sm" variant="danger" onClick={() => openAction({ kind: 'reject', row: r })}>Reject</Button></div>;
+                    // No manual approval: show where the automatic check stands.
+                    return <span className="text-xs text-slate-500">{r.document_check_status ? DOCUMENT_CHECK_LABEL[r.document_check_status] ?? r.document_check_status : 'Awaiting OR/CR upload'}</span>;
                   }
                   if (r.authorization_status === 'approved') {
                     return (
@@ -736,23 +829,21 @@ export default function VehicleManagement() {
       <Modal
         open={!!pendingAction}
         onClose={closeAction}
-        title={pendingAction?.kind === 'approve' ? 'Approve Vehicle' : pendingAction?.kind === 'reject' ? 'Reject Vehicle' : pendingAction?.kind === 'lift' ? 'Lift Suspension' : 'Suspend Vehicle Authorization'}
+        title={pendingAction?.kind === 'lift' ? 'Lift Suspension' : 'Suspend Vehicle Authorization'}
         size="sm"
       >
         {pendingAction && (
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              {pendingAction.kind === 'approve' || pendingAction.kind === 'reject' ? (
-                <>Confirm {pendingAction.kind} for {pendingAction.row.plate_number}? Approval requires an active account and an eligible verified driver license. RFID assignment is separate.</>
-              ) : pendingAction.kind === 'suspend' ? (
+              {pendingAction.kind === 'suspend' ? (
                 <>Suspend the authorization for <span className="font-mono font-bold text-[#080677]">{pendingAction.row.plate_number}</span>? The vehicle will be treated as unauthorized until the suspension is lifted.</>
               ) : (
                 <>Lift the suspension for <span className="font-mono font-bold text-[#080677]">{pendingAction.row.plate_number}</span>? The authorization will return to Approved if the vehicle still meets all approval and access requirements.</>
               )}
             </p>
-            {(pendingAction.kind === 'suspend' || pendingAction.kind === 'reject') && (
+            {pendingAction.kind === 'suspend' && (
               <Input
-                label={pendingAction.kind === 'reject' ? 'Reason (required)' : 'Reason (optional)'}
+                label="Reason (optional)"
                 placeholder="e.g. Parking violation under review"
                 maxLength={255}
                 value={actionReason}
@@ -774,7 +865,7 @@ export default function VehicleManagement() {
               >
                 {actionBusy
                   ? 'Saving...'
-                  : pendingAction.kind === 'approve' ? 'Approve' : pendingAction.kind === 'reject' ? 'Reject' : pendingAction.kind === 'suspend' ? 'Suspend' : 'Lift Suspension'}
+                  : pendingAction.kind === 'suspend' ? 'Suspend' : 'Lift Suspension'}
               </Button>
             </div>
           </div>
@@ -795,7 +886,7 @@ export default function VehicleManagement() {
                 <Badge variant={statusBadge(selected.status)}>{selected.status}</Badge>
               </div>
             </div>
-            {[['Owner', selected.owner], ['Vehicle Type', selected.type], ['Color', selected.color], ['RFID Tag', selected.rfid || 'Not assigned'], ['Registration Status', selected.registrationStatus || 'registered'], ['Authorization Status', selected.authorizationStatus || selected.status]].map(([k, v]) => (
+            {[['Owner', selected.owner], ['Vehicle Type', selected.type], ['Color', selected.color], ['RFID Tag', rfidLabel(selected)], ['Registration Status', selected.registrationStatus || 'registered'], ['Authorization Status', selected.authorizationStatus || selected.status]].map(([k, v]) => (
               <div key={k} className="flex justify-between text-sm border-b border-slate-50 pb-2">
                 <span className="text-slate-400">{k}</span>
                 <span className="font-medium text-slate-700">{v || '—'}</span>
@@ -821,7 +912,7 @@ export default function VehicleManagement() {
           <div className="space-y-4">
             <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-              <p>Complete driver’s license verification before registering a vehicle. Your license must be verified and unexpired before you submit a vehicle for staff review.</p>
+              <p>Complete driver’s license verification before registering a vehicle. Your license must be verified and unexpired before you submit a vehicle.</p>
             </div>
             <div className="flex gap-3">
               <Button onClick={() => { setShowRegister(false); setTab('Driver & License'); }}>Go to Driver & License</Button>
@@ -831,24 +922,96 @@ export default function VehicleManagement() {
         ) : (
           <div className="space-y-4">
             {correctingVehicle && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 break-words">{correctingVehicle.rejectionReason || 'Review and correct this existing vehicle registration.'}</p>}
-            <p className="text-sm text-slate-600">{correctingVehicle ? 'Correct the details below and upload a new vehicle photo. Your previous submission stays in history.' : 'Enter your details, then upload a clear vehicle photo with the complete plate visible.'} Your submission will stay Pending review until PASS staff review the details and photo.</p>
-            <Input label="Plate Number" aria-label="Plate Number" placeholder="ABC-1234" value={vehicleForm.plate_number} onChange={e => setVehicleForm(f => ({ ...f, plate_number: e.target.value.toUpperCase() }))} disabled={registerBusy} />
+            <p className="text-sm text-slate-600">{correctingVehicle ? 'Upload the OR and CR again; the details are read from them for you to review. Your previous submission stays in history.' : 'Upload or take photos of your Official Receipt (OR) and Certificate of Registration (CR). The plate number and vehicle description are read from them for you to review.'} Approval is automatic when the OR and CR agree with the reviewed details, the registration is valid and your license is verified.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Select label="Vehicle Type" aria-label="Vehicle Type" value={vehicleForm.vehicle_type} onChange={e => setVehicleForm(f => ({ ...f, vehicle_type: e.target.value }))} disabled={registerBusy}><option value="">Choose vehicle type…</option><option>Sedan</option><option>SUV</option><option>Hatchback</option><option>Pickup</option><option>Motorcycle</option><option>Van</option></Select>
-              <Input label="Year" placeholder="2024" type="number" value={vehicleForm.year_model} onChange={e => setVehicleForm(f => ({ ...f, year_model: e.target.value.toUpperCase() }))} disabled={registerBusy} />
+              <div className="space-y-2">
+                <FileUpload accept={IMAGE_ACCEPT} capture preview disabled={registerBusy} label="Official Receipt (OR)" file={orFile}
+                  onChange={f => { setOrFile(f); setOrReading(f ? READING : null); setRegisterError(''); }} onError={setRegisterError} />
+                <DocumentAutofill compact file={orFile} documentType="vehicle_or" onFields={(fields, flags, status, notes) => setOrReading({ status, fields, flags, notes })} />
+              </div>
+              <div className="space-y-2">
+                <FileUpload accept={IMAGE_ACCEPT} capture preview disabled={registerBusy} label="Certificate of Registration (CR)" file={crFile}
+                  onChange={f => { setCrFile(f); setCrReading(f ? READING : null); setRegisterError(''); }} onError={setRegisterError} />
+                <DocumentAutofill compact file={crFile} documentType="vehicle_cr" onFields={(fields, flags, status, notes) => setCrReading({ status, fields, flags, notes })} />
+              </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Make" placeholder="Toyota" value={vehicleForm.make} onChange={e => setVehicleForm(f => ({ ...f, make: e.target.value.toUpperCase() }))} disabled={registerBusy} />
-              <Input label="Model" placeholder="Vios" value={vehicleForm.model} onChange={e => setVehicleForm(f => ({ ...f, model: e.target.value.toUpperCase() }))} disabled={registerBusy} />
-            </div>
-            <Input label="Color" aria-label="Color" placeholder="WHITE" value={vehicleForm.color} onChange={e => setVehicleForm(f => ({ ...f, color: e.target.value.toUpperCase() }))} disabled={registerBusy} />
-
-            <p className="text-xs text-slate-500">{vehicleForm.vehicle_type === 'Motorcycle' ? 'Motorcycle parking lot' : vehicleForm.vehicle_type ? 'Car parking lot — four-wheel vehicles' : 'Motorcycles use the motorcycle lot; supported four-wheel vehicles use the car lot.'}</p>
-            <fieldset disabled={registerBusy}><FileUpload accept="image/jpeg,image/png" label="Vehicle photo — show the complete plate (JPG/PNG, up to 5 MB)" file={vehiclePhoto} onChange={f => { if (!registerBusy) { setVehiclePhoto(f); setRegisterError(''); } }} onError={setRegisterError} /></fieldset>
-            <p className="text-xs text-slate-500">PASS staff will review the vehicle details and photo before approving or returning your submission. RFID assignment is a separate step after approval.</p>
+            {(orFile || crFile) && (
+              <section aria-label="Review vehicle details" className="rounded-xl border border-slate-200 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="font-semibold text-[#080677]">Review vehicle details</h4>
+                  {!readingDocuments && (
+                    <button type="button" disabled={registerBusy} onClick={() => setEditingDetails(v => !v)} className="text-sm font-semibold text-[#2563EB] hover:underline disabled:opacity-50">
+                      {editingDetails ? 'Done' : 'Correct details'}
+                    </button>
+                  )}
+                </div>
+                <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[auto_1fr]">
+                  <dt className="font-medium text-slate-500">Plate Number</dt>
+                  <dd className={`break-words ${!details.plate_number || uncertainDetails.includes('plate_number') ? 'text-amber-800' : 'font-semibold text-slate-800'}`}>
+                    {details.plate_number || (readingDocuments ? 'Reading…' : plateConflict ? `OR: ${orPlate} · CR: ${crPlate}` : 'Not read on the OR or CR; enter it below')}
+                    {details.plate_number && sourceOf('plate_number') && <span className="font-normal text-slate-500"> ({sourceOf('plate_number')})</span>}
+                  </dd>
+                  <dt className="font-medium text-slate-500">Vehicle Description</dt>
+                  <dd className={`break-words ${(['make', 'model', 'color', 'vehicle_type'] as const).some(key => !details[key] || uncertainDetails.includes(key)) ? 'text-amber-800' : 'font-semibold text-slate-800'}`}>
+                    {[[details.make, details.model].filter(Boolean).join(' '), details.color, details.year_model, details.vehicle_type].filter(Boolean).join(' · ') || (readingDocuments ? 'Reading…' : 'Not read; enter it below')}
+                    {!readingDocuments && (['make', 'model', 'color', 'vehicle_type'] as const).some(key => !details[key]) && (details.make || details.model) && ' (some details missing)'}
+                  </dd>
+                  {(['make', 'model'] as const).map(key => (
+                    <React.Fragment key={key}>
+                      <dt className="font-medium text-slate-500 sm:pl-3">{key === 'make' ? 'Make' : 'Model / Series'}</dt>
+                      <dd className={`break-words ${!details[key] || uncertainDetails.includes(key) || conflictDetails.includes(key) ? 'text-amber-800' : 'text-slate-800'}`}>
+                        {details[key] || (readingDocuments ? 'Reading…' : conflictDetails.includes(key) ? `OR: ${fromDocuments[key].or} · CR: ${fromDocuments[key].cr} (documents differ; enter the correct value)` : 'Not read; enter it below')}
+                        {details[key] && sourceOf(key) && <span className="text-slate-500"> ({sourceOf(key)})</span>}
+                      </dd>
+                    </React.Fragment>
+                  ))}
+                  <dt className="font-medium text-slate-500">Parking</dt>
+                  <dd className="text-slate-700">{details.vehicle_type ? (details.vehicle_type === 'Motorcycle' ? 'Motorcycle lot' : 'Car lot (four-wheel vehicles)') : 'Decided by the vehicle type'}</dd>
+                  <dt className="font-medium text-slate-500">OR/CR Result</dt>
+                  <dd role="status" className={{ reading: 'text-blue-800', problem: 'text-red-700', check: 'text-blue-800', success: 'text-green-700' }[review.tone]}>
+                    <span className="font-semibold">{review.title}</span>{review.tone !== 'reading' && <span className="block font-normal">{review.message}</span>}
+                    {(review.tone === 'success' || review.tone === 'check') && review.basis.length > 0 && <span className="block text-xs font-normal text-slate-500">{review.basis.join(' ')}</span>}
+                  </dd>
+                </dl>
+                {!readingDocuments && review.missingNotes.length > 0 && (
+                  <ul className="list-disc space-y-0.5 rounded-xl border border-amber-200 bg-amber-50 py-2 pl-7 pr-3 text-sm text-amber-900">
+                    {review.missingNotes.map(note => <li key={note}>{note}</li>)}
+                  </ul>
+                )}
+                {review.tone === 'check' && (
+                  <div className="flex flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 sm:flex-row sm:items-center sm:justify-between">
+                    <span>Compare the values marked “check this value” with your documents.</span>
+                    <div className="flex shrink-0 gap-2">
+                      <Button size="sm" disabled={registerBusy} onClick={confirmChecked}>These values match my documents</Button>
+                      <Button size="sm" variant="outline" disabled={registerBusy} onClick={() => setEditingDetails(true)}>Correct</Button>
+                    </div>
+                  </div>
+                )}
+                {(editingDetails || (!readingDocuments && missingDetails.length + conflictDetails.length > 0)) && (
+                  <fieldset disabled={registerBusy} className="grid grid-cols-1 gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2">
+                    <Input label="Plate Number" placeholder="ABC 1234" value={details.plate_number} error={!details.plate_number ? 'Not read from the OR/CR.' : undefined}
+                      onChange={e => setDetailEdits(d => ({ ...d, plate_number: e.target.value.toUpperCase() }))} />
+                    <Select label="Vehicle Type" value={details.vehicle_type} onChange={e => setDetailEdits(d => ({ ...d, vehicle_type: e.target.value }))}>
+                      <option value="">Choose vehicle type…</option><option>Sedan</option><option>SUV</option><option>Hatchback</option><option>Pickup</option><option>Motorcycle</option><option>Van</option>
+                    </Select>
+                    <Input label="Make" placeholder="SUZUKI" value={details.make} error={!details.make ? (conflictDetails.includes('make') ? 'The OR and CR differ; enter the correct make.' : 'Not read from the OR/CR.') : undefined}
+                      onChange={e => setDetailEdits(d => ({ ...d, make: e.target.value.toUpperCase() }))} />
+                    <Input label="Model / Series" placeholder="FU150MFZ" value={details.model} error={!details.model ? (conflictDetails.includes('model') ? 'The OR and CR differ; enter the correct model.' : 'Not read from the OR/CR.') : undefined}
+                      onChange={e => setDetailEdits(d => ({ ...d, model: e.target.value.toUpperCase() }))} />
+                    <Input label="Color" placeholder="BLACK" value={details.color} error={!details.color ? 'Not read from the OR/CR.' : undefined}
+                      onChange={e => setDetailEdits(d => ({ ...d, color: e.target.value.toUpperCase() }))} />
+                    <Input label="Year" placeholder="2024" type="number" value={details.year_model}
+                      onChange={e => setDetailEdits(d => ({ ...d, year_model: e.target.value }))} />
+                  </fieldset>
+                )}
+              </section>
+            )}
+            <p className="text-xs text-slate-500">Readable OR/CR text does not prove ownership or authenticity; PASS checks that the documents agree with the reviewed details. If a check fails you will see what to retake or correct. RFID assignment is a separate step after approval.</p>
             {registerError && <p role="alert" className="text-sm text-red-700">{registerError}</p>}
             <div className="flex gap-3 pt-2">
-              <Button onClick={registerVehicle} disabled={registerBusy}>{registerBusy ? 'Submitting…' : correctingVehicle ? 'Submit corrected registration' : 'Submit Registration'}</Button>
+              <Button onClick={registerVehicle} disabled={registerBusy || readingDocuments || !orFile || !crFile}>
+                {registerBusy ? 'Registering…' : readingDocuments ? 'Reading documents…' : correctingVehicle ? 'Submit corrected registration' : 'Register Vehicle'}
+              </Button>
               <Button variant="outline" disabled={registerBusy} onClick={closeRegistration}>Cancel</Button>
             </div>
           </div>

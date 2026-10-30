@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { IdCard, Clock, CheckCircle, AlertTriangle, Send, Loader2, ShieldCheck, RefreshCw } from 'lucide-react';
-import FileUpload from './FileUpload';
+import FileUpload, { IMAGE_ACCEPT } from './FileUpload';
+import DocumentAutofill, { type FieldFlag } from './DocumentAutofill';
+import { fitPhotoForUpload } from '../lib/imagePrep';
 import { LICENSE_STATUS_LABEL, useLicense } from '../context/LicenseContext';
 import { campusDateKey, formatCampusDateTime } from '../lib/datetime';
 
@@ -32,7 +34,32 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
   const [retrying, setRetrying] = useState(false);
   const [retryMessage, setRetryMessage] = useState('');
   const [cooldown, setCooldown] = useState(0);
+  const [flags, setFlags] = useState<Record<string, FieldFlag>>({});
+  // Fields the owner typed themselves are never replaced by a photo reading.
+  const edited = useRef({ licenseNo: false, expiry: false });
   const submitLock = useRef(false);
+
+  // A new photo replaces what the previous photo filled in.
+  const choosePhoto = (f: File | null) => {
+    setFile(f);
+    setFlags({});
+    setErrors(e => ({ ...e, file: '' }));
+    if (!edited.current.licenseNo) setLicenseNo('');
+    if (!edited.current.expiry) setExpiry('');
+  };
+  const applyReading = (fields: Record<string, string | number>, read: Record<string, FieldFlag>) => {
+    if (!edited.current.licenseNo) setLicenseNo(fields.license_number ? String(fields.license_number) : '');
+    if (!edited.current.expiry) setExpiry(fields.expiry_date ? String(fields.expiry_date) : '');
+    setFlags(read);
+  };
+  const editField = (field: 'licenseNo' | 'expiry', value: string) => {
+    edited.current[field] = true;
+    (field === 'licenseNo' ? setLicenseNo : setExpiry)(value);
+    setFlags(f => { const next = { ...f }; delete next[field === 'licenseNo' ? 'license_number' : 'expiry_date']; return next; });
+  };
+  const flagNote = (apiField: string) => flags[apiField] === 'missing'
+    ? 'Not read from the photo. Enter it from your license, or retake the photo.'
+    : flags[apiField] === 'low_confidence' ? 'Check this value against your license.' : '';
   useEffect(() => { if (!cooldown) return; const timer = window.setTimeout(() => setCooldown(v => Math.max(0, v - 1)), 1000); return () => window.clearTimeout(timer); }, [cooldown]);
 
   const renewalAvailable = status === 'verified' && license?.can_resubmit === true;
@@ -46,7 +73,7 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
     else if (!/^[A-Za-z]\d{2}[-\s]?\d{2}[-\s]?\d{6}$/.test(licenseNo.trim())) e.licenseNo = 'Use the LTO format, for example N01-23-456789';
     if (!expiry) e.expiry = 'Expiry date is required';
     else if (expiry < campusDateKey()) e.expiry = 'This license is already expired';
-    if (!file) e.file = "Upload a photo or scan of your driver's license";
+    if (!file) e.file = "Take or upload a photo of your driver's license";
     setErrors(e);
     setFormMessage('');
     if (Object.keys(e).length) return;
@@ -66,7 +93,8 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
       return;
     }
 
-    setEditing(false); setLicenseNo(''); setExpiry(''); setFile(null); setErrors({});
+    setEditing(false); setLicenseNo(''); setExpiry(''); setFile(null); setErrors({}); setFlags({});
+    edited.current = { licenseNo: false, expiry: false };
   };
 
   const returnedByCheck = status === 'needs_correction' && license?.verification_source === 'automatic';
@@ -84,8 +112,8 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
     },
   }[status];
 
-  const inputCls = (k: string) =>
-    `w-full border ${errors[k] ? 'border-red-400' : 'border-slate-200'} rounded-xl px-4 ${m ? 'py-3.5' : 'py-3'} text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white`;
+  const inputCls = (k: string, apiField?: string) =>
+    `w-full border ${errors[k] ? 'border-red-400 bg-white' : apiField && flags[apiField] ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white'} rounded-xl px-4 ${m ? 'py-3.5' : 'py-3'} text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]`;
 
   return (
     <div className={`space-y-4 ${m ? '' : 'max-w-2xl'}`}>
@@ -130,21 +158,25 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
       {showForm && (
         <div className={`${m ? '' : 'bg-white border border-slate-100 rounded-2xl p-5'} space-y-4`}>
           <h3 className="font-semibold text-[#080677]">{status === 'needs_correction' ? 'Resubmit driver’s license' : 'Submit driver’s license'}</h3>
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">License Number</label>
-            <input value={licenseNo} onChange={e => setLicenseNo(e.target.value)} placeholder="N01-23-456789" className={inputCls('licenseNo')} disabled={submitting} />
-            {errors.licenseNo && <p className="text-xs text-red-500 mt-1">{errors.licenseNo}</p>}
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Expiry Date</label>
-            <input type="date" value={expiry} onChange={e => setExpiry(e.target.value)} className={inputCls('expiry')} disabled={submitting} />
-            {errors.expiry && <p className="text-xs text-red-500 mt-1">{errors.expiry}</p>}
-          </div>
-          <FileUpload label="Driver's License (front)" file={file} error={errors.file}
-            onChange={f => { setFile(f); setErrors(e => ({ ...e, file: '' })); }}
+          <p className="text-sm text-slate-600">Start with a photo of the front of your license. The license number and expiry date are read from it for you to check.</p>
+          <FileUpload label="1. Driver's License (front)" file={file} error={errors.file} accept={IMAGE_ACCEPT} capture preview disabled={submitting}
+            prepare={fitPhotoForUpload} onChange={choosePhoto}
             onError={msg => setErrors(e => ({ ...e, file: msg }))} />
-          
-          <p className="text-xs text-slate-500">Use a clear JPG or PNG photo of the full front side for automatic approval. The name, license number and expiry must match your entries. PDFs require a JPG/PNG resubmission for the automatic check.</p>
+          <DocumentAutofill file={file} documentType="driver_license" onFields={applyReading} />
+          {file && <>
+            <p className="text-sm font-medium text-slate-700">2. Check the details</p>
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">License Number</label>
+              <input value={licenseNo} onChange={e => editField('licenseNo', e.target.value)} placeholder="N01-23-456789" className={inputCls('licenseNo', 'license_number')} disabled={submitting} />
+              {errors.licenseNo ? <p className="text-xs text-red-500 mt-1">{errors.licenseNo}</p> : flagNote('license_number') && <p className="text-xs text-amber-700 mt-1">{flagNote('license_number')}</p>}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Expiry Date</label>
+              <input type="date" value={expiry} onChange={e => editField('expiry', e.target.value)} className={inputCls('expiry', 'expiry_date')} disabled={submitting} />
+              {errors.expiry ? <p className="text-xs text-red-500 mt-1">{errors.expiry}</p> : flagNote('expiry_date') && <p className="text-xs text-amber-700 mt-1">{flagNote('expiry_date')}</p>}
+            </div>
+          </>}
+          <p className="text-xs text-slate-500">Photograph the full front of the license, flat and in focus; minor shadows or an imperfect background are fine. Your registered name, the license number and the expiry are checked again automatically when you submit.</p>
           {formMessage && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">{formMessage}</p>}
           <div className="flex flex-wrap gap-3">
             <button type="button" onClick={handleSubmit} disabled={submitting || cooldown > 0} className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#2563EB] text-white font-semibold hover:bg-[#1D4ED8] transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed">
