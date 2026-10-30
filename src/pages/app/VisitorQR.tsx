@@ -1,3 +1,4 @@
+import { staffBarrier, type GateTicket } from '../../lib/staffBarrier'; // PASS_STAFF_BARRIER_V1
 import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
 import VisitorDocuments from '../../components/VisitorDocuments';
 import VisitorDocumentCheck from '../../components/VisitorDocumentCheck';
@@ -499,6 +500,7 @@ function Passes({ notify, onShowPass, reloadKey }: { notify: Notify; onShowPass:
 // ----------------------------------------------------------------- verification tab
 
 function Verification({ notify }: { notify: Notify }) {
+  const gateActor = useAuth().user?.role === 'parking_staff';
   const [code, setCode] = useState('');
   const [found, setFound] = useState<Lookup | null>(null);
   const [error, setError] = useState('');
@@ -521,15 +523,20 @@ function Verification({ notify }: { notify: Notify }) {
 
   const record = async (direction: 'entry' | 'exit') => {
     if (!found) return;
+    let gateTicket: GateTicket | null = null;
     setBusy(true);
     try {
-      const r = await apiRequest<{ status: string; message: string; slot_code?: string | null }>(`/api/parking/${direction}`, { method: 'POST', body: { qr_pass_code: found.pass_code } });
+      if (gateActor) gateTicket = staffBarrier.begin();
+      const r = await apiRequest<{ status: string; message: string; slot_code?: string | null; barrier_receipt?: string | null; barrier_command_id?: number | null; barrier_status?: string }>(`/api/parking/${direction}`, { method: 'POST', body: { qr_pass_code: found.pass_code } });
       setGateResult(r);
-      notify(r.message, ['granted', 'completed'].includes(r.status) ? 'success' : 'error');
+      const gateOutcome = gateTicket ? await staffBarrier.approved(gateTicket, { kind: 'visitor', direction, status: r.status, barrier_receipt: r.barrier_receipt, barrier_command_id: r.barrier_command_id, barrier_status: r.barrier_status }) : null;
+      notify([r.message, gateOutcome?.message].filter(Boolean).join(' '), gateOutcome && !gateOutcome.opened && !gateOutcome.queued && !gateOutcome.disabled && !gateOutcome.denied ? 'error' : ['granted', 'completed'].includes(r.status) ? 'success' : 'error');
       await lookup(found.pass_code);
     } catch (err) {
+      if (gateTicket) staffBarrier.failed(gateTicket, err);
       setError(err instanceof Error ? err.message : 'The gate request failed.');
     } finally {
+      if (gateTicket) staffBarrier.finish(gateTicket);
       setBusy(false);
     }
   };

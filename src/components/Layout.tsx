@@ -1,3 +1,5 @@
+import ParkingStationPanel from './ParkingStationPanel'; // PASS_PARKING_STATION_V1
+import StaffBarrierPanel from './StaffBarrierPanel'; // PASS_STAFF_BARRIER_V1
 import { PAGE_SECTIONS, type PageSection } from '../lib/pageSections';
 import { useSimulatorAvailable } from './GateSimulator';
 import React, { useEffect, useState, useId, ReactNode } from 'react';
@@ -27,6 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'User Accounts', icon: <Users size={18}/>, roles: ['admin'], children: PAGE_SECTIONS.users },
   { label: 'Vehicle Authorization', icon: <Car size={18}/>, roles: ['admin'], children: PAGE_SECTIONS.vehicleStaff },
   { label: 'Vehicle Verification', icon: <Car size={18}/>, roles: ['parking_staff'], children: PAGE_SECTIONS.vehicleStaff },
+  { label: 'Emergency Vehicle Release', icon: <Shield size={18}/>, roles: ['parking_staff'], to: '/app/vehicle-releases' },
   { label: 'RFID Management', icon: <CreditCard size={18}/>, roles: ['admin'], children: PAGE_SECTIONS.rfid },
   { label: 'RFID Access Records', icon: <CreditCard size={18}/>, roles: ['parking_staff'], children: PAGE_SECTIONS.rfid },
   { label: 'Parking Operations', icon: <ParkingSquare size={18}/>, roles: ['parking_staff'], children: PAGE_SECTIONS.parking.filter(section => section.label !== 'Availability') },
@@ -209,6 +212,8 @@ export default function Layout({ children, navigation, profileTo = '/app/profile
 
         {/* Page content */}
         <main className="flex-1 min-w-0 overflow-y-auto p-4 lg:p-6">
+          {role === 'parking_staff' && <StaffBarrierPanel />}
+          {['parking_staff', 'admin'].includes(role) && <ParkingStationPanel />}
           {children}
         </main>
       </div>

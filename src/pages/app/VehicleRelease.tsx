@@ -1,3 +1,4 @@
+import { staffBarrier, type GateTicket } from '../../lib/staffBarrier'; // PASS_STAFF_BARRIER_V1
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/apiClient';
@@ -37,12 +38,16 @@ export default function VehicleRelease() {
   }
   async function act(action: string) {
     if (!selected) return;
+    let gateTicket: GateTicket | null = null;
     setBusy(true); setError('');
     try {
-      const result = await apiRequest<{ message: string }>(`/api/vehicle-releases/${selected.release_id}/action`, { method: 'POST', body: { action, remarks, identity_checked: identity, authorization_checked: authorization } });
-      setMessage(result.message); setSelected(null); await load();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Action failed.'); }
-    finally { setBusy(false); }
+      if (user?.role === 'parking_staff' && action === 'release') gateTicket = staffBarrier.begin();
+      const result = await apiRequest<{ message: string; status?: string; gate_action?: string; release_id?: number; barrier_receipt?: string | null; barrier_command_id?: number | null; barrier_status?: string }>(`/api/vehicle-releases/${selected.release_id}/action`, { method: 'POST', body: { action, remarks, identity_checked: identity, authorization_checked: authorization } });
+      const gateOutcome = gateTicket ? await staffBarrier.approved(gateTicket, { kind: 'emergency', action, barrier_receipt: result.barrier_receipt, barrier_command_id: result.barrier_command_id, barrier_status: result.barrier_status, gate_action: result.gate_action, status: result.status, release_id: result.release_id, expected_release_id: selected.release_id }) : null;
+      setMessage([result.message, gateOutcome?.message].filter(Boolean).join(' ')); setSelected(null); await load();
+    } catch (e) {
+      if (gateTicket) staffBarrier.failed(gateTicket, e); setError(e instanceof Error ? e.message : 'Action failed.'); }
+    finally { if (gateTicket) staffBarrier.finish(gateTicket); setBusy(false); }
   }
   function open(row: Row) { setSelected(row); setIdentity(false); setAuthorization(false); setRemarks(''); setError(''); }
   const pending = selected?.status === 'pending';
