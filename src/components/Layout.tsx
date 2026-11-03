@@ -2,9 +2,11 @@ import ParkingStationPanel from './ParkingStationPanel'; // PASS_PARKING_STATION
 import StaffBarrierPanel from './StaffBarrierPanel'; // PASS_STAFF_BARRIER_V1
 import { PAGE_SECTIONS, type PageSection } from '../lib/pageSections';
 import { useSimulatorAvailable } from './GateSimulator';
-import React, { useEffect, useState, useId, ReactNode } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useId, ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { apiRequest } from '../lib/apiClient';
+import { staffBarrier } from '../lib/staffBarrier';
+import { HARDWARE_PATH, showSlotSummary, showGateNotice } from '../lib/hardwareLayout';
+import { apiRequest, getToken } from '../lib/apiClient';
 import { useTopicVersion } from '../lib/liveSync';
 import { roleLabel, useAuth } from '../context/AuthContext';
 import {
@@ -39,6 +41,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Parking Layout', icon: <MapPin size={18}/>, roles: ['admin'], to: '/app/parking/layout' },
   { label: 'Audit Logs', icon: <ScrollText size={18}/>, roles: ['admin'], to: '/app/audit' },
   { label: 'Records & History', icon: <ScrollText size={18}/>, roles: ['admin'], children: PAGE_SECTIONS.records },
+  { label: 'Hardware & Station', icon: <Activity size={18}/>, roles: ['admin', 'parking_staff'], to: HARDWARE_PATH },
   { label: 'System Settings', icon: <Settings size={18}/>, roles: ['admin'], to: '/app/settings' },
   { label: 'Violations', icon: <AlertTriangle size={18}/>, roles: ['parking_staff'], to: '/app/violations' },
   { label: 'My Vehicle', icon: <Car size={18}/>, roles: ['student', 'faculty', 'employee'], children: PAGE_SECTIONS.vehicleUser },
@@ -82,7 +85,10 @@ export default function Layout({ children, navigation, profileTo = '/app/profile
   const [logoutModal, setLogoutModal] = useState(false);
   const [unread, setUnread] = useState(0);
   const { pathname } = useLocation();
-  useEffect(() => { setSidebarOpen(false); }, [pathname]);
+  const main = useRef<HTMLElement>(null);
+  const identity = `${user?.id ?? ''}|${user?.role ?? ''}|${getToken() ?? ''}`;
+  useLayoutEffect(() => { staffBarrier.identify(identity); }, [identity]);
+  useEffect(() => { setSidebarOpen(false); main.current?.scrollTo?.(0, 0); }, [pathname]);
   useEffect(() => {
     if (!sidebarOpen) return;
     const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setSidebarOpen(false); };
@@ -211,9 +217,9 @@ export default function Layout({ children, navigation, profileTo = '/app/profile
         </header>
 
         {/* Page content */}
-        <main className="flex-1 min-w-0 overflow-y-auto p-4 lg:p-6">
-          {role === 'parking_staff' && <StaffBarrierPanel />}
-          {['parking_staff', 'admin'].includes(role) && <ParkingStationPanel />}
+        <main ref={main} className="flex-1 min-w-0 overflow-y-auto p-4 lg:p-6">
+          {showGateNotice(role, pathname) && <StaffBarrierPanel mode="notice" />}
+          {showSlotSummary(role, pathname) && <ParkingStationPanel mode="status" />}
           {children}
         </main>
       </div>

@@ -1,6 +1,6 @@
 import ParkingLayoutExport from '../../components/ParkingLayoutExport';
 import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
-import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, Card, Badge, Button, Table, SearchBar, Select, Modal, StatCard, Toast, Input } from '../../components/ui';
@@ -8,7 +8,7 @@ import { apiRequest } from '../../lib/apiClient';
 import { CAMPUS_TIMEZONE, formatCampusDateTime } from '../../lib/datetime';
 import { useLiveLoad, useLiveSync, POLL_MS, type Topic } from '../../lib/liveSync';
 import { MapData, MapSlot, slotFill, proposedSlotSize, withProposedLayout } from '../../components/ParkingMap';
-const ParkingLot3D = lazy(() => import('../../components/ParkingLot3D'));
+import ParkingMapView, { PARKING_VIEW_KEY, savedParkingView } from '../../components/ParkingMapView';
 import ParkingAvailabilityMap from '../../components/ParkingAvailabilityMap';
 import { ParkingSquare, Car, CheckCircle, Wrench, AlertTriangle, LogIn, LogOut, RefreshCw, MapPin, Box, Map as MapIcon, Bike, Layers } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -659,16 +659,6 @@ function OccupancyPanel({ areas, overall, inside }: { areas: AreaStats[]; overal
   );
 }
 
-const VIEW_KEY = 'pass_parking_layout_view';
-
-function savedView(): '3d' | 'plan' {
-  try {
-    return localStorage.getItem(VIEW_KEY) === 'plan' ? 'plan' : '3d';
-  } catch {
-    return '3d';
-  }
-}
-
 /** Slots whose status or occupant changed between two polls. */
 function changedSlots(previous: MapSlot[] | undefined, next: MapSlot[]) {
   if (!previous) return new Set<number>();
@@ -692,7 +682,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
   const [otherTxn, setOtherTxn] = useState('');
   const [maintenanceReason, setMaintenanceReason] = useState('');
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState<'3d' | 'plan'>(savedView);
+  const [view, setView] = useState<'3d' | 'plan'>(savedParkingView);
   const [gateMenu, setGateMenu] = useState(false);
   const [recent, setRecent] = useState<Set<number>>(() => new Set());
   const previous = useRef<MapSlot[] | undefined>(undefined);
@@ -715,7 +705,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
 
   const chooseView = (v: '3d' | 'plan') => {
     setView(v);
-    try { localStorage.setItem(VIEW_KEY, v); } catch { /* preference only */ }
+    try { localStorage.setItem(PARKING_VIEW_KEY, v); } catch { /* preference only */ }
   };
 
   const selected = data?.slots.find(s => s.slot_id === selectedId) ?? null;
@@ -811,8 +801,8 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
           !error && <p className="py-16 text-center text-sm text-slate-400">Loading parking map...</p>
         ) : (
           <>
-            <Suspense fallback={<p role="status" className="p-8 text-sm text-slate-500">Loading parking layout…</p>}><ParkingLot3D viewMode={view} data={data} highlight={highlight} selectedId={selectedId} recent={recent} gateOnline={gateOnline}
-              focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} onGate={() => setGateMenu(true)} /></Suspense>
+            <ParkingMapView viewMode={view} onUsePlan={() => chooseView('plan')} data={data} highlight={highlight} selectedId={selectedId} recent={recent} gateOnline={gateOnline}
+              focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} onGate={() => setGateMenu(true)} />
             <p className="text-xs text-slate-400">
               Drag to pan · scroll, pinch or use the buttons to zoom · select a slot for details{view === '3d' ? ' · select the Main Entrance / Exit to record an entry or exit' : ''}. Updates automatically: checks for changes every {POLL_MS / 1000} seconds while this tab is open.{' '}
               {highlight && (

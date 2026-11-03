@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Map as MapIcon, RefreshCw, ParkingSquare } from 'lucide-react';
 import { Button, Card, Modal, StatCard } from './ui';
 import ParkingMap from './ParkingMap';
 import ParkingMeasurements from './ParkingMeasurements';
-const ParkingLot3D = lazy(() => import('./ParkingLot3D'));
+import ParkingMapView from './ParkingMapView';
 import type { MapData, MapSlot } from './ParkingMap';
 import { proposedSlotSize, withProposedLayout } from './ParkingMap';
 import { apiRequest } from '../lib/apiClient';
@@ -82,11 +82,9 @@ export default function ParkingAvailabilityMap() {
           <Button size="sm" variant="outline" aria-pressed={measurements} onClick={() => setMeasurements(value => !value)}>{measurements ? 'Hide measurements' : 'Show measurements'}</Button>
           <ParkingMap data={data} highlight={null} onSelect={choose} focusArea={focus} showMeasurements={measurements} />
           {measurements && <ParkingMeasurements geometry={data.geometry} slots={data.slots} />}
-        </> : <Suspense fallback={<p role="status" className="p-8 text-sm text-slate-500">Loading 3D parking layout…</p>}>
-          <ParkingLot3D data={data} viewMode="3d" highlight={null} selectedId={selectedId} recent={NO_CHANGES} gateOnline={false} onSelect={choose} onGate={() => {}} focusArea={focus} />
-        </Suspense>}
+        </> : <ParkingMapView onUsePlan={() => setView('plan')} data={data} viewMode="3d" highlight={null} selectedId={selectedId} recent={NO_CHANGES} gateOnline={false} onSelect={choose} onGate={() => {}} focusArea={focus} />}
         <p className="text-xs text-slate-500">Drag to move · pinch or use +/− to zoom · select a slot for availability.</p>
-        <p className="text-xs text-slate-500">Counts follow the configured slot inventory and recorded entries/exits. The parking layout is a proposal; physical slot sensors are not connected. Availability does not reserve a space.</p>
+        <p className="text-xs text-slate-500">Counts follow the configured slot inventory and recorded entries/exits. The parking layout is a proposal. Any sensor status applies only to its configured station. Availability does not reserve a space.</p>
         {unplaced > 0 && <p className="text-xs text-slate-500">Totals include {unplaced} configured slots awaiting map positions. Only mapped bays appear on this layout.</p>}
         <p className="text-xs text-slate-400">Updated {formatCampusDateTime(data.generated_at)} · Checks every {POLL_MS / 1000} seconds while visible</p>
       </Card>

@@ -8,6 +8,8 @@ import { useTopicVersion, useLiveSync } from '../../lib/liveSync';
 import { formatCampusDateTime } from '../../lib/datetime';
 import GateSimulator, { useSimulatorAvailable } from '../../components/GateSimulator';
 import RfidInventoryPanel from '../../components/RfidInventoryPanel';
+import ListPager from '../../components/ListPager';
+import { listMeta, listPath, type ListMeta } from '../../lib/listPage';
 import { XCircle, LogIn, LogOut, ShieldCheck, CreditCard } from 'lucide-react';
 
 // Gate access records and RFID credentials, from access_events, rfid_tags and
@@ -195,6 +197,7 @@ function RfidCredentials() {
   const { user } = useAuth();
   const admin = user?.role === 'admin';
   const [vehicles, setVehicles] = useState<{ id: string; plate: string; owner: string; authorizationStatus?: string; rfid?: string | null }[]>([]);
+  const [vehiclePage, setVehiclePage] = useState(1), [vehicleMeta, setVehicleMeta] = useState<ListMeta | null>(null), [vehicleSearch, setVehicleSearch] = useState(''), [vehicleLoading, setVehicleLoading] = useState(false);
   const [vehicleId, setVehicleId] = useState('');
   const [tagUid, setTagUid] = useState('');
   const [validUntil, setValidUntil] = useState('');
@@ -205,11 +208,15 @@ function RfidCredentials() {
   useEffect(() => {
     if (!admin) return;
     let cancelled = false;
-    apiRequest<{ vehicles: typeof vehicles }>('/api/vehicles').then(r => {
-      if (!cancelled) setVehicles(r.vehicles.filter(v => v.authorizationStatus === 'approved' && !v.rfid));
-    }).catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : 'Cannot load vehicles.'); });
-    return () => { cancelled = true; };
-  }, [admin, revision]);
+    const controller = new AbortController(); setVehicleLoading(true); setVehicles([]);
+    const timer = setTimeout(() => {
+      apiRequest<{ vehicles: typeof vehicles; meta?: ListMeta }>(listPath('/api/vehicles', vehiclePage, { rfid_eligible: 1, search: vehicleSearch }), { signal: controller.signal }).then(r => {
+        const meta = listMeta(r.meta, r.vehicles.length);
+        if (!cancelled) { setVehicles(r.vehicles); setVehicleMeta(meta); if (vehiclePage > meta.last_page) setVehiclePage(meta.last_page); }
+      }).catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : 'Cannot load vehicles.'); }).finally(() => { if (!cancelled) setVehicleLoading(false); });
+    }, 300);
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer); };
+  }, [admin, revision, vehiclePage, vehicleSearch]);
 
   async function assign() {
     if (busy) return;
@@ -232,35 +239,43 @@ function RfidCredentials() {
   }
 
   const [rows, setRows] = useState<RfidCredential[] | null>(null);
+  const [credentialPage, setCredentialPage] = useState(1), [credentialMeta, setCredentialMeta] = useState<ListMeta | null>(null), [credentialLoading, setCredentialLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     let cancelled = false;
-    apiRequest<{ data: RfidCredential[] }>('/api/rfid/assignments').then(r => { if (!cancelled) setRows(r.data); }).catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load RFID tags.'); });
-    return () => { cancelled = true; };
-  }, [revision]);
+    const controller = new AbortController(); setCredentialLoading(true); setRows(null); setError('');
+    const timer = setTimeout(() => {
+      apiRequest<{ data: RfidCredential[]; meta?: ListMeta }>(listPath('/api/rfid/assignments', credentialPage, { search }), { signal: controller.signal }).then(r => {
+        const meta = listMeta(r.meta, r.data.length); if (!cancelled) { setRows(r.data); setCredentialMeta(meta); if (credentialPage > meta.last_page) setCredentialPage(meta.last_page); }
+      }).catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load RFID tags.'); }).finally(() => { if (!cancelled) setCredentialLoading(false); });
+    }, 300);
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer); };
+  }, [revision, credentialPage, search]);
 
-  const q = search.toLowerCase();
-  const filtered = (rows ?? []).filter(r => !q || [r.tag_uid, r.user_code, r.user_name, r.plate_number].some(v => v?.toLowerCase().includes(q)));
+  const filtered = rows ?? [];
 
   return (
     <Card>
       {admin && <div className="m-5 space-y-3 rounded-xl border border-slate-200 p-4">
         <h3 className="font-semibold">Assign RFID to approved vehicle</h3>
-        <p className="text-sm text-slate-600">Before issuing a tag, compare the actual vehicle, plate and driver with their submitted records. Vehicle registration requires staff approval before an RFID tag can be assigned.</p>
-        <Select label="Vehicle" value={vehicleId} onChange={e => setVehicleId(e.target.value)} disabled={busy}>
+        <p className="text-sm text-slate-600">Before issuing a tag, compare the actual vehicle, plate and driver with their submitted records. Assignment requires automatic vehicle authorization and a verified, unexpired driver’s license.</p>
+        <Input label="Find an eligible vehicle" value={vehicleSearch} maxLength={100} disabled={busy} onChange={e => { setVehicleSearch(e.target.value); setVehiclePage(1); setVehicleId(''); }} placeholder="Vehicle plate or owner"/>
+        <Select label="Vehicle" value={vehicleId} onChange={e => setVehicleId(e.target.value)} disabled={busy || vehicleLoading}>
           <option value="">Select an approved vehicle</option>
           {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} — {v.owner}</option>)}
         </Select>
+        {vehicleLoading && <p role="status" className="text-sm text-slate-500">Loading eligible vehicles…</p>}
+        <ListPager meta={vehicleMeta} busy={busy || vehicleLoading} onChange={page => { setVehicleId(''); setVehiclePage(page); }} label="eligible vehicles"/>
         <Input label="Tag UID" placeholder="For local simulator: TEST-ABC4321-001" maxLength={50} value={tagUid} onChange={e => setTagUid(e.target.value)} disabled={busy} />
         <Input label="Valid until (optional)" type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} disabled={busy} />
         <p className="text-xs text-slate-500">For hardware, enter the exact UID read from the issued tag. Assignment does not record parking entry.</p>
-        <Button onClick={assign} disabled={busy || !vehicleId || !tagUid.trim()}>{busy ? 'Saving…' : 'Assign RFID'}</Button>
+        <Button onClick={assign} disabled={busy || vehicleLoading || !vehicleId || !tagUid.trim()}>{busy ? 'Saving…' : 'Assign RFID'}</Button>
       </div>}
       {message && <p role="status" className="mx-5 mb-3 text-sm text-green-700">{message}</p>}
       <div className="px-5 pt-5 pb-3">
-        <SearchBar value={search} onChange={setSearch} placeholder="Search by tag, user, or plate..." />
+        <SearchBar value={search} onChange={value => { setSearch(value.slice(0, 100)); setCredentialPage(1); }} placeholder="Search by tag, user, or plate..." />
         <p className="text-xs text-slate-400 mt-2">Issued RFID tags and their current assignment. Administrators can assign a new or available tag to an approved vehicle and revoke active assignments.</p>
       </div>
       {error && <div className="mx-5 mb-4"><ErrorBox message={error} /></div>}
@@ -288,6 +303,7 @@ function RfidCredentials() {
           data={filtered}
         />
       )}
+      <ListPager meta={credentialMeta} busy={busy || credentialLoading} onChange={setCredentialPage} label="credentials"/>
     </Card>
   );
 }

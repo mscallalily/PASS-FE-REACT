@@ -11,7 +11,24 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: { alias: { '@': path.resolve(import.meta.dirname, './src') } },
-    build: { sourcemap: false },
+    build: {
+      sourcemap: false,
+      manifest: true,
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [{
+              name: 'parking-three',
+              test: /[\\/]node_modules[\\/]three[\\/]/,
+              includeDependenciesRecursively: false,
+              maxSize: 400000,
+              minSize: 60000,
+              priority: 20,
+            }],
+          },
+        },
+      },
+    },
     server: { host: '0.0.0.0', port, strictPort: true, proxy: { '/api': { target, changeOrigin: true } } },
     preview: { host: '0.0.0.0', port, strictPort: true, proxy: { '/api': { target, changeOrigin: true } } },
   };

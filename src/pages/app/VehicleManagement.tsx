@@ -3,6 +3,8 @@ import { formatCampusDate } from '../../lib/datetime';
 import { jsonFetch, jsonRequest } from '../../lib/http';
 import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
 import React, { useEffect, useMemo, useState } from 'react';
+import ListPager from '../../components/ListPager';
+import { listMeta, listPath, type ListMeta } from '../../lib/listPage';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { REGULAR_USER_ROLES, useAuth } from '../../context/AuthContext';
 import { PageHeader, Card, Badge, statusBadge, Button, Table, SearchBar, Select, Modal, Input,  Toast, EmptyState } from '../../components/ui';
@@ -150,6 +152,8 @@ interface VehicleRow {
 
 interface VehiclesApiResponse {
   vehicles?: VehicleRow[];
+  meta?: ListMeta;
+  selected_vehicle?: { vehicle_id: number; plate_number: string } | null;
   message?: string;
 }
 
@@ -161,14 +165,15 @@ function rfidLabel(vehicle: VehicleRow): string {
   return vehicle.rfidStatus === 'pending_assignment' ? 'Pending RFID Assignment' : 'Not assigned';
 }
 
-async function fetchVehicles(): Promise<VehicleRow[]> {
+async function fetchVehicles(path: string, signal: AbortSignal): Promise<VehiclesApiResponse> {
   const token = getToken();
 
   if (!token) {
     throw new Error('Session expired. Please log in again.');
   }
 
-  const response = await jsonFetch('/api/vehicles', {
+  const response = await jsonFetch(path, {
+    signal,
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
@@ -181,7 +186,8 @@ async function fetchVehicles(): Promise<VehicleRow[]> {
     throw new Error(data.message || `Request failed (${response.status}).`);
   }
 
-  return data.vehicles ?? [];
+  if (!Array.isArray(data.vehicles)) throw new Error('PASS returned an incomplete vehicle list.');
+  return data;
 }
 
 function VehiclePhotoPanel({ id, editable, onSaved, hasPhoto }: { id: string | number; editable: boolean; onSaved: () => void; hasPhoto?: boolean }) {
@@ -236,6 +242,10 @@ export default function VehicleManagement() {
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [vehiclePage, setVehiclePage] = useState(1), [vehicleMeta, setVehicleMeta] = useState<ListMeta | null>(null);
+  const [selectedPlate, setSelectedPlate] = useState('');
+  const [authPage, setAuthPage] = useState(1), [authMeta, setAuthMeta] = useState<ListMeta | null>(null);
+  const [myPage, setMyPage] = useState(1), [myMeta, setMyMeta] = useState<ListMeta | null>(null);
   const [selected, setSelected] = useState<any>(null);
   const [showRegister, setShowRegister] = useState(false);
   const [correctingVehicle, setCorrectingVehicle] = useState<VehicleRow | null>(null);
@@ -279,6 +289,8 @@ export default function VehicleManagement() {
     if (isRegularUser || tab !== 'Authorization') return;
 
     let cancelled = false;
+    const controller = new AbortController();
+    setAuthLoading(true); setAuthRows([]);
 
     const loadAuthorizations = async () => {
       setAuthLoading(true);
@@ -288,13 +300,12 @@ export default function VehicleManagement() {
         const params = new URLSearchParams();
         if (authStatus) params.set('status', authStatus);
         if (authSearch.trim()) params.set('search', authSearch.trim());
-        const query = params.toString();
 
-        const data = await apiRequest<{ data: VehicleAuthorizationRow[] }>(
-          `/api/vehicles/authorizations${query ? `?${query}` : ''}`
-        );
+        if (authPage > 1) params.set('page', String(authPage));
+        const data = await apiRequest<{ data: VehicleAuthorizationRow[]; meta?: ListMeta }>(
+          `/api/vehicles/authorizations${params.toString() ? `?${params}` : ''}`, { signal: controller.signal });
 
-        if (!cancelled) setAuthRows(data.data ?? []);
+        if (!cancelled) { const meta = listMeta(data.meta, data.data.length); setAuthRows(data.data); setAuthMeta(meta); if (authPage > meta.last_page) setAuthPage(meta.last_page); }
       } catch (err) {
         if (!cancelled) setAuthError(err instanceof Error ? err.message : 'Unable to load vehicle authorizations.');
       } finally {
@@ -307,9 +318,10 @@ export default function VehicleManagement() {
 
     return () => {
       cancelled = true;
+      controller.abort();
       clearTimeout(timer);
     };
-  }, [isRegularUser, tab, authSearch, authStatus, authReloadKey, vehicleVersion]);
+  }, [isRegularUser, tab, authSearch, authStatus, authReloadKey, vehicleVersion, authPage]);
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
   const [switchingVehicle, setSwitchingVehicle] = useState<string | null>(null);
   const [loadingVehicles, setLoadingVehicles] = useState(true);
@@ -417,14 +429,15 @@ export default function VehicleManagement() {
     if (!isRegularUser || tab !== 'Authorization Status') return;
 
     let cancelled = false;
+    const controller = new AbortController();
 
     const loadMyVehicles = async () => {
       setMyLoading(true);
       setMyError('');
 
       try {
-        const data = await apiRequest<{ data: VehicleRecord[] }>('/api/vehicles/my-authorizations');
-        if (!cancelled) setMyRows(data.data ?? []);
+        const data = await apiRequest<{ data: VehicleRecord[]; meta?: ListMeta }>(listPath('/api/vehicles/my-authorizations', myPage), { signal: controller.signal });
+        if (!cancelled) { const meta = listMeta(data.meta, data.data.length); setMyRows(data.data); setMyMeta(meta); if (myPage > meta.last_page) setMyPage(meta.last_page); }
       } catch (err) {
         if (!cancelled) setMyError(err instanceof Error ? err.message : 'Unable to load your vehicle authorizations.');
       } finally {
@@ -440,9 +453,10 @@ export default function VehicleManagement() {
 
     return () => {
       cancelled = true;
+      controller.abort();
       window.removeEventListener('focus', onFocus);
     };
-  }, [isRegularUser, tab, myReloadKey, vehicleVersion]);
+  }, [isRegularUser, tab, myReloadKey, vehicleVersion, myPage]);
 
   const openAction = (action: AuthAction) => {
     setPendingAction(action);
@@ -532,16 +546,20 @@ export default function VehicleManagement() {
 
   useEffect(() => {
   let cancelled = false;
+  const controller = new AbortController();
+  setLoadingVehicles(true); setVehicles([]);
 
   async function loadVehicles() {
     setLoadingVehicles(true);
     setVehicleError('');
 
     try {
-      const data = await fetchVehicles();
+      const data = await fetchVehicles(listPath('/api/vehicles', vehiclePage, { search, type: filterType, status: filterStatus }), controller.signal);
 
       if (!cancelled) {
-        setVehicles(data);
+        const meta = listMeta(data.meta, data.vehicles!.length);
+        setVehicles(data.vehicles!); setVehicleMeta(meta); setSelectedPlate(data.selected_vehicle?.plate_number ?? data.vehicles!.find(v => v.selectedForUse)?.plate ?? '');
+        if (vehiclePage > meta.last_page) setVehiclePage(meta.last_page);
       }
     } catch (error) {
       if (!cancelled) {
@@ -558,12 +576,13 @@ export default function VehicleManagement() {
     }
   }
 
-  loadVehicles();
+  const timer = setTimeout(loadVehicles, 300);
 
   return () => {
     cancelled = true;
+    controller.abort(); clearTimeout(timer);
   };
-}, [vehicleReloadKey, vehicleVersion]);
+}, [vehicleReloadKey, vehicleVersion, vehiclePage, search, filterType, filterStatus]);
 
   useEffect(() => {
     if (selected?.id) {
@@ -572,14 +591,7 @@ export default function VehicleManagement() {
     }
   }, [vehicles, selected?.id]);
 
-  const roleScopedVehicles = vehicles;
-  const filtered = roleScopedVehicles.filter(v => {
-    const q = search.toLowerCase();
-    const matchQ = v.plate.toLowerCase().includes(q) || v.owner.toLowerCase().includes(q) || v.make.toLowerCase().includes(q);
-    const matchType = !filterType || v.type === filterType;
-    const matchStatus = !filterStatus || v.status === filterStatus;
-    return matchQ && matchType && matchStatus;
-  });
+  const roleScopedVehicles = vehicles, filtered = vehicles;
 
   return (
     <div className="animate-fadein">
@@ -602,14 +614,14 @@ export default function VehicleManagement() {
 
       {tab === 'My Vehicles' && (
         <Card>
-          {isRegularUser && <div className="p-5 border-b border-slate-100 bg-slate-50 flex flex-wrap gap-3 justify-between items-center"><div className="text-sm text-slate-600"><p className="font-semibold text-[#080677]">Selected vehicle: <span className="font-mono">{vehicles.find(vehicle => vehicle.selectedForUse)?.plate || 'None selected'}</span></p><p className="mt-1 text-xs">Only your selected vehicle can enter. Switching is locked while any of your vehicles is inside. License and authorization checks still apply.</p></div><Button size="sm" variant="outline" onClick={() => setVehicleReloadKey(key => key + 1)}>Refresh status</Button></div>}
+          {isRegularUser && <div className="p-5 border-b border-slate-100 bg-slate-50 flex flex-wrap gap-3 justify-between items-center"><div className="text-sm text-slate-600"><p className="font-semibold text-[#080677]">Selected vehicle: <span className="font-mono">{selectedPlate || 'None selected'}</span></p><p className="mt-1 text-xs">Only your selected vehicle can enter. Switching is locked while any of your vehicles is inside. License and authorization checks still apply.</p></div><Button size="sm" variant="outline" onClick={() => setVehicleReloadKey(key => key + 1)}>Refresh status</Button></div>}
           <div className="p-5 border-b border-slate-50">
-            <SearchBar value={search} onChange={setSearch} placeholder="Search by plate, owner, or make...">
-              <Select value={filterType} onChange={e => setFilterType(e.target.value)}>
+            <SearchBar value={search} onChange={value => { setSearch(value); setVehiclePage(1); }} placeholder="Search by plate, owner, or make...">
+              <Select value={filterType} onChange={e => { setFilterType(e.target.value); setVehiclePage(1); }}>
                 <option value="">All Types</option>
                 {['Sedan', 'SUV', 'Hatchback', 'Motorcycle', 'Van'].map(t => <option key={t}>{t}</option>)}
               </Select>
-              <Select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+              <Select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setVehiclePage(1); }}>
                 <option value="">All Status</option>
                 {['approved', 'pending', 'suspended', 'rejected'].map(s => <option key={s}>{s}</option>)}
               </Select>
@@ -658,6 +670,7 @@ export default function VehicleManagement() {
             data={filtered}
             onRowClick={setSelected}
           />}
+          <ListPager meta={vehicleMeta} busy={loadingVehicles} onChange={setVehiclePage} label="vehicles" />
         </Card>
       )}
 
@@ -675,6 +688,7 @@ export default function VehicleManagement() {
             { key: 'rfid', label: 'RFID Tag', render: (vehicle: VehicleRow) => <span className="font-mono text-xs break-all">{vehicle.rfid || (vehicle.rfidStatus === 'pending_assignment' ? 'Pending RFID Assignment' : 'Not assigned')}</span> },
             { key: 'rfidStatus', label: 'Sticker', render: (vehicle: VehicleRow) => vehicle.rfidStatus === 'issued' ? <Badge variant="success">Issued</Badge> : vehicle.rfidStatus === 'assigned' ? <Badge variant="warning">Assigned · collect from Admin</Badge> : vehicle.rfidStatus === 'pending_assignment' ? <Badge variant="info">Pending RFID Assignment</Badge> : <span className="text-xs text-slate-300">—</span> },
           ]} data={roleScopedVehicles} />}
+          <ListPager meta={vehicleMeta} busy={loadingVehicles} onChange={setVehiclePage} label="assigned vehicles"/>
           <p className="text-xs text-slate-500">A tag assignment does not record an entry. Choose your vehicle under My Vehicles before using it at the gate.</p>
           <Button variant="outline" onClick={() => setTab('My Vehicles')}>View my vehicles</Button>
         </Card>
@@ -691,8 +705,8 @@ export default function VehicleManagement() {
       {tab === 'Authorization' && !isRegularUser && (
         <Card>
           <div className="p-5 border-b border-slate-50">
-            <SearchBar value={authSearch} onChange={setAuthSearch} placeholder="Search by plate, sticker, owner, or ID...">
-              <Select value={authStatus} onChange={e => setAuthStatus(e.target.value)}>
+            <SearchBar value={authSearch} onChange={value => { setAuthSearch(value.slice(0, 100)); setAuthPage(1); }} placeholder="Search by plate, sticker, owner, or ID...">
+              <Select value={authStatus} onChange={e => { setAuthStatus(e.target.value); setAuthPage(1); }}>
                 <option value="">All Status</option>
                 {(Object.keys(AUTH_STATUS_LABEL) as AuthorizationStatus[]).map(s => (
                   <option key={s} value={s}>{AUTH_STATUS_LABEL[s]}</option>
@@ -760,6 +774,7 @@ export default function VehicleManagement() {
               data={authRows}
             />
           )}
+          <ListPager meta={authMeta} busy={authLoading} onChange={setAuthPage} label="authorizations" />
         </Card>
       )}
 
@@ -822,6 +837,7 @@ export default function VehicleManagement() {
               data={myRows}
             />
           )}
+          <ListPager meta={myMeta} busy={myLoading} onChange={setMyPage} label="my authorizations" />
         </Card>
       )}
 

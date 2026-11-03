@@ -1,4 +1,4 @@
-export interface BarrierState { busy: boolean; reviewing: boolean; message: string }
+export interface BarrierState { busy: boolean; reviewing: boolean; notice: boolean; message: string }
 export interface GateTicket { readonly generation: number }
 export interface GateOutcome { opened: boolean; queued?: boolean; disabled?: boolean; denied?: boolean; message: string }
 export type GateDecision =
@@ -8,6 +8,9 @@ export type GateDecision =
 export class StaffBarrier {
   snapshot: () => BarrierState;
   subscribe: (listener: () => void) => () => void;
+  reset(): void;
+  identify(identity: string): void;
+  dismiss(): void;
   begin(): GateTicket;
   approved(ticket: GateTicket, decision: GateDecision): Promise<GateOutcome>;
   failed(ticket: GateTicket, error: unknown): void;

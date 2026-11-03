@@ -49,7 +49,7 @@ export function revisionSummary(operation: string, before: unknown, after: unkno
   return rows.length ? rows.slice(0, 3).map(r => r.label).join(', ') + (rows.length > 3 ? ` +${rows.length - 3} more` : '') : 'Record metadata updated';
 }
 export function auditPresentation(row: { action: string; auditable_type: string | null; auditable_id: number | null; presentation?: Presentation }): Presentation {
-  if (row.presentation && Object.hasOwn(OUTCOMES, row.presentation.outcome)) return row.presentation;
+  if (row.presentation && Object.prototype.hasOwnProperty.call(OUTCOMES, row.presentation.outcome)) return row.presentation;
   return { action: readable(row.action), module: 'system', module_label: 'System activity', outcome: 'recorded', outcome_label: 'Recorded', variant: 'info', record_label: `${readable(row.auditable_type?.split('\\').pop() || 'Record')} #${row.auditable_id ?? '—'}` };
 }
 export function csvCell(value: unknown): string {

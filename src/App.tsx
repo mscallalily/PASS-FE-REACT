@@ -29,6 +29,7 @@ const Reports = lazy(() => import('./pages/app/Reports'));
 const Records = lazy(() => import('./pages/app/Records'));
 const AuditLogs = lazy(() => import('./pages/app/AuditLogs'));
 const Violations = lazy(() => import('./pages/app/Violations'));
+const HardwareStation = lazy(() => import('./pages/app/HardwareStation'));
 const SystemSettings = lazy(() => import('./pages/app/SystemSettings'));
 const Profile = lazy(() => import('./pages/app/Profile'));
 const Notifications = lazy(() => import('./pages/app/Notifications'));
@@ -137,6 +138,7 @@ function AppRoutes() {
         <Route path="audit" element={<RoleRoute roles={['admin']}><AuditLogs /></RoleRoute>} />
         <Route path="violations" element={<RoleRoute roles={['parking_staff']}><Violations /></RoleRoute>} />
         <Route path="settings/:section" element={<RoleRoute roles={['admin']}><Navigate to="/app/settings" replace /></RoleRoute>} />
+        <Route path="hardware" element={<RoleRoute roles={['admin', 'parking_staff']}><HardwareStation /></RoleRoute>} />
         <Route path="settings" element={<RoleRoute roles={['admin']}><SystemSettings /></RoleRoute>} />
         <Route path="*" element={<AccessDenied />} />
       </Route>
