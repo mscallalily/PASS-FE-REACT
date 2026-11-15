@@ -500,7 +500,7 @@ function Passes({ notify, onShowPass, reloadKey }: { notify: Notify; onShowPass:
 // ----------------------------------------------------------------- verification tab
 
 function Verification({ notify }: { notify: Notify }) {
-  const gateActor = useAuth().user?.role === 'parking_staff';
+  const gateActor = ['parking_staff', 'admin'].includes(useAuth().user?.role ?? '');
   const [code, setCode] = useState('');
   const [found, setFound] = useState<Lookup | null>(null);
   const [error, setError] = useState('');

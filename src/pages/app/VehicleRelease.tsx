@@ -41,7 +41,7 @@ export default function VehicleRelease() {
     let gateTicket: GateTicket | null = null;
     setBusy(true); setError('');
     try {
-      if (user?.role === 'parking_staff' && action === 'release') gateTicket = staffBarrier.begin();
+      if (['parking_staff', 'admin'].includes(user?.role ?? '') && action === 'release') gateTicket = staffBarrier.begin();
       const result = await apiRequest<{ message: string; status?: string; gate_action?: string; release_id?: number; barrier_receipt?: string | null; barrier_command_id?: number | null; barrier_status?: string }>(`/api/vehicle-releases/${selected.release_id}/action`, { method: 'POST', body: { action, remarks, identity_checked: identity, authorization_checked: authorization } });
       const gateOutcome = gateTicket ? await staffBarrier.approved(gateTicket, { kind: 'emergency', action, barrier_receipt: result.barrier_receipt, barrier_command_id: result.barrier_command_id, barrier_status: result.barrier_status, gate_action: result.gate_action, status: result.status, release_id: result.release_id, expected_release_id: selected.release_id }) : null;
       setMessage([result.message, gateOutcome?.message].filter(Boolean).join(' ')); setSelected(null); await load();

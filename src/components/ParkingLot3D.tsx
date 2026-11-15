@@ -32,6 +32,7 @@ const FONT = 'Inter, "Segoe UI", system-ui, sans-serif';
 const STATUS = {
   available: { color: '#22C55E', opacity: 0.78 },
   occupied: { color: '#EF4444', opacity: 0.8 },
+  unknown: { color: '#F59E0B', opacity: 0.8 },
   maintenance: { color: '#A3A9B3', opacity: 0.88 },
 } as const;
 

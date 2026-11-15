@@ -7,10 +7,11 @@ import ParkingMapView from './ParkingMapView';
 import type { MapData, MapSlot } from './ParkingMap';
 import { proposedSlotSize, withProposedLayout } from './ParkingMap';
 import { apiRequest } from '../lib/apiClient';
+import { ageSensorAvailability, loadSensorSnapshot } from '../lib/sensorAvailability';
 import { POLL_MS } from '../lib/liveSync';
 import { formatCampusDateTime } from '../lib/datetime';
 
-interface Figures { capacity: number; occupied: number; available: number; maintenance: number }
+interface Figures { capacity: number; occupied: number; available: number; maintenance: number; sensor_unavailable?: number; unverified_occupied?: number }
 interface AvailabilityMap extends MapData {
   areas: (Figures & { area_code: string; area_name: string })[];
   overall: Figures;
@@ -20,7 +21,11 @@ const NO_CHANGES = new Set<number>();
 
 /** Signed-in, read-only map. Its API never returns another person's identity or visit. */
 export default function ParkingAvailabilityMap() {
-  const [data, setData] = useState<AvailabilityMap | null>(null);
+  const [rawData, setData] = useState<AvailabilityMap | null>(null);
+  const [clock, setClock] = useState(performance.now());
+  const loadedAt = useRef(performance.now());
+  const data = rawData ? ageSensorAvailability(rawData, clock - loadedAt.current) : null;
+  useEffect(() => { const timer = setInterval(() => setClock(performance.now()), 1000); return () => clearInterval(timer); }, []);
   const [error, setError] = useState('');
   const [view, setView] = useState<'3d' | 'plan'>('plan');
   const [measurements, setMeasurements] = useState(false);
@@ -32,8 +37,8 @@ export default function ParkingAvailabilityMap() {
     if (inFlight.current) return;
     inFlight.current = true;
     try {
-      const value = withProposedLayout(await apiRequest<AvailabilityMap>('/api/parking/availability-map'));
-      if (mounted.current) { setData(value); setError(''); }
+      const { value, requestStartedAt } = await loadSensorSnapshot(() => apiRequest<AvailabilityMap>('/api/parking/availability-map').then(withProposedLayout));
+      if (mounted.current) { loadedAt.current = requestStartedAt; setClock(performance.now()); setData(value); setError(''); }
     } catch (err) {
       if (mounted.current) setError(err instanceof Error ? err.message : 'Unable to load availability.');
     } finally { inFlight.current = false; }
@@ -63,6 +68,7 @@ export default function ParkingAvailabilityMap() {
         <StatCard label="Configured Slots" value={data.overall.capacity} icon={<ParkingSquare size={18} />} color="sky" />
         <StatCard label="Maintenance" value={data.overall.maintenance} icon={<ParkingSquare size={18} />} color="amber" />
       </div>
+      {!!(data.overall.sensor_unavailable || data.overall.unverified_occupied) && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{data.overall.sensor_unavailable ?? 0} sensor slots are offline or uncertain; {data.overall.unverified_occupied ?? 0} have occupancy detected without a recorded slot assignment.</p>}
       <Card className="p-3 sm:p-5 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <div role="group" aria-label="Map view" className="inline-flex rounded-xl border border-slate-200 p-1 bg-slate-50">
@@ -76,7 +82,7 @@ export default function ParkingAvailabilityMap() {
           {[{area_code: 'ALL', area_name: 'Whole site'}, ...data.areas].map(area => <button key={area.area_code} type="button" onClick={() => setFocus({ code: area.area_code, key: Date.now() })} className="min-h-10 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-[#080677] hover:bg-blue-50">{area.area_name}</button>)}
         </div>
         <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-600">
-          {[['#22C55E', 'Available'], ['#EF4444', 'Occupied'], ['#9CA3AF', 'Maintenance'], ['#FFFFFF', 'Unassigned painted bay']].map(([color, label]) => <span key={label} className="flex items-center gap-2"><i className="h-3 w-3 rounded border border-slate-300" style={{background: color}} />{label}</span>)}
+          {[['#22C55E', 'Available'], ['#EF4444', 'Occupied'], ['#9CA3AF', 'Maintenance'], ['#F59E0B', 'Sensor uncertain'], ['#FFFFFF', 'Unassigned painted bay']].map(([color, label]) => <span key={label} className="flex items-center gap-2"><i className="h-3 w-3 rounded border border-slate-300" style={{background: color}} />{label}</span>)}
         </div>
         {view === 'plan' ? <>
           <Button size="sm" variant="outline" aria-pressed={measurements} onClick={() => setMeasurements(value => !value)}>{measurements ? 'Hide measurements' : 'Show measurements'}</Button>
@@ -84,14 +90,14 @@ export default function ParkingAvailabilityMap() {
           {measurements && <ParkingMeasurements geometry={data.geometry} slots={data.slots} />}
         </> : <ParkingMapView onUsePlan={() => setView('plan')} data={data} viewMode="3d" highlight={null} selectedId={selectedId} recent={NO_CHANGES} gateOnline={false} onSelect={choose} onGate={() => {}} focusArea={focus} />}
         <p className="text-xs text-slate-500">Drag to move · pinch or use +/− to zoom · select a slot for availability.</p>
-        <p className="text-xs text-slate-500">Counts follow the configured slot inventory and recorded entries/exits. The parking layout is a proposal. Any sensor status applies only to its configured station. Availability does not reserve a space.</p>
+        <p className="text-xs text-slate-500">Counts combine recorded slot assignments and fresh readings from mapped slot sensors. Offline or uncertain sensor slots are unavailable. A sensor detects occupancy, not vehicle identity. The parking layout is a proposal. Availability does not reserve a space.</p>
         {unplaced > 0 && <p className="text-xs text-slate-500">Totals include {unplaced} configured slots awaiting map positions. Only mapped bays appear on this layout.</p>}
         <p className="text-xs text-slate-400">Updated {formatCampusDateTime(data.generated_at)} · Checks every {POLL_MS / 1000} seconds while visible</p>
       </Card>
       <div className="grid sm:grid-cols-2 gap-3">{data.areas.map(area => <Card key={area.area_code} className="p-4 flex items-center justify-between gap-3"><span className="text-sm font-semibold text-[#080677]">{area.area_name}</span><span className="text-sm text-slate-600"><strong className="text-green-700">{area.available}</strong> / {area.capacity} available</span></Card>)}</div>
     </>}
     <Modal open={!!selected} onClose={() => setSelectedId(null)} title={`Slot ${selected?.slot_code ?? ''}`} size="sm">
-      {selected && <div className="space-y-3 text-sm"><p className="font-semibold text-[#080677]">{selected.area_name}</p><p className="capitalize">{selected.status}</p><p><strong>Proposed bay size:</strong> {proposedSlotSize(data, selected.slot_code) ?? 'No measured position established for this code.'}</p>{selected.accessible && <p>Accessible / PWD bay</p>}{data?.geometry.proposed_slot_codes?.includes(selected.slot_code) && <p className="text-amber-800">Proposed map position; campus confirmation is pending.</p>}<p className="text-slate-500">Availability can change before you arrive. Follow the parking staff’s directions.</p><Button onClick={() => setSelectedId(null)}>Close</Button></div>}
+      {selected && <div className="space-y-3 text-sm"><p className="font-semibold text-[#080677]">{selected.area_name}</p><p>{selected.status === 'unknown' ? 'Sensor offline or uncertain — unavailable for allocation' : selected.status === 'occupied' && selected.sensor?.state === 'occupied' ? 'Occupied (sensor detection does not verify vehicle identity)' : selected.status}</p><p><strong>Proposed bay size:</strong> {proposedSlotSize(data, selected.slot_code) ?? 'No measured position established for this code.'}</p>{selected.accessible && <p>Accessible / PWD bay</p>}{data?.geometry.proposed_slot_codes?.includes(selected.slot_code) && <p className="text-amber-800">Proposed map position; campus confirmation is pending.</p>}<p className="text-slate-500">Availability can change before you arrive. Follow the parking staff’s directions.</p><Button onClick={() => setSelectedId(null)}>Close</Button></div>}
     </Modal>
   </div>;
 }

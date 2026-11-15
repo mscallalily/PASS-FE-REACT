@@ -1,8 +1,8 @@
-export interface BarrierState { busy: boolean; reviewing: boolean; notice: boolean; message: string }
+export interface BarrierState { busy: boolean; pending: boolean; reviewing: boolean; notice: boolean; message: string }
 export interface GateTicket { readonly generation: number }
 export interface GateOutcome { opened: boolean; queued?: boolean; disabled?: boolean; denied?: boolean; message: string }
 export type GateDecision =
-  | { kind: 'visitor'; direction: 'entry' | 'exit'; status: string; barrier_receipt?: string | null; barrier_command_id?: number | null; barrier_status?: string }
+  | { kind: 'parking' | 'visitor'; direction: 'entry' | 'exit'; status: string; barrier_receipt?: string | null; barrier_command_id?: number | null; barrier_status?: string }
   | { kind: 'emergency'; action: string; gate_action?: string; status?: string;
       release_id?: number; expected_release_id: number; barrier_receipt?: string | null; barrier_command_id?: number | null; barrier_status?: string };
 export class StaffBarrier {

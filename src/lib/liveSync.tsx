@@ -104,9 +104,10 @@ export function useTopicVersion(topics: Topic[]) {
 
 /**
  * Load data now, again when `load` changes (filters), and whenever one of the
- * topics changes. Errors keep the last data; nothing is invented.
+ * topics changes. Sensor views can also poll while visible because telemetry
+ * updates independently of transaction revisions.
  */
-export function useLiveLoad<T>(load: () => Promise<T>, topics: Topic[], onData: (data: T) => void, onError: (message: string) => void) {
+export function useLiveLoad<T>(load: () => Promise<T>, topics: Topic[], onData: (data: T) => void, onError: (message: string) => void, pollVisible = false) {
   const version = useTopicVersion(topics);
   const onDataRef = useRef(onData);
   const onErrorRef = useRef(onError);
@@ -115,16 +116,29 @@ export function useLiveLoad<T>(load: () => Promise<T>, topics: Topic[], onData: 
 
   const sequence = useRef(0);
   const mounted = useRef(false);
+  const inFlight = useRef(false);
   const run = useCallback(async () => {
     const id = ++sequence.current;
+    inFlight.current = true;
     try {
       const data = await load();
       if (!mounted.current || id !== sequence.current) return;
       onDataRef.current(data); onErrorRef.current('');
     } catch (err) {
       if (mounted.current && id === sequence.current) onErrorRef.current(err instanceof Error ? err.message : 'Unable to load data.');
+    } finally {
+      if (id === sequence.current) inFlight.current = false;
     }
   }, [load]);
   useEffect(() => { mounted.current = true; void run(); return () => { mounted.current = false; sequence.current++; }; }, [run, version]);
+  useEffect(() => {
+    if (!pollVisible) return;
+    const tick = () => {
+      if (document.visibilityState === 'visible' && !inFlight.current) void run();
+    };
+    const timer = setInterval(tick, POLL_MS);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
+  }, [pollVisible, run]);
   return run;
 }

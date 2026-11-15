@@ -11,7 +11,9 @@ export interface MapSlot {
   area_code: string;
   area_name: string;
   slot_status: 'available' | 'maintenance' | 'disabled';
-  status: 'available' | 'occupied' | 'maintenance';
+  status: 'available' | 'occupied' | 'maintenance' | 'unknown';
+  recorded_occupied?: boolean;
+  sensor?: { online: boolean; state: 'available' | 'occupied' | 'unknown' | 'offline'; distance_cm: number | null; last_seen_at: string | null } | null;
   placed: boolean;
   x: number | null;
   y: number | null;
@@ -142,6 +144,7 @@ function textAngle(rotation: number, w: number, h: number) {
  * fill and gets a dashed outline.
  */
 export function slotFill(slot: MapSlot) {
+  if (slot.status === 'unknown') return { fill: '#F59E0B', stroke: '#92400E', side: '#B45309', dash: '1.2 0.8', text: '#111827' };
   if (slot.status === 'maintenance') return { fill: '#9CA3AF', stroke: '#6B7280', side: '#6B7280', dash: undefined, text: '#FFFFFF' };
   if (slot.status === 'occupied') {
     return { fill: '#EF4444', stroke: !slot.occupant || slot.occupant.confirmed ? '#B91C1C' : '#FFFFFF', side: '#B91C1C', dash: !slot.occupant || slot.occupant.confirmed ? undefined : '1.2 0.8', text: '#FFFFFF' };
@@ -153,8 +156,8 @@ export const slotNumber = (code: string) => String(Number(code.split('-')[1] ?? 
 
 export function slotLabel(slot: MapSlot) {
   const state = slot.status === 'occupied'
-    ? slot.occupant ? `occupied by ${slot.occupant.plate_number}${slot.occupant.confirmed ? '' : ' (location not yet confirmed)'}` : 'occupied'
-    : slot.status;
+    ? slot.occupant ? `occupied by ${slot.occupant.plate_number}${slot.occupant.confirmed ? '' : ' (location not yet confirmed)'}` : 'sensor detected occupancy; vehicle identity unverified'
+    : slot.status === 'unknown' ? 'sensor offline or uncertain; unavailable for allocation' : slot.status;
   return `Slot ${slot.slot_code}${slot.accessible ? ' (accessible / PWD)' : ''}, ${slot.area_name}, ${state}${slot.incident ? ', wrong-slot report' : ''}`;
 }
 

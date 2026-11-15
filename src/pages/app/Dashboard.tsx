@@ -320,7 +320,7 @@ function UserDashboard() {
 // PARKING STAFF DASHBOARD
 // ============================================
 
-interface AreaFigures { capacity: number; occupied: number; available: number; maintenance: number; occupancy_percent: number; awaiting_confirmation?: number }
+interface AreaFigures { capacity: number; occupied: number; available: number; maintenance: number; occupancy_percent: number; awaiting_confirmation?: number; sensor_unavailable?: number }
 
 interface ActivityRow {
   kind: 'access' | 'incident';
@@ -342,6 +342,7 @@ interface ParkingDashboardData {
   active_visitors: number;
   inside: { total: number; cars: number; motorcycles: number; visitors: number; awaiting_confirmation: number; with_slot: number; distinct_slots: number; consistent: boolean };
   occupancy: { car: AreaFigures | null; motorcycle: AreaFigures | null; overall: AreaFigures };
+  physical_availability?: { areas: (AreaFigures & { area_code: string })[]; overall: AreaFigures };
   recent_activity: ActivityRow[];
   campus_date: string;
 }
@@ -365,11 +366,14 @@ function ParkingStaffDashboard() {
   const [error, setError] = useState('');
   const { offline } = useLiveSync();
 
-  // Reloads whenever parking or violation records change (shared refresh).
   const load = useCallback(() => apiRequest<ParkingDashboardData>('/api/parking/dashboard'), []);
-  useLiveLoad(load, ['parking', 'violations'], setDashboard, setError);
+  useLiveLoad(load, ['parking', 'violations'], setDashboard, setError, true);
 
   const d = dashboard;
+  const physical = d?.physical_availability;
+  const overall = physical?.overall ?? d?.occupancy.overall;
+  const car = physical?.areas.find(area => area.area_code === 'CAR') ?? d?.occupancy.car;
+  const motorcycle = physical?.areas.find(area => area.area_code === 'MC') ?? d?.occupancy.motorcycle;
   const v = (n: number | undefined) => (d ? String(n ?? 0) : '...');
 
   return (
@@ -399,14 +403,14 @@ function ParkingStaffDashboard() {
       <Card className="p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
           <h3 className="font-semibold text-slate-700">Parking Occupancy (now)</h3>
-          <span className="text-sm text-slate-500">Overall <strong className="text-[#080677] text-lg">{d ? `${d.occupancy.overall.occupancy_percent}%` : '…'}</strong> of {d?.occupancy.overall.capacity ?? 139} slots</span>
+          <span className="text-sm text-slate-500">Overall <strong className="text-[#080677] text-lg">{overall ? `${overall.occupancy_percent}%` : '…'}</strong> of {overall?.capacity ?? 139} slots</span>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            ['Cars inside', d?.inside.cars, `${d?.occupancy.car?.available ?? '…'} of ${d?.occupancy.car?.capacity ?? 55} car slots available`],
-            ['Motorcycles inside', d?.inside.motorcycles, `${d?.occupancy.motorcycle?.available ?? '…'} of ${d?.occupancy.motorcycle?.capacity ?? 84} motorcycle slots available`],
+            ['Cars inside', d?.inside.cars, `${car?.available ?? '…'} of ${car?.capacity ?? 55} car slots available`],
+            ['Motorcycles inside', d?.inside.motorcycles, `${motorcycle?.available ?? '…'} of ${motorcycle?.capacity ?? 84} motorcycle slots available`],
             ['Vehicles inside', d?.inside.total, 'active parking transactions, including earlier days'],
-            ['Available slots', d?.occupancy.overall.available, `${d?.occupancy.overall.maintenance ?? 0} under maintenance`],
+            ['Available slots', overall?.available, `${overall?.maintenance ?? 0} under maintenance${overall?.sensor_unavailable ? ` · ${overall.sensor_unavailable} sensor unavailable` : ''}`],
           ].map(([label, value, sub]) => (
             <div key={label as string} className="rounded-xl bg-slate-50 p-4">
               <p className="text-xs text-slate-500">{label}</p>
