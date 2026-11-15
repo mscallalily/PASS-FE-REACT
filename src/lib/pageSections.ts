@@ -1,7 +1,7 @@
 import { REPORT_CATEGORIES } from './reportConfig';
 
 /** Sidebar destinations and the page section shown at each URL. */
-export type PageSection = { label: string; to: string; simulatorOnly?: boolean };
+export type PageSection = { label: string; to: string; simulatorOnly?: boolean; adminOnly?: boolean };
 export const PAGE_SECTIONS = {
   users: [
     { label: 'All Users', to: '/app/users' },
@@ -23,6 +23,7 @@ export const PAGE_SECTIONS = {
   rfid: [
     { label: 'Access Records', to: '/app/rfid/monitor' },
     { label: 'RFID Credentials', to: '/app/rfid' },
+    { label: 'RFID Inventory', to: '/app/rfid/inventory', adminOnly: true },
     { label: 'Gate Simulator', to: '/app/rfid/simulator', simulatorOnly: true },
   ],
   parking: [

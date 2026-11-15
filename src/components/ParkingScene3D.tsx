@@ -279,7 +279,7 @@ type SceneProps = {
 };
 
 const ASPHALT = '#2E343F';
-const STALL_TINT = { available: 0.6, occupied: 0.62, maintenance: 0.75 } as const;
+const STALL_TINT = { available: 0.6, occupied: 0.62, maintenance: 0.75, unknown: 0.75 } as const;
 
 /** Everything inside the SVG. Memoised so panning only changes the viewBox. */
 const Scene = memo(function Scene({ data, slots, trays, trees, highlight, selectedId, recent, showPlates, gateOnline, onSelect, onGate }: SceneProps) {

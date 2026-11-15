@@ -45,6 +45,7 @@ interface UserRow {
   section?: string | null;
   schoolIdCheck?: SchoolIdCheck | null;
   schoolIdSubmitted?: boolean;
+  archivedAt?: string | null;
 }
 
 interface ApiUser {
@@ -63,6 +64,7 @@ interface ApiUser {
   section?: string | null;
   schoolIdCheck?: SchoolIdCheck | null;
   schoolIdSubmitted?: boolean;
+  archivedAt?: string | null;
 }
 
 interface ApiListResponse {
@@ -109,6 +111,7 @@ function mapUser(user: ApiUser): UserRow {
     status: user.status,
     registered: user.registered || '',
     registrationCategory: user.registrationCategory, yearLevel: user.yearLevel, section: user.section, schoolIdCheck: user.schoolIdCheck, schoolIdSubmitted: user.schoolIdSubmitted,
+    archivedAt: user.archivedAt ?? null,
   };
 }
 
@@ -155,6 +158,10 @@ export default function UserManagement() {
   const [page, setPage] = useState(1), [lastPage, setLastPage] = useState(1), [total, setTotal] = useState(0);
 
   const [filterStatus, setFilterStatus] = useState('');
+  const [archiveView, setArchiveView] = useState<'active' | 'archived'>('active');
+  const [archiveTarget, setArchiveTarget] = useState<UserRow | null>(null);
+  const [archiveReason, setArchiveReason] = useState('');
+  const [archiveError, setArchiveError] = useState('');
 
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selected, setSelected] = useState<UserRow | null>(null);
@@ -202,8 +209,9 @@ export default function UserManagement() {
 
         if (tab === 'Pending Approval') {
           params.set('status', 'pending');
-        } else if (filterStatus) {
-          params.set('status', filterStatus);
+        } else {
+          if (filterStatus) params.set('status', filterStatus);
+          if (archiveView === 'archived') params.set('archive', 'archived');
         }
 
         if (search.trim()) {
@@ -239,8 +247,8 @@ export default function UserManagement() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [tab, search, filterStatus, filterRole, page, refreshKey]);
-  useEffect(() => { setPage(1); }, [tab, search, filterStatus, filterRole]);
+  }, [tab, search, filterStatus, filterRole, archiveView, page, refreshKey]);
+  useEffect(() => { setPage(1); }, [tab, search, filterStatus, filterRole, archiveView]);
 
   const filtered = users.filter((user) => {
     const matchRole = !filterRole || user.role === filterRole;
@@ -289,6 +297,30 @@ export default function UserManagement() {
       showToast(message);
     } finally {
       setActionId(null);
+    }
+  }
+
+  // One contextual control; the request names the explicit operation (never a blind toggle).
+  async function handleArchiveChange() {
+    if (!archiveTarget || actionId !== null) return;
+    const operation = archiveTarget.archivedAt ? 'restore' : 'archive';
+    if (archiveReason.trim().length < 5) { setArchiveError('Enter a reason with at least five characters.'); return; }
+    setActionId(archiveTarget.id);
+    setArchiveError('');
+    try {
+      const result = await apiRequest<{ message?: string }>(
+        `/api/admin/record-archives/users/${encodeURIComponent(archiveTarget.id)}/${operation}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: archiveReason.trim() }) }
+      );
+      showToast(result.message || (operation === 'archive' ? 'Account archived.' : 'Account restored.'));
+      if (selected?.id === archiveTarget.id) setSelected(null);
+      setArchiveTarget(null);
+    } catch (err) {
+      setArchiveError(err instanceof Error ? err.message : 'The action failed.');
+    } finally {
+      setActionId(null);
+      // Refresh after success and after conflicts (e.g. archived in another tab) so the label matches the server.
+      setRefreshKey((value) => value + 1);
     }
   }
 
@@ -376,6 +408,15 @@ export default function UserManagement() {
                   </option>
                 ))}
               </Select>
+
+              <Select
+                aria-label="Show records"
+                value={archiveView}
+                onChange={(event) => setArchiveView(event.target.value as 'active' | 'archived')}
+              >
+                <option value="active">Active Records</option>
+                <option value="archived">Archived Records</option>
+              </Select>
             </SearchBar>
           </div>
 
@@ -420,22 +461,35 @@ export default function UserManagement() {
                     key: 'status',
                     label: 'Status',
                     render: (user: UserRow) => (
-                      <Badge variant={statusBadge(user.status)}>
-                        {user.status}
-                      </Badge>
+                      <div className="flex flex-wrap gap-1">
+                        <Badge variant={statusBadge(user.status)}>
+                          {user.status}
+                        </Badge>
+                        {user.archivedAt && <Badge variant="default">archived</Badge>}
+                      </div>
                     ),
                   },
                   {
                     key: 'actions',
                     label: 'Actions',
                     render: (user: UserRow) => (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setSelected(user)}
-                      >
-                        View
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setSelected(user)}
+                        >
+                          View
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={user.archivedAt ? 'outline' : 'danger'}
+                          disabled={actionId !== null}
+                          onClick={() => { setArchiveTarget(user); setArchiveReason(''); setArchiveError(''); }}
+                        >
+                          {actionId === user.id ? 'Processing...' : user.archivedAt ? 'Restore' : 'Archive'}
+                        </Button>
+                      </div>
                     ),
                   },
                 ]}
@@ -661,6 +715,44 @@ export default function UserManagement() {
             <Button variant="outline" onClick={() => setSelected(null)}>
               Close
             </Button>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!archiveTarget}
+        onClose={() => { if (actionId === null) setArchiveTarget(null); }}
+        title={`${archiveTarget?.archivedAt ? 'Restore' : 'Archive'} ${archiveTarget?.name || 'account'}`}
+        size="sm"
+      >
+        {archiveTarget && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              {archiveTarget.archivedAt
+                ? 'Restore this same account record. A suspended, rejected or pending account keeps that status; a previously active campus account returns as pending and needs approval. Revoked RFID and QR credentials stay revoked.'
+                : 'Archive this account. The user can no longer sign in, active RFID and QR credentials are revoked, and pending visitor requests are cancelled. Vehicles, documents and parking history are kept.'}
+            </p>
+            <label className="block text-sm font-medium text-slate-700" htmlFor="archive-reason">Reason</label>
+            <textarea
+              id="archive-reason"
+              className="w-full rounded-xl border border-slate-200 p-3 text-sm"
+              rows={3}
+              maxLength={500}
+              value={archiveReason}
+              disabled={actionId !== null}
+              onChange={(event) => setArchiveReason(event.target.value)}
+            />
+            {archiveError && <p role="alert" className="text-sm text-red-700">{archiveError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" disabled={actionId !== null} onClick={() => setArchiveTarget(null)}>Cancel</Button>
+              <Button
+                variant={archiveTarget.archivedAt ? 'primary' : 'danger'}
+                disabled={actionId !== null || archiveReason.trim().length < 5}
+                onClick={() => void handleArchiveChange()}
+              >
+                {actionId !== null ? 'Processing...' : archiveTarget.archivedAt ? 'Restore account' : 'Archive account'}
+              </Button>
+            </div>
           </div>
         )}
       </Modal>

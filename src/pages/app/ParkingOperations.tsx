@@ -1,14 +1,16 @@
 import ParkingLayoutExport from '../../components/ParkingLayoutExport';
 import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
-import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, Card, Badge, Button, Table, SearchBar, Select, Modal, StatCard, Toast, Input } from '../../components/ui';
+import { ageSensorAvailability, loadSensorSnapshot, type SensorSnapshot } from '../../lib/sensorAvailability';
 import { apiRequest } from '../../lib/apiClient';
 import { CAMPUS_TIMEZONE, formatCampusDateTime } from '../../lib/datetime';
 import { useLiveLoad, useLiveSync, POLL_MS, type Topic } from '../../lib/liveSync';
+import { staffBarrier, type GateTicket } from '../../lib/staffBarrier';
 import { MapData, MapSlot, slotFill, proposedSlotSize, withProposedLayout } from '../../components/ParkingMap';
-const ParkingLot3D = lazy(() => import('../../components/ParkingLot3D'));
+import ParkingMapView, { PARKING_VIEW_KEY, savedParkingView } from '../../components/ParkingMapView';
 import ParkingAvailabilityMap from '../../components/ParkingAvailabilityMap';
 import { ParkingSquare, Car, CheckCircle, Wrench, AlertTriangle, LogIn, LogOut, RefreshCw, MapPin, Box, Map as MapIcon, Bike, Layers } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -21,6 +23,9 @@ interface AreaStats {
   area_name: string;
   capacity: number;
   occupied: number;
+  recorded_occupied?: number;
+  unverified_occupied?: number;
+  sensor_unavailable?: number;
   confirmed?: number;
   awaiting_confirmation?: number;
   maintenance: number;
@@ -74,6 +79,8 @@ interface GateResult {
   message: string;
   slot_code?: string | null;
   parking_area?: string | null;
+  barrier_status?: string;
+  barrier_command_id?: number | null;
 }
 
 type ToastState = { message: string; type: 'success' | 'error' } | null;
@@ -111,8 +118,8 @@ const STATUS_BADGE: Record<TransactionRow['transaction_status'], 'warning' | 'su
  * refresh, see lib/liveSync). The returned function reloads this data and
  * asks every other open screen to check for changes, for use after an action.
  */
-function usePolling<T>(load: () => Promise<T>, onData: (d: T) => void, onError: (m: string) => void, topics: Topic[] = ['parking', 'violations']) {
-  const run = useLiveLoad(load, topics, onData, onError);
+function usePolling<T>(load: () => Promise<T>, onData: (d: T) => void, onError: (m: string) => void, topics: Topic[] = ['parking', 'violations'], pollVisible = false) {
+  const run = useLiveLoad(load, topics, onData, onError, pollVisible);
   const { refreshNow } = useLiveSync();
 
   return useCallback(() => { void run(); refreshNow(); }, [run, refreshNow]);
@@ -139,23 +146,31 @@ function GateModal({ open, direction, onClose, onDone, onShowOnMap }: {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<GateResult | null>(null);
   const [error, setError] = useState('');
+  const gateState = useSyncExternalStore(staffBarrier.subscribe, staffBarrier.snapshot, staffBarrier.snapshot);
+  const blocked = busy || gateState.busy || gateState.pending || gateState.reviewing;
 
   useEffect(() => {
     if (open) { setValue(''); setResult(null); setError(''); }
   }, [open, direction]);
 
   const submit = async () => {
+    if (blocked) return;
     if (!value.trim()) { setError('Enter a value to identify the vehicle.'); return; }
+    let ticket: GateTicket | null = null;
     setBusy(true);
     setError('');
     try {
+      ticket = staffBarrier.begin();
       const r = await apiRequest<GateResult>(`/api/parking/${direction}`, { method: 'POST', body: { [method]: value.trim() } });
+      await staffBarrier.approved(ticket, { ...r, kind: 'parking', direction });
       setResult(r);
       setValue('');
       onDone(r);
     } catch (err) {
+      if (ticket) staffBarrier.failed(ticket, err);
       setError(err instanceof Error ? err.message : 'The request could not be completed.');
     } finally {
+      if (ticket) staffBarrier.finish(ticket);
       setBusy(false);
     }
   };
@@ -165,14 +180,14 @@ function GateModal({ open, direction, onClose, onDone, onShowOnMap }: {
     : result.status === 'denied' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800';
 
   return (
-    <Modal open={open} onClose={onClose} title={direction === 'entry' ? 'Record Vehicle Entry' : 'Record Vehicle Exit'} size="sm">
+    <Modal open={open} onClose={() => { if (!busy) onClose(); }} title={direction === 'entry' ? 'Record Vehicle Entry' : 'Record Vehicle Exit'} size="sm">
       <div className="space-y-4">
         <p className="text-sm text-slate-500">
           {direction === 'entry'
             ? 'The vehicle is checked against its authorization; if allowed, an available slot in the correct parking area is assigned.'
-            : 'The active parking session is closed and its slot becomes available.'}
+            : 'The active parking session is closed. The released slot still depends on its maintenance and sensor status.'}
         </p>
-        <Select label="Identify vehicle by" value={method} onChange={e => setMethod(e.target.value as typeof method)} disabled={busy}>
+        <Select label="Identify vehicle by" value={method} onChange={e => setMethod(e.target.value as typeof method)} disabled={blocked}>
           <option value="rfid_tag_uid">RFID tag (students, faculty, employees)</option>
           <option value="qr_pass_code">Visitor QR pass code (visitors)</option>
           <option value="plate_number">Plate number (Parking Staff override)</option>
@@ -182,7 +197,7 @@ function GateModal({ open, direction, onClose, onDone, onShowOnMap }: {
           value={value}
           onChange={e => setValue(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') submit(); }}
-          disabled={busy}
+          disabled={blocked}
           autoFocus
         />
         {error && <ErrorBox message={error} />}
@@ -203,13 +218,19 @@ function GateModal({ open, direction, onClose, onDone, onShowOnMap }: {
             )}
           </div>
         )}
+        {(gateState.pending || gateState.reviewing || result && gateState.notice) && (
+          <div role="status" className="text-sm text-slate-700">
+            <p>{gateState.message}</p>
+            {gateState.reviewing && <p className="mt-1">Close this dialog to confirm the access-record review.</p>}
+          </div>
+        )}
         <p className="text-xs text-slate-400">
           All vehicles use the shared Main Entrance / Exit gate. Campus users must use RFID and visitors their QR pass; a plate number is recorded as a Parking Staff override.
           Campus users also need a verified driver's license.
         </p>
         <div className="flex gap-3 justify-end">
           <Button variant="outline" onClick={onClose} disabled={busy}>Close</Button>
-          <Button variant={direction === 'entry' ? 'success' : 'primary'} onClick={submit} disabled={busy}>
+          <Button variant={direction === 'entry' ? 'success' : 'primary'} onClick={submit} disabled={blocked}>
             {busy ? 'Processing...' : direction === 'entry' ? 'Record Entry' : 'Record Exit'}
           </Button>
         </div>
@@ -487,9 +508,10 @@ function AreaCard({ area }: { area: AreaStats }) {
       <div className="h-3 bg-slate-100 rounded-full overflow-hidden flex mb-4">
         <div className="h-full bg-red-500" style={{ width: `${(area.occupied / area.capacity) * 100}%` }} />
         <div className="h-full bg-gray-400" style={{ width: `${(area.maintenance / area.capacity) * 100}%` }} />
+        <div className="h-full bg-amber-500" style={{ width: `${((area.sensor_unavailable ?? 0) / area.capacity) * 100}%` }} />
       </div>
-      <div className="grid grid-cols-4 gap-2 text-center">
-        {[['Capacity', area.capacity, 'text-slate-700'], ['Occupied', area.occupied, 'text-red-600'], ['Available', area.available, 'text-green-600'], ['Maintenance', area.maintenance, 'text-gray-500']].map(([label, value, cls]) => (
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+        {[['Capacity', area.capacity, 'text-slate-700'], ['Occupied', area.occupied, 'text-red-600'], ['Available', area.available, 'text-green-600'], ['Maintenance', area.maintenance, 'text-gray-500'], ['Sensor uncertain', area.sensor_unavailable ?? 0, 'text-amber-700']].map(([label, value, cls]) => (
           <div key={label as string}>
             <p className={`text-xl font-bold ${cls}`}>{value}</p>
             <p className="text-[11px] text-slate-400">{label}</p>
@@ -515,6 +537,7 @@ function OccupancyMonitor({ overview, error }: { overview: Overview | null; erro
     { name: 'Occupied', value: o.occupied, color: '#EF4444' },
     { name: 'Available', value: o.available, color: '#10B981' },
     { name: 'Maintenance', value: o.maintenance, color: '#9CA3AF' },
+    { name: 'Sensor uncertain', value: o.sensor_unavailable ?? 0, color: '#F59E0B' },
   ];
   const hourly = overview.hourly.map(h => ({
     hour: h.hour,
@@ -565,6 +588,7 @@ function OccupancyMonitor({ overview, error }: { overview: Overview | null; erro
           </div>
           <div className="text-center mt-4">
             <span className="text-4xl font-bold text-[#080677]">{o.occupancy_percent}%</span>
+            {!!(o.unverified_occupied || o.sensor_unavailable) && <p className="text-xs text-amber-800">{o.unverified_occupied ?? 0} unverified sensor detections · {o.sensor_unavailable ?? 0} sensor slots unavailable. These are not recorded vehicle entries.</p>}
             <p className="text-sm text-slate-400">Overall Occupancy · {o.occupied} of {o.capacity} slots</p>
           </div>
         </Card>
@@ -592,6 +616,7 @@ function OccupancyMonitor({ overview, error }: { overview: Overview | null; erro
 // ------------------------------------------------------------- parking layout
 
 interface MapResponse extends MapData {
+  generated_at: string;
   inside?: Inside;
   areas: AreaStats[];
   overall: Overview['overall'];
@@ -619,7 +644,7 @@ function OccupancyPanel({ areas, overall, inside }: { areas: AreaStats[]; overal
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
       {cards.map(({ key, title, icon, stats }) => {
         const pct = (n: number) => (stats.capacity ? (n / stats.capacity) * 100 : 0);
-        const sumOk = stats.available + stats.occupied + stats.maintenance === stats.capacity;
+        const sumOk = stats.available + stats.occupied + stats.maintenance + (stats.sensor_unavailable ?? 0) === stats.capacity;
         return (
           <div key={key} className={`min-w-0 rounded-2xl border p-3 sm:p-4 space-y-3 ${key === 'ALL' ? 'border-[#080677]/15 bg-gradient-to-br from-[#080677]/[0.04] to-[#2563EB]/[0.06]' : 'border-slate-100 bg-white'}`}>
             <div className="flex items-center gap-3">
@@ -633,8 +658,8 @@ function OccupancyPanel({ areas, overall, inside }: { areas: AreaStats[]; overal
                 <span className="block text-[10px] text-slate-400">occupied</span>
               </span>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              {([['Available', stats.available, 'text-green-600 bg-green-50'], ['Occupied', stats.occupied, 'text-red-600 bg-red-50'], ['Maintenance', stats.maintenance, 'text-gray-600 bg-gray-100']] as const).map(([label, value, tone]) => (
+            <div className="grid grid-cols-2 gap-2 text-center">
+              {([['Available', stats.available, 'text-green-600 bg-green-50'], ['Occupied', stats.occupied, 'text-red-600 bg-red-50'], ['Maintenance', stats.maintenance, 'text-gray-600 bg-gray-100'], ['Sensor uncertain', stats.sensor_unavailable ?? 0, 'text-amber-800 bg-amber-50']] as const).map(([label, value, tone]) => (
                 <div key={label} className={`rounded-xl py-2 ${tone}`}>
                   <p className="text-xl font-bold leading-tight">{value}</p>
                   <p className="text-[10px] font-medium opacity-80 break-words">{label}</p>
@@ -642,13 +667,14 @@ function OccupancyPanel({ areas, overall, inside }: { areas: AreaStats[]; overal
               ))}
             </div>
             <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden flex" role="img"
-              aria-label={`${stats.available} available, ${stats.occupied} occupied, ${stats.maintenance} under maintenance of ${stats.capacity}`}>
+              aria-label={`${stats.available} available, ${stats.occupied} occupied, ${stats.maintenance} under maintenance, ${stats.sensor_unavailable ?? 0} sensor uncertain of ${stats.capacity}`}>
               <div className="h-full bg-green-500" style={{ width: `${pct(stats.available)}%` }} />
               <div className="h-full bg-red-500" style={{ width: `${pct(stats.occupied)}%` }} />
               <div className="h-full bg-gray-400" style={{ width: `${pct(stats.maintenance)}%` }} />
+              <div className="h-full bg-amber-500" style={{ width: `${pct(stats.sensor_unavailable ?? 0)}%` }} />
             </div>
             <p className="text-xs text-slate-600">
-              {key === 'ALL' ? 'Vehicles inside' : key === 'MC' ? 'Motorcycles inside' : 'Cars inside'}: <strong>{key === 'ALL' ? (inside?.total ?? stats.occupied) : stats.occupied}</strong>
+              {key === 'ALL' ? 'Vehicles inside' : key === 'MC' ? 'Motorcycles inside' : 'Cars inside'}: <strong>{key === 'ALL' ? (inside?.total ?? stats.recorded_occupied ?? stats.occupied) : (stats.recorded_occupied ?? stats.occupied)}</strong>
               {!!stats.awaiting_confirmation && <span className="text-amber-700"> · {stats.awaiting_confirmation} not yet confirmed</span>}
             </p>
             {!sumOk && <p className="text-[11px] text-amber-600">Counts do not add up to capacity; refresh to reload.</p>}
@@ -657,16 +683,6 @@ function OccupancyPanel({ areas, overall, inside }: { areas: AreaStats[]; overal
       })}
     </div>
   );
-}
-
-const VIEW_KEY = 'pass_parking_layout_view';
-
-function savedView(): '3d' | 'plan' {
-  try {
-    return localStorage.getItem(VIEW_KEY) === 'plan' ? 'plan' : '3d';
-  } catch {
-    return '3d';
-  }
 }
 
 /** Slots whose status or occupant changed between two polls. */
@@ -682,7 +698,11 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
   onHighlight: (slotCode: string | null) => void;
 }) {
   const { user } = useAuth();
-  const [data, setData] = useState<MapResponse | null>(null);
+  const [rawData, setData] = useState<MapResponse | null>(null);
+  const [sensorClock, setSensorClock] = useState(performance.now());
+  const sensorLoadedAt = useRef(performance.now());
+  const data = rawData ? ageSensorAvailability(rawData, sensorClock - sensorLoadedAt.current) : null;
+  useEffect(() => { const timer = setInterval(() => setSensorClock(performance.now()), 1000); return () => clearInterval(timer); }, []);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [focus, setFocus] = useState<{ code: string; key: number } | null>(null);
@@ -692,21 +712,21 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
   const [otherTxn, setOtherTxn] = useState('');
   const [maintenanceReason, setMaintenanceReason] = useState('');
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState<'3d' | 'plan'>(savedView);
+  const [view, setView] = useState<'3d' | 'plan'>(savedParkingView);
   const [gateMenu, setGateMenu] = useState(false);
   const [recent, setRecent] = useState<Set<number>>(() => new Set());
   const previous = useRef<MapSlot[] | undefined>(undefined);
 
-  const load = useCallback(() => apiRequest<MapResponse>('/api/parking/map').then(withProposedLayout), []);
-  const onData = useCallback((d: MapResponse) => {
+  const load = useCallback(() => loadSensorSnapshot(() => apiRequest<MapResponse>('/api/parking/map').then(withProposedLayout)), []);
+  const onData = useCallback(({ value: d, requestStartedAt }: SensorSnapshot<MapResponse>) => {
     setRecent(changedSlots(previous.current, d.slots));
     previous.current = d.slots;
+    sensorLoadedAt.current = requestStartedAt; setSensorClock(performance.now());
     setData(d);
   }, []);
-  const refresh = usePolling(load, onData, setError);
+  const refresh = usePolling(load, onData, setError, ['parking', 'violations'], true);
 
-  // Changed slots flash briefly. Clear them afterwards: the map only reloads when
-  // something changes, and while slots are marked the 3D view renders every frame.
+  // Changed slots flash briefly; the 3D view renders every frame while marked.
   useEffect(() => {
     if (recent.size === 0) return;
     const timer = setTimeout(() => setRecent(new Set()), 5000);
@@ -715,7 +735,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
 
   const chooseView = (v: '3d' | 'plan') => {
     setView(v);
-    try { localStorage.setItem(VIEW_KEY, v); } catch { /* preference only */ }
+    try { localStorage.setItem(PARKING_VIEW_KEY, v); } catch { /* preference only */ }
   };
 
   const selected = data?.slots.find(s => s.slot_id === selectedId) ?? null;
@@ -762,6 +782,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
     [{ background: '#22C55E' }, 'Available'],
     [{ background: '#EF4444' }, 'Occupied'],
     [{ background: '#9CA3AF' }, 'Maintenance / disabled'],
+    [{ background: '#F59E0B' }, 'Sensor offline or uncertain'],
     [{ background: '#EF4444', outline: '1.5px dashed #FFFFFF', outlineOffset: -3 }, 'Occupied, location not yet confirmed'],
     [{ background: '#FFFFFF', border: '1px dashed #94A3B8' }, 'Painted bay, not a PASS slot'],
   ];
@@ -811,8 +832,8 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
           !error && <p className="py-16 text-center text-sm text-slate-400">Loading parking map...</p>
         ) : (
           <>
-            <Suspense fallback={<p role="status" className="p-8 text-sm text-slate-500">Loading parking layout…</p>}><ParkingLot3D viewMode={view} data={data} highlight={highlight} selectedId={selectedId} recent={recent} gateOnline={gateOnline}
-              focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} onGate={() => setGateMenu(true)} /></Suspense>
+            <ParkingMapView viewMode={view} onUsePlan={() => chooseView('plan')} data={data} highlight={highlight} selectedId={selectedId} recent={recent} gateOnline={gateOnline}
+              focusArea={focus} onSelect={s => setSelectedId(s.slot_id)} onGate={() => setGateMenu(true)} />
             <p className="text-xs text-slate-400">
               Drag to pan · scroll, pinch or use the buttons to zoom · select a slot for details{view === '3d' ? ' · select the Main Entrance / Exit to record an entry or exit' : ''}. Updates automatically: checks for changes every {POLL_MS / 1000} seconds while this tab is open.{' '}
               {highlight && (
@@ -879,7 +900,7 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
             <div className="w-full h-20 rounded-xl flex flex-col items-center justify-center"
               style={{ background: colors.fill, color: colors.text, border: `2px ${colors.dash ? 'dashed' : 'solid'} ${colors.stroke}` }}>
               <p className="font-bold text-2xl">{selected.slot_code}</p>
-              <p className="text-xs capitalize">{selected.status === 'occupied' && !selected.occupant?.confirmed ? 'Occupied · location not yet confirmed' : selected.status}</p>
+              <p className="text-xs capitalize">{selected.status === 'occupied' && !selected.occupant ? 'Sensor occupied · identity unverified' : selected.status === 'occupied' && !selected.occupant?.confirmed ? 'Occupied · location not yet confirmed' : selected.status}</p>
             </div>
 
             <div className="space-y-2">
@@ -887,7 +908,8 @@ function ParkingLayout({ notify, highlight, onHighlight }: {
                 ['Slot number', selected.slot_code],
                 ['Parking area', selected.area_name],
                 ['Proposed bay size', proposedSlotSize(data, selected.slot_code) ?? 'No measured position established for this code'],
-                ['Slot status', selected.status === 'occupied' ? 'Occupied' : selected.status === 'maintenance' ? 'Maintenance / disabled' : 'Available'],
+                ...(selected.sensor ? [['Slot sensor', `${selected.sensor.state} · ${selected.sensor.online ? 'online' : 'offline'}`], ['Sensor last seen', formatDateTime(selected.sensor.last_seen_at)]] : []),
+                ['Slot status', selected.status === 'occupied' ? 'Occupied' : selected.status === 'maintenance' ? 'Maintenance / disabled' : selected.status === 'unknown' ? 'Sensor offline or uncertain' : 'Available'],
                 ...(selected.accessible ? [['Slot type', 'Accessible (PWD)']] : []),
                 ['Map position', data?.geometry.proposed_slot_codes?.includes(selected.slot_code) ? 'Proposed position · campus confirmation pending' : selected.placed ? 'Mapped on the proposed layout' : 'No confirmed map position'],
                 ...(selected.occupant ? [
@@ -1014,17 +1036,18 @@ function Availability() {
   const [error, setError] = useState('');
   const [updated, setUpdated] = useState<Date | null>(null);
 
-  const load = useCallback(() => Promise.all([
-    apiRequest<{ areas: AreaStats[]; overall: Overview['overall'] }>('/api/parking/availability'),
-    apiRequest<{ data: typeof sessions }>('/api/parking/my-session'),
-  ]), []);
+  const load = useCallback(() => apiRequest<{ areas: AreaStats[]; overall: Overview['overall'] }>('/api/parking/availability'), []);
+  const loadSessions = useCallback(() => apiRequest<{ data: typeof sessions }>('/api/parking/my-session'), []);
+  const [sessionError, setSessionError] = useState('');
 
-  usePolling(load, ([availability, mine]) => { setData(availability); setSessions(mine.data); setUpdated(new Date()); }, setError, ['parking']);
+  usePolling(load, availability => { setData(availability); setUpdated(new Date()); }, setError, ['parking'], true);
+  useLiveLoad(loadSessions, ['parking'], mine => setSessions(mine.data), setSessionError);
 
   if (!data) return error ? <ErrorBox message={`Unable to load parking availability: ${error}`} /> : <p className="py-16 text-center text-sm text-slate-400">Loading availability...</p>;
 
   return (
     <div className="space-y-5">
+      {sessionError && <ErrorBox message={sessionError} />}
       {error && <ErrorBox message={`Showing the last loaded figures. ${error}`} />}
       {sessions.map(s => (
         <Card key={s.transaction_id} className="p-5 flex flex-wrap items-center gap-4 border-[#2563EB]/30">
@@ -1084,7 +1107,7 @@ export default function ParkingOperations() {
     () => (canOperate ? apiRequest<Overview>('/api/parking/overview') : Promise.resolve(null)),
     [canOperate]
   );
-  const refreshOverview = usePolling(loadOverview, d => { if (d) setOverview(d); }, setOverviewError);
+  const refreshOverview = usePolling(loadOverview, d => { if (d) setOverview(d); }, setOverviewError, ['parking', 'violations'], canOperate && tab === 'Occupancy Monitor');
 
   const notify = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });

@@ -1,70 +1,94 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
+import { apiRequest } from '../lib/apiClient';
 
-export interface DocumentFields {
-  fullName?: string;
-  idNum?: string;
-  licenseNo?: string;
-  licenseType?: string;
-  licenseExpiry?: string;
-}
+export type DocumentType = 'driver_license' | 'vehicle_or' | 'vehicle_cr';
+export type ExtractedFields = Record<string, string | number>;
+/** missing: not read; low_confidence: check it; conflict: already registered elsewhere. */
+export type FieldFlag = 'missing' | 'low_confidence' | 'conflict';
+export type DocumentStatus = 'ok' | 'partial' | 'retake' | 'not_license' | 'wrong_document' | 'invalid_image' | 'unavailable';
+/** notes: per-field explanation (vehicle documents), shown by the caller only when the field still needs attention. */
+type Result = { status: DocumentStatus; fields: ExtractedFields; flags: Record<string, FieldFlag>; notes?: Record<string, string>; issues: string[]; message: string };
 
-const labels: Record<keyof DocumentFields, string> = {
-  fullName: 'Full name', idNum: 'Student number', licenseNo: 'License number',
-  licenseType: 'License type', licenseExpiry: 'Expiry date',
+const LABELS: Record<string, string> = {
+  license_number: 'License number', expiry_date: 'Expiry date', plate_number: 'Plate number', make: 'Make', model: 'Model / series',
+  color: 'Color', year_model: 'Year model', vehicle_type: 'Vehicle type', registration_expiry: 'Registration valid until',
 };
 
-export default function DocumentAutofill({ file, documentType, onApply }: {
+/**
+ * Reads an uploaded license or OR/CR image and pre-fills the form. Only the
+ * latest file's result is applied: a slower response for an earlier photo is
+ * discarded. Values stay editable; the server checks the submitted files again.
+ */
+export default function DocumentAutofill({ file, documentType, onFields, compact = false }: {
   file: File | null;
-  documentType: 'school_id' | 'driver_license';
-  onApply: (fields: DocumentFields) => void;
+  documentType: DocumentType;
+  /** Called once per photo with what was read (also when reading failed); flags mark fields to enter or check. */
+  onFields: (fields: ExtractedFields, flags: Record<string, FieldFlag>, status: DocumentStatus, notes: Record<string, string>) => void;
+  /** Show only the processing status and issues; the caller displays the values. */
+  compact?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<{ fields: DocumentFields; text: string; message: string } | null>(null);
+  const [result, setResult] = useState<Result | null>(null);
+  const sequence = useRef(0);
   const request = useRef<AbortController | null>(null);
+  const apply = useRef(onFields);
+  apply.current = onFields;
 
   useEffect(() => {
+    const seq = ++sequence.current;
     request.current?.abort();
     setResult(null); setError(''); setBusy(false);
-    return () => request.current?.abort();
-  }, [file, documentType]);
-
-  async function readDocument() {
-    if (!file || busy) return;
+    if (!file || !file.type.startsWith('image/')) return;
     const controller = new AbortController();
     request.current = controller;
-    setBusy(true); setError(''); setResult(null);
     const body = new FormData();
     body.append('document', file); body.append('document_type', documentType);
-    try {
-      const response = await fetch('/api/documents/autofill', {
-        method: 'POST', headers: { Accept: 'application/json' }, body, signal: controller.signal,
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.fields) throw new Error(data?.message || 'Cannot read the document. You can enter the details manually.');
-      if (!controller.signal.aborted) setResult(data);
-    } catch (err) {
-      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Document reading failed.');
-    } finally {
-      if (!controller.signal.aborted) setBusy(false);
-    }
-  }
+    setBusy(true);
+    apiRequest<Result>('/api/documents/autofill', { method: 'POST', body, signal: controller.signal })
+      .then(data => {
+        if (seq !== sequence.current) return;
+        setResult(data);
+        apply.current(data.fields ?? {}, data.flags ?? {}, data.status, data.notes ?? {});
+      })
+      .catch(err => {
+        if (seq !== sequence.current || controller.signal.aborted) return;
+        setError(err instanceof Error ? err.message : 'The document could not be read. Enter the details manually.');
+        apply.current({}, {}, 'unavailable', {});
+      })
+      .finally(() => { if (seq === sequence.current) setBusy(false); });
+    return () => controller.abort();
+  }, [file, documentType]);
 
-  return <div className="space-y-3 rounded-xl border border-blue-100 bg-blue-50/50 p-3">
-    <button type="button" onClick={readDocument} disabled={!file || busy}
-      className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-      {busy ? 'Reading document…' : 'Read document'}
-    </button>
-    <p className="text-xs text-slate-600">Upload a document, read its text, then review the suggestions. You can edit all details before submitting.</p>
-    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-    {result && <div className="space-y-3" aria-live="polite">
-      {Object.entries(result.fields).length ? <>
-        <dl className="text-sm">{Object.entries(result.fields).map(([key, value]) => <div key={key} className="flex gap-2"><dt className="font-semibold">{labels[key as keyof DocumentFields]}:</dt><dd>{value}</dd></div>)}</dl>
-        <button type="button" onClick={() => onApply(result.fields)} className="rounded-lg border border-blue-700 px-3 py-2 text-sm font-semibold text-blue-800">Use these details</button>
-        <p className="text-xs text-slate-600">This replaces the matching form fields. Check and correct them before submitting.</p>
-      </> : <p className="text-sm text-amber-800">Text was read, but no fields could be identified confidently. Enter the details manually.</p>}
-      <details><summary className="cursor-pointer text-sm text-blue-800">Detected text</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs">{result.text}</pre></details>
-      <p className="text-xs text-slate-600">{result.message}</p>
-    </div>}
-  </div>;
+  if (!file) return null;
+  return (
+    <div className="space-y-2 rounded-xl border border-blue-100 bg-blue-50/50 p-3 text-sm" aria-live="polite">
+      {busy && <p className="flex items-center gap-2 text-blue-800"><Loader2 size={15} className="animate-spin" />Reading the document… this can take a few seconds.</p>}
+      {error && <p role="alert" className="text-red-700">{error}</p>}
+      {result && <>
+        {/* OR/CR (compact): a photo that was read is not a failure; per-field certainty is
+            judged in the combined review, which says what still needs checking. */}
+        <p className={`flex items-start gap-2 ${result.status === 'ok' ? 'text-green-800' : compact && result.status === 'partial' ? 'text-slate-700' : 'text-amber-800'}`}>
+          {result.status === 'ok' || (compact && result.status === 'partial') ? <CheckCircle size={15} className="mt-0.5 shrink-0" /> : <AlertTriangle size={15} className="mt-0.5 shrink-0" />}
+          <span>{result.message}</span>
+        </p>
+        {result.issues.map(issue => <p key={issue} className="text-amber-800">{issue}</p>)}
+        {!compact && (Object.keys(result.fields).length > 0 || Object.keys(result.flags).length > 0) && (
+          <dl className="grid gap-1 sm:grid-cols-2">
+            {Array.from(new Set([...Object.keys(result.fields), ...Object.keys(result.flags)])).map(key => (
+              <div key={key} className="flex flex-wrap gap-1">
+                <dt className="font-semibold text-slate-700">{LABELS[key] ?? key}:</dt>
+                <dd className={result.flags[key] ? 'text-amber-800' : 'text-slate-700'}>
+                  {result.fields[key] ?? 'not found'}
+                  {result.flags[key] === 'missing' && ' — enter it manually or retake the photo'}
+                  {result.flags[key] === 'low_confidence' && ' — check this value'}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </>}
+    </div>
+  );
 }

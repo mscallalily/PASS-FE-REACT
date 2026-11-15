@@ -48,8 +48,8 @@ export default function PersonalDashboard() {
   if (data) {
     if (!license) steps.push({ title: 'Submit your driver’s license', detail: 'Start here before registering a vehicle.', to: '/app/drivers' });
     else if (!licenseReady) steps.push({ title: `Driver’s license · ${licenseLabel}`, detail: license.expired ? 'Update your expired license before your next trip.' : 'View the latest document decision and any required corrections.', to: '/app/drivers' });
-    if (!data.summary.vehicles) steps.push({ title: 'Register your vehicle', detail: 'Add the vehicle details and a clear photo for staff review.', to: '/app/vehicles' });
-    if (data.summary.pending_vehicles) steps.push({ title: `${data.summary.pending_vehicles} vehicle authorization${data.summary.pending_vehicles === 1 ? '' : 's'} pending`, detail: 'Your submission is waiting for PASS staff review.', to: '/app/vehicles/status' });
+    if (!data.summary.vehicles) steps.push({ title: 'Register your vehicle', detail: 'Photograph your OR and CR; approval is automatic once the details match.', to: '/app/vehicles' });
+    if (data.summary.pending_vehicles) steps.push({ title: `${data.summary.pending_vehicles} vehicle authorization${data.summary.pending_vehicles === 1 ? '' : 's'} pending`, detail: 'Open My Vehicles to see the automatic OR/CR check result and what to retake or correct.', to: '/app/vehicles/status' });
     if (data.summary.rejected_vehicles) steps.push({ title: 'Vehicle correction needed', detail: 'Review the reason and correct your vehicle submission.', to: '/app/vehicles/status' });
     if (selected && !['approved', 'pending', 'rejected'].includes(selected.authorization_status)) steps.push({ title: `Vehicle authorization · ${label(selected.authorization_status)}`, detail: 'Review your authorization status before your next trip.', to: '/app/vehicles/status' });
     if (selected && selected.registration_status !== 'registered') steps.push({ title: 'Vehicle registration needs attention', detail: 'Check your vehicle record with PASS staff.', to: '/app/vehicles' });

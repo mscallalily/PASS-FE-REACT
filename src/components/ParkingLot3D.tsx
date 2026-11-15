@@ -1,14 +1,12 @@
-import React, { Component, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
-import ParkingMap, { ZoomControls, withProposedLayout, slotLabel, slotNumber, type MapData, type MapGeometry, type MapSlot } from './ParkingMap';
+import { ZoomControls, slotLabel, slotNumber, type MapData, type MapGeometry, type MapSlot } from './ParkingMap';
 import {
   arrowShape, bayAxis, before, bodyColor, carSize, isMotorcycle, layoutSlots, motoSize, offset, plantTrees, rect,
   type SceneSlot, type TrayPanel,
 } from './ParkingScene3D';
-import { Ruler } from 'lucide-react';
-import ParkingMeasurements from './ParkingMeasurements';
 import type { Point } from './usePanZoom';
 
 // WebGL (Three.js) view of the DYCI parking layout.
@@ -34,6 +32,7 @@ const FONT = 'Inter, "Segoe UI", system-ui, sans-serif';
 const STATUS = {
   available: { color: '#22C55E', opacity: 0.78 },
   occupied: { color: '#EF4444', opacity: 0.8 },
+  unknown: { color: '#F59E0B', opacity: 0.8 },
   maintenance: { color: '#A3A9B3', opacity: 0.88 },
 } as const;
 
@@ -789,24 +788,19 @@ const CameraRig = React.forwardRef<CameraApi, { home: THREE.Box2; onCloseUp: (cl
   return null;
 });
 
+function ContextHealth({ onUnavailable }: { onUnavailable?: () => void }) {
+  const gl = useThree(state => state.gl);
+  useEffect(() => {
+    const lost = (event: Event) => { event.preventDefault(); onUnavailable?.(); };
+    gl.domElement.addEventListener('webglcontextlost', lost);
+    return () => gl.domElement.removeEventListener('webglcontextlost', lost);
+  }, [gl, onUnavailable]);
+  return null;
+}
+
 // ----------------------------------------------------------------- component
 
-class WebGLBoundary extends Component<{ fallback: React.ReactNode; children: React.ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() { return { failed: true }; }
-  render() { return this.state.failed ? this.props.fallback : this.props.children; }
-}
-
-function webglAvailable() {
-  try {
-    const c = document.createElement('canvas');
-    return !!(c.getContext('webgl2') || c.getContext('webgl'));
-  } catch {
-    return false;
-  }
-}
-
-type Props = {
+export type ParkingLot3DProps = {
   viewMode?: '3d' | 'plan';
   showMeasurements?: boolean;
   data: MapData & { areas?: { area_code: string; capacity: number; available: number }[] };
@@ -817,30 +811,10 @@ type Props = {
   onSelect: (slot: MapSlot) => void;
   onGate: () => void;
   focusArea: { code: string; key: number } | null;
+  onUnavailable?: () => void;
 };
 
-export default function ParkingLot3D(props: Props) {
-  const [supported] = useState(webglAvailable);
-  const [showMeasurements, setShowMeasurements] = useState(false);
-  const activeData = useMemo(() => withProposedLayout(props.data), [props.data]);
-  const inventory = activeData.geometry.measurement_basis?.inventory;
-  const fallback = <div className="space-y-2">
-    <p className="text-xs text-amber-700">This browser is showing the simplified plan. Slot positions and availability are unchanged.</p>
-    <ParkingMap data={activeData} highlight={props.highlight} onSelect={props.onSelect} focusArea={props.focusArea} showMeasurements={showMeasurements} />
-  </div>;
-  return <div className="space-y-3 min-w-0">
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-xs font-medium text-slate-500">Proposed campus parking layout</p>
-      <button type="button" aria-pressed={showMeasurements} onClick={() => setShowMeasurements(value => !value)} className={`min-h-11 rounded-lg border px-3 py-2 text-xs font-semibold inline-flex items-center gap-2 ${showMeasurements ? 'border-[#080677] bg-blue-50 text-[#080677]' : 'border-slate-200 text-slate-600 hover:bg-blue-50'}`}><Ruler size={16} />{showMeasurements ? 'Hide measurements' : 'Show measurements'}</button>
-    </div>
-    {inventory && <div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900"><strong>Parking layout:</strong> {inventory.car_drawn} full-size proposed car bays. The {inventory.car_configured}-car inventory target is retained; {inventory.car_configured - inventory.car_drawn} positions still need a measured layout. Use Show measurements to see each bay’s width × length. Campus confirmation is pending.</div>}
-    {showMeasurements && <p className="text-xs text-blue-800">Each proposed bay shows W (width) and L (length), in metres. Zoom in or open a slot for its size. Boundary angles and vehicle manoeuvres still require campus confirmation.</p>}
-    {supported ? <WebGLBoundary fallback={fallback}><Lot {...props} data={activeData} showMeasurements={showMeasurements} /></WebGLBoundary> : fallback}
-    <ParkingMeasurements geometry={activeData.geometry} slots={activeData.slots} />
-  </div>;
-}
-
-function Lot({ viewMode = '3d', showMeasurements = false, data, highlight, selectedId, recent, gateOnline, onSelect, onGate, focusArea }: Props) {
+export default function ParkingLot3D({ viewMode = '3d', showMeasurements = false, data, highlight, selectedId, recent, gateOnline, onSelect, onGate, focusArea, onUnavailable }: ParkingLot3DProps) {
   // Static geometry only changes when the layout itself changes, not on every poll.
   const geometryKey = JSON.stringify(data.geometry);
   const g = useMemo(() => data.geometry, [geometryKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -918,6 +892,7 @@ function Lot({ viewMode = '3d', showMeasurements = false, data, highlight, selec
         aria-label={`${viewMode === 'plan' ? 'Plan' : '3D'} view of the DYCI parking layout. Drag to pan, scroll or pinch to zoom, select a slot for details.`}
         role="application"
       >
+        <ContextHealth onUnavailable={onUnavailable} />
         <hemisphereLight args={['#F1F5FF', '#5B7F43', 0.9]} />
         <ambientLight intensity={0.25} />
         <primitive object={sun} />
