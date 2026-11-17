@@ -102,7 +102,7 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
   const tone = {
     not_submitted: { box: 'bg-slate-50 border-slate-200', text: 'text-slate-700', icon: <IdCard size={22} className="text-slate-500" />, msg: "No driver's license on file. Submit it to register a vehicle." },
     processing: { box: 'bg-blue-50 border-blue-200', text: 'text-blue-800', icon: <Loader2 size={22} className="text-blue-600 animate-spin" />, msg: 'Checking your document. This usually takes a few seconds.' },
-    pending_review: { box: 'bg-amber-50 border-amber-200', text: 'text-amber-800', icon: <Clock size={22} className="text-amber-600" />, msg: license?.verification_source === 'staff' ? 'Your submission is awaiting a staff exception review.' : 'Some required document details could not be confirmed automatically. Your submission remains unapproved. Retry the check or contact PASS staff for review.' },
+    pending_review: { box: 'bg-amber-50 border-amber-200', text: 'text-amber-800', icon: <Clock size={22} className="text-amber-600" />, msg: license?.can_recheck ? 'The OCR check could not finish. Retry the automatic check.' : 'Your submission is waiting for PASS staff to review the license photo.' },
     verified: { box: 'bg-green-50 border-green-200', text: 'text-green-800', icon: <CheckCircle size={22} className="text-green-600" />, msg: license?.verification_source === 'automatic' ? 'Your license submission was approved automatically after the required OCR and document-consistency checks passed.' : 'PASS staff approved your license submission.' },
     needs_correction: {
       box: 'bg-red-50 border-red-200', text: 'text-red-800', icon: <AlertTriangle size={22} className="text-red-600" />,
@@ -125,7 +125,7 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
         <div className="flex items-start gap-3">
           <span className="shrink-0 mt-0.5">{tone.icon}</span>
           <div className="min-w-0">
-            <p className={`font-bold ${tone.text}`}>{renewalAvailable ? 'License renewal needed' : status === 'verified' && license?.verification_source === 'automatic' ? 'Approved automatically' : status === 'pending_review' && license?.verification_source !== 'staff' ? 'Automatic check needs review' : LICENSE_STATUS_LABEL[status]}</p>
+            <p className={`font-bold ${tone.text}`}>{renewalAvailable ? 'License renewal needed' : status === 'verified' && license?.verification_source === 'automatic' ? 'Approved automatically' : LICENSE_STATUS_LABEL[status]}</p>
             <p className={`text-sm mt-0.5 ${tone.text}`}>{renewalAvailable ? 'Your previous license has expired. Submit your renewed license for a new document check.' : tone.msg}</p>
             {status === 'needs_correction' && license?.verification_reason && (
               <ul className="mt-2 space-y-1 list-disc pl-5 text-sm text-red-800">
@@ -138,11 +138,12 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
                 <p>Expiry: <span className="font-semibold">{license.expiry_date ?? '—'}</span></p>
                 {license.original_file_name && <p>File: <span className="font-semibold break-all">{license.original_file_name}</span></p>}
                 <p>Submitted: {formatDateTime(license.submitted_at)}</p>
+                {license.ocr_confidence != null && <p>Text extraction (OCR): {license.ocr_confidence}%</p>}
               </div>
             )}
           </div>
         </div>
-        {status === 'pending_review' && license?.verification_source !== 'staff' && <div className="mt-3 space-y-2">
+        {status === 'pending_review' && license?.can_recheck && <div className="mt-3 space-y-2">
           <button type="button" disabled={retrying || cooldown > 0} onClick={async () => { if (retrying || cooldown) return; setRetrying(true); setRetryMessage(''); const result = await retry(); setRetryMessage(result.message); if (!result.ok) setCooldown(result.retryAfterSeconds ?? 0); setRetrying(false); }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-[#2563EB] disabled:opacity-50">
             {retrying ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}{cooldown ? `Try again in ${cooldown}s` : retrying ? 'Checking…' : 'Retry automatic check'}
           </button>
@@ -192,7 +193,7 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
 
       <p className="flex items-start gap-2 text-xs text-slate-400">
         <ShieldCheck size={14} className="shrink-0 mt-0.5" />
-        <span>Your document is stored privately and is only visible to you and authorized PASS staff. Automatic approval checks the document text and image consistency; it does not confirm authenticity with the LTO. Account approval, vehicle authorization and RFID assignment are separate.</span>
+        <span>Your document is stored privately and is only visible to you and authorized PASS staff. Photos with an OCR confidence of at least 80% go to staff review. Lower scores require a new photo.</span>
       </p>
     </div>
   );

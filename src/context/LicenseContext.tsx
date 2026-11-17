@@ -8,6 +8,8 @@ import { apiRequest, ApiError } from '../lib/apiClient';
 export type LicenseStatus = 'not_submitted' | 'processing' | 'needs_correction' | 'pending_review' | 'verified';
 
 export interface LicenseRecord {
+  can_recheck?: boolean;
+  ocr_confidence?: number | null;
   license_id: number;
   license_number: string;
   expiry_date: string | null;

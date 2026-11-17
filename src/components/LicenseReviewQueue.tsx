@@ -226,7 +226,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
   return (
     <Card>
       <div className="p-5 border-b border-slate-50 space-y-3">
-        <p className="text-sm text-slate-500">Uploads receive an automatic document decision. All required OCR, image-quality and matching checks must pass for automatic approval. Matching identity details with uncertain OCR confidence or incomplete headings remain unapproved for staff review. Mismatched, expired or unreadable required fields receive correction reasons. An unavailable reading service also leaves the submission unapproved and retryable. Staff exception reviews are recorded separately. This does not confirm authenticity with the LTO or grant vehicle/RFID access.</p>
+        <p className="text-sm text-slate-500">License photos with an OCR confidence of 80% or higher go to staff review. Lower scores require a new photo.</p>
         <SearchBar value={search} onChange={setSearch} placeholder="Search by owner, ID, or license number...">
           <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="">All Status</option>
@@ -337,9 +337,9 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
                         </div>
                       </div>
                     ))}
-                    {(ocr.notes ?? []).length > 0 && (
+                    {(ocr.notes ?? []).some(note => !note.startsWith('Automated OCR and document-consistency check only.')) && (
                       <ul className="mt-2 list-disc pl-5 text-xs text-amber-700 space-y-0.5">
-                        {ocr.notes!.map(n => <li key={n}>{n}</li>)}
+                        {ocr.notes!.filter(note => !note.startsWith('Automated OCR and document-consistency check only.')).map(n => <li key={n}>{n}</li>)}
                       </ul>
                     )}
                     {ocr.extracted && (
@@ -393,7 +393,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
               {decision.decision === 'verified'
-                ? `Record a staff exception approval for ${decision.row.owner_name || 'this user'} after inspecting the uploaded document. Explain your decision below. This does not establish official LTO authenticity.`
+                ? `Record a staff exception approval for ${decision.row.owner_name || 'this user'} after inspecting the uploaded document. Explain your decision below.`
                 : decision.decision === 'needs_correction'
                   ? `Return ${decision.row.owner_name || 'this user'}'s submission. They will be notified and asked to resubmit.`
                   : 'Move this submission back to the pending review queue.'}
