@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useCallback, useRef, useState, type ReactNode } from 'react';
 import { ApiError, jsonRequest } from '../lib/http';
 export type UserRole = 'admin' | 'parking_staff' | 'student' | 'faculty' | 'employee' | 'guest' | null;
-interface AuthUser { id: string; name: string; email: string; role: UserRole; idNum?: string; dept?: string; accountStatus?: string; emailVerified?: boolean; schoolIdSubmitted?: boolean; registrationCategory?: string | null; yearLevel?: string | null; section?: string | null; }
-interface AuthContextType { user: AuthUser | null; login: (identifier: string, password: string, remember?: boolean) => Promise<{ success: boolean; role: UserRole }>; logout: () => Promise<void>; isAuthenticated: boolean; ready: boolean; }
+interface AuthUser { id: string; name: string; email: string; role: UserRole; idNum?: string; dept?: string; accountStatus?: string; emailVerified?: boolean; approvalStep?: 'email' | 'institutional_id' | 'license_processing' | 'license_review' | 'license_correction' | 'license_retry' | 'account_review' | null; schoolIdCheckStatus?: string | null; schoolIdSubmitted?: boolean; registrationCategory?: string | null; yearLevel?: string | null; section?: string | null; }
+interface AuthContextType { user: AuthUser | null; login: (identifier: string, password: string, remember?: boolean) => Promise<{ success: boolean; role: UserRole }>; logout: () => Promise<void>; refreshUser: () => Promise<void>; isAuthenticated: boolean; ready: boolean; }
 interface ApiUser extends Omit<AuthUser, 'role'> { role: string | null; }
 interface ApiResponse { token?: string; user?: ApiUser; }
 const AuthContext = createContext<AuthContextType | null>(null), TOKEN_KEY = 'pass_auth_token';
@@ -41,6 +41,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => { if (!controller.signal.aborted) setRestoring(false); });
     return () => controller.abort();
   }, [revision]);
+  const pendingRefresh = useRef<Promise<void> | null>(null);
+  const refreshUser = useCallback(() => {
+    if (pendingRefresh.current) return pendingRefresh.current;
+    const saved = token();
+    if (!saved) return Promise.resolve();
+    const request = jsonRequest<ApiResponse>('/api/me', { headers: { Accept: 'application/json', Authorization: 'Bearer ' + saved } })
+      .then(data => {
+        if (token() !== saved) return;
+        if (!data.user || !role(data.user.role)) throw new Error('The server returned an incomplete session.');
+        setUser(toUser(data.user));
+      })
+      .finally(() => { pendingRefresh.current = null; });
+    pendingRefresh.current = request;
+    return request;
+  }, []);
   const login: AuthContextType['login'] = async (identifier, password, remember = false) => {
     const data = await jsonRequest<ApiResponse>('/api/login', { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: identifier.trim(), password }) });
     if (!data.token || !data.user || !role(data.user.role)) throw new Error('Your account has no recognized PASS role. Contact PASS staff.');
@@ -50,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const saved = token(); clear(); setUser(null); setError('');
     if (saved) { try { await jsonRequest('/api/logout', { method: 'POST', headers: { Accept: 'application/json', Authorization: 'Bearer ' + saved } }); } catch { /* Local sign-out succeeds; an offline server revocation cannot be confirmed. */ } }
   };
-  return <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, ready: !restoring }}>
+  return <AuthContext.Provider value={{ user, login, logout, refreshUser, isAuthenticated: !!user, ready: !restoring }}>
     {restoring ? <div role="status" className="min-h-screen flex items-center justify-center text-slate-600 p-6">Restoring your session…</div> : error && !user ? <main className="min-h-screen p-6 flex items-center justify-center"><section className="max-w-sm space-y-4"><h1 className="text-xl font-bold">Unable to check your session</h1><p role="alert" className="text-sm text-slate-600 break-words">{error}</p><button className="rounded-xl bg-blue-600 px-5 py-3 text-white" onClick={() => setRevision(v => v + 1)}>Retry</button><button className="block text-sm text-blue-700" onClick={() => { void logout(); }}>Sign out on this device</button></section></main> : children}
   </AuthContext.Provider>;
 }

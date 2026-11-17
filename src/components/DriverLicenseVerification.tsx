@@ -21,8 +21,8 @@ const FIELD_MAP: Record<string, string> = {
  * Driver's license submission, used by the web "Driver & License" tab and the mobile license screen.
  * Independent of vehicle registration: a user who answered "No" at sign-up can submit it here later.
  */
-export default function DriverLicenseVerification({ variant = 'web' }: { variant?: 'web' | 'mobile'; owner?: string }) {
-  const { status, license, error: loadError, submit, retry } = useLicense();
+export default function DriverLicenseVerification({ variant = 'web', signup = false }: { variant?: 'web' | 'mobile'; owner?: string; signup?: boolean }) {
+  const { status, license, loading, error: loadError, submit, retry } = useLicense();
   const m = variant === 'mobile';
   const [editing, setEditing] = useState(false);
   const [licenseNo, setLicenseNo] = useState('');
@@ -63,8 +63,8 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
   useEffect(() => { if (!cooldown) return; const timer = window.setTimeout(() => setCooldown(v => Math.max(0, v - 1)), 1000); return () => window.clearTimeout(timer); }, [cooldown]);
 
   const renewalAvailable = status === 'verified' && license?.can_resubmit === true;
-  const canSubmit = status !== 'processing' && (status !== 'verified' || renewalAvailable);
-  const showForm = canSubmit && (status === 'not_submitted' || status === 'needs_correction' || editing);
+  const canSubmit = !loading && (signup ? status === 'needs_correction' || renewalAvailable : status !== 'processing' && (status !== 'verified' || renewalAvailable));
+  const showForm = canSubmit && (status === 'not_submitted' || status === 'needs_correction' || (signup && renewalAvailable) || editing);
 
   const handleSubmit = async () => {
     if (!canSubmit || submitLock.current || cooldown > 0) return;
@@ -159,11 +159,11 @@ export default function DriverLicenseVerification({ variant = 'web' }: { variant
       {showForm && (
         <div className={`${m ? '' : 'bg-white border border-slate-100 rounded-2xl p-5'} space-y-4`}>
           <h3 className="font-semibold text-[#080677]">{status === 'needs_correction' ? 'Resubmit driver’s license' : 'Submit driver’s license'}</h3>
-          <p className="text-sm text-slate-600">Start with a photo of the front of your license. The license number and expiry date are read from it for you to check.</p>
+          <p className="text-sm text-slate-600">{signup ? 'Upload a new photo and enter the license number and expiry date printed on the card.' : 'Start with a photo of the front of your license. The license number and expiry date are read from it for you to check.'}</p>
           <FileUpload label="1. Driver's License (front)" file={file} error={errors.file} accept={IMAGE_ACCEPT} capture preview disabled={submitting}
             prepare={fitPhotoForUpload} onChange={choosePhoto}
             onError={msg => setErrors(e => ({ ...e, file: msg }))} />
-          <DocumentAutofill file={file} documentType="driver_license" onFields={applyReading} />
+          {!signup && <DocumentAutofill file={file} documentType="driver_license" onFields={applyReading} />}
           {file && <>
             <p className="text-sm font-medium text-slate-700">2. Check the details</p>
             <div>
