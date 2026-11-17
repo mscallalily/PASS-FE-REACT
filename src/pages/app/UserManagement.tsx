@@ -21,7 +21,7 @@ import {
 import { UserPlus, Check, X, RefreshCw } from 'lucide-react';
 import { apiBlob } from '../../lib/apiClient';
 type SchoolIdCheck = { status: string; reasons: string[]; note: string; checks: Record<string, { result: string; detail: string }> };
-const ID_CHECK_LABELS: Record<string, string> = { matched: 'Details matched', manual_review: 'Staff review needed', unavailable: 'Automatic reader unavailable', needs_correction: 'Needs correction' };
+const ID_CHECK_LABELS: Record<string, string> = { matched: 'Details matched', manual_review: 'Staff review needed', pending_review: 'Staff review needed', staff_verified: 'Verified by staff', unavailable: 'Automatic reader unavailable', needs_correction: 'Needs correction' };
 
 type UserStatus =
   | 'pending'
@@ -261,10 +261,16 @@ export default function UserManagement() {
     user: UserRow,
     decision: 'approve' | 'reject'
   ) {
+    const needsSchoolReview = decision === 'approve' && user.schoolIdCheck?.status === 'pending_review';
+    if (needsSchoolReview && (selected?.id !== user.id || !idPreview)) {
+      setSelected(user);
+      showToast('Open the submitted institutional ID and check the printed details before approving.');
+      return;
+    }
     const action = decision === 'approve' ? 'approve' : 'reject';
     const confirmation =
       decision === 'approve'
-        ? `Approve the account of ${user.name}?`
+        ? (needsSchoolReview ? `Confirm that the ID photo matches ${user.name} and the institutional ID number shown on the account?` : `Approve the account of ${user.name}?`)
         : `Reject and deactivate the account of ${user.name}?`;
 
     if (!window.confirm(confirmation)) return;
@@ -275,7 +281,7 @@ export default function UserManagement() {
     try {
       await apiRequest<{ message?: string }>(
         `/api/admin/users/${encodeURIComponent(user.id)}/${action}`,
-        { method: 'PATCH' }
+        { method: 'PATCH', ...(needsSchoolReview ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmed_school_id: true }) } : {}) }
       );
 
       showToast(
@@ -708,6 +714,7 @@ export default function UserManagement() {
               {Object.entries(selected.schoolIdCheck.checks ?? {}).map(([key, result]) => <p key={key}><strong className="capitalize">{result.result}:</strong> {result.detail}</p>)}
               {selected.schoolIdCheck.reasons?.map(reason => <p key={reason} className="text-amber-800">{reason}</p>)}
               <p className="text-xs text-slate-600">{selected.schoolIdCheck.note}</p>
+              {selected.schoolIdCheck.status === 'pending_review' && selected.status === 'pending' && <Button disabled={!idPreview || !!actionId} onClick={() => void handleDecision(selected, 'approve')}>Confirm ID and approve account</Button>}
             </section>}
             {selected.schoolIdSubmitted && <Button variant="outline" disabled={idLoading} onClick={viewSchoolId}>{idLoading ? 'Loading ID…' : 'View institutional ID'}</Button>}
             {idError && <p role="alert" className="text-sm text-red-700">{idError}</p>}

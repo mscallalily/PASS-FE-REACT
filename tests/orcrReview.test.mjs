@@ -21,12 +21,25 @@ const CR = reading({ plate_number: '166 XAB', make: 'SUZUKI', model: 'UB125NM', 
   { make: 'Read from the Certificate of Registration (CR) with limited certainty. Check it against the document.', model: 'Read from the Certificate of Registration (CR) with limited certainty. Check it against the document.' });
 
 /** What the screen does: combined readings, the owner's edits and confirmations, the shown values. */
-function review(or, cr, { edits = {}, checked = {} } = {}) {
+function review(or, cr, { edits = {}, checked = {}, requireOr = true } = {}) {
   const combined = combineReadings(or, cr);
   const details = Object.fromEntries(Object.keys(EMPTY_DETAILS).map(key => [key, edits[key] ?? (combined[key].value || '')]));
-  const input = { or, cr, hasOr: !!or, hasCr: !!cr, combined, details, edits, checked };
+  const input = { or, cr, hasOr: !!or, hasCr: !!cr, requireOr, combined, details, edits, checked };
   return { ...reviewStatus(input), details, source: key => sourceOf(key, input) };
 }
+
+test('CR-only review needs a printed plate and series and no OR or validity date', () => {
+  const ready = review(null, reading(CR.fields), { requireOr: false });
+  assert.equal(ready.tone, 'success');
+  assert.equal(ready.title, 'CR check ready');
+
+  const { model, ...fields } = CR.fields;
+  const missingSeries = review(null, reading(fields, { model: 'missing' }), {
+    requireOr: false, edits: { model },
+  });
+  assert.equal(missingSeries.tone, 'problem');
+  assert.match(missingSeries.message, /Retake the CR/);
+});
 
 test('matching plates and valid required details are a successful match', () => {
   const sure = reading({ plate_number: '166XAB', make: 'SUZUKI', model: 'UB125NM', color: 'BLACK', vehicle_type: 'Motorcycle' });

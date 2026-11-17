@@ -10,6 +10,7 @@ type QueueStatus = 'processing' | 'needs_correction' | 'pending_review' | 'verif
 type CheckResult = 'pass' | 'fail' | 'uncertain';
 
 interface OcrResult {
+  signup_manual_review?: boolean;
   decision?: string;
   reasons?: string[];
   notes?: string[];
@@ -25,7 +26,7 @@ interface OcrResult {
 
 interface Row {
   license_id: number;
-  license_number: string;
+  license_number: string | null;
   expiry_date: string | null;
   original_file_name: string | null;
   has_file: boolean;
@@ -81,6 +82,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
 
   const [selected, setSelected] = useState<Row | null>(null);
   const [preview, setPreview] = useState<{ url: string; type: string } | null>(null);
+  const [printed, setPrinted] = useState({ license_number: '', birth_date: '', expiry_date: '' });
   const [previewError, setPreviewError] = useState('');
 
   const [decision, setDecision] = useState<{ row: Row; decision: Decision } | null>(null);
@@ -148,6 +150,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
 
   const startDecision = (row: Row, d: Decision) => {
     setDecision({ row, decision: d });
+    setPrinted({ license_number: '', birth_date: '', expiry_date: '' });
     setReason(d === 'needs_correction' ? (row.verification_reason ?? '') : '');
     setActionError('');
   };
@@ -159,7 +162,8 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
     try {
       const result = await apiRequest<{ message: string }>(`/api/licenses/${decision.row.license_id}/review`, {
         method: 'PATCH',
-        body: { decision: decision.decision, reason: reason.trim() || null },
+        body: { decision: decision.decision, reason: reason.trim() || null,
+          ...(decision.decision === 'verified' && decision.row.ocr_result?.signup_manual_review ? { ...printed, confirmed_identity: true } : {}) },
       });
       setDecision(null);
       onToast(`${decision.row.owner_name || 'License'}: ${result.message}`);
@@ -211,7 +215,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
     if (r.verification_status === 'processing') return <span className="text-xs text-slate-400">Checking…</span>;
     return (
       <div className="flex gap-2">
-        {r.verification_status === 'pending_review' && r.has_file && <Button size="sm" variant="outline" onClick={() => recheck(r)}>Re-run check</Button>}
+        {r.verification_status === 'pending_review' && r.has_file && !r.ocr_result?.signup_manual_review && <Button size="sm" variant="outline" onClick={() => recheck(r)}>Re-run check</Button>}
         <Button size="sm" variant="ghost" onClick={() => openDetails(r)}>Details</Button>
       </div>
     );
@@ -408,6 +412,13 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
                 />
               </div>
             )}
+            {decision.decision === 'verified' && decision.row.ocr_result?.signup_manual_review && <div className="space-y-3">
+              <p className="text-sm text-slate-600">Confirm that the printed name matches the applicant. Enter the details from the submitted license.</p>
+              {(['license_number', 'birth_date', 'expiry_date'] as const).map(key => <label className="block text-sm" key={key}>
+                {{ license_number: 'Printed license number', birth_date: 'Printed birth date', expiry_date: 'Printed expiry date' }[key]}
+                <input className="block w-full rounded border p-2" type={key === 'license_number' ? 'text' : 'date'} value={printed[key]} onChange={event => setPrinted(previous => ({ ...previous, [key]: event.target.value }))} disabled={busy} />
+              </label>)}
+            </div>}
             {actionError && (
               <div className="rounded-lg border border-red-200 bg-red-50 p-3">
                 <p className="text-sm text-red-600">{actionError}</p>
@@ -418,7 +429,7 @@ export default function LicenseReviewQueue({ onToast }: { onToast: (message: str
               <Button
                 variant={decision.decision === 'needs_correction' ? 'danger' : decision.decision === 'verified' ? 'success' : 'primary'}
                 onClick={confirmDecision}
-                disabled={busy || !reason.trim()}
+                disabled={busy || !reason.trim() || (decision.decision === 'verified' && !!decision.row.ocr_result?.signup_manual_review && (!preview || Object.values(printed).some(value => !value.trim())))}
               >
                 {busy ? 'Saving...' : decision.decision === 'verified' ? 'Approve exception' : decision.decision === 'needs_correction' ? 'Return to user' : 'Move'}
               </Button>

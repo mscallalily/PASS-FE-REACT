@@ -84,6 +84,7 @@ export type ReviewInput = {
   or: Reading | null; cr: Reading | null;
   /** Whether an OR / CR photo is selected. */
   hasOr: boolean; hasCr: boolean;
+  requireOr?: boolean;
   combined: Record<DetailKey, CombinedDetail>;
   /** The values shown and submitted. */
   details: VehicleDetails;
@@ -128,7 +129,7 @@ export function sourceOf(key: DetailKey, input: Pick<ReviewInput, 'combined' | '
 }
 
 export function reviewStatus(input: ReviewInput): ReviewStatus {
-  const { or, cr, hasOr, hasCr, combined, details, edits, checked } = input;
+  const { or, cr, hasOr, hasCr, combined, details, edits, checked, requireOr = true } = input;
   const unedited = (key: DetailKey) => edits[key] === undefined;
   const plateConflict = combined.plate_number.state === 'conflict';
   const plateTaken = unedited('plate_number') && [or, cr].some(r => r?.flags.plate_number === 'conflict');
@@ -157,17 +158,20 @@ export function reviewStatus(input: ReviewInput): ReviewStatus {
   const base = { plateConflict, plateTaken, documentProblems, conflicts, missing, toCheck, missingNotes, basis };
   if (reading) return { ...base, tone: 'reading', title: 'Reading', message: 'Reading your documents…' };
   if (documentProblems.length) return { ...base, tone: 'problem', title: 'Retake needed', message: `Retake or re-upload the ${documentProblems.join(' and ')} (see the message above).` };
-  if (!hasOr || !hasCr) return { ...base, tone: 'problem', title: 'Document missing', message: `Upload the ${!hasOr ? 'OR' : 'CR'} to continue.` };
+  if ((requireOr && !hasOr) || !hasCr) return { ...base, tone: 'problem', title: 'Document missing', message: `Upload the ${requireOr && !hasOr ? 'OR' : 'CR'} to continue.` };
   if (plateConflict) return { ...base, tone: 'problem', title: 'Plate mismatch', message: `The OR shows plate ${plate.or} but the CR shows ${plate.cr}. Upload the OR and CR of the same vehicle, or retake the photo that was misread.` };
   if (plateTaken) return { ...base, tone: 'problem', title: 'Plate already registered', message: 'This plate number is already registered to another account. Correct it if it was misread, or contact PASS staff.' };
   if (conflicts.length) {
     const shown = conflicts.map(key => `${DETAIL_LABEL[key].toLowerCase()} (OR: ${combined[key].or} · CR: ${combined[key].cr})`).join(', ');
     return { ...base, tone: 'problem', title: 'Mismatch', message: `The OR and CR show different ${shown}. Enter the value printed on your documents below, or retake the photo that was misread.` };
   }
-  if (missing.length) return { ...base, tone: 'problem', title: 'Missing detail', message: `${capital(list(missing))} could not be read on the OR or CR. Retake the photo or enter ${missing.length > 1 ? 'them' : 'it'} below.` };
+  if (!requireOr && (!combined.plate_number.value || !combined.model.value)) {
+    return { ...base, tone: 'problem', title: 'Retake needed', message: 'Retake the CR so the plate number and model (series) are readable.' };
+  }
+  if (missing.length) return { ...base, tone: 'problem', title: 'Missing detail', message: `${capital(list(missing))} could not be read on ${requireOr ? 'the OR or CR' : 'the CR'}. Retake the photo or enter ${missing.length > 1 ? 'them' : 'it'} below.` };
   if (toCheck.length) {
     const from = Array.from(new Set(toCheck.flatMap(key => combined[key].sources))).join(' and ');
     return { ...base, tone: 'check', title: 'Check needed', message: `${capital(list(toCheck))} ${toCheck.length > 1 ? 'were' : 'was'} read from the ${from} with limited certainty. Compare ${toCheck.length > 1 ? 'them' : 'it'} with your ${from}, then confirm or correct ${toCheck.length > 1 ? 'them' : 'it'}.` };
   }
-  return { ...base, tone: 'success', title: 'OR/CR Match Successful', message: 'The required details were read and no document disagrees. Final approval happens when you register.' };
+  return { ...base, tone: 'success', title: requireOr ? 'OR/CR Match Successful' : 'CR check ready', message: requireOr ? 'The required details were read and no document disagrees. Final approval happens when you register.' : 'The CR is ready for the automatic registration check.' };
 }
