@@ -228,26 +228,40 @@ function VehiclePhotoPanel({ id, editable, onSaved, hasPhoto }: { id: string | n
   </div>;
 }
 
-function CrReviewPanel({ row, onSaved }: { row: VehicleAuthorizationRow; onSaved: (message: string) => void }) {
+function CrDocumentPreview({ vehicleId, onLoaded }: { vehicleId: number; onLoaded?: () => void }) {
   const [url, setUrl] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = '';
+    apiBlob(`/api/vehicles/${vehicleId}/documents/cr`).then(blob => {
+      if (!active) return;
+      objectUrl = URL.createObjectURL(blob);
+      setUrl(objectUrl);
+    }).catch(err => {
+      if (!active) return;
+      setError(err instanceof ApiError && err.status === 404
+        ? 'No Certificate of Registration is on file for this vehicle.'
+        : 'Could not load the Certificate of Registration. Close this window and try again.');
+    });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [vehicleId]);
+
+  if (error) return <p role="alert" className="text-sm text-red-700">{error}</p>;
+  if (!url) return <p role="status" className="text-sm text-slate-600">Loading the Certificate of Registration…</p>;
+  return <img src={url} alt="Submitted Certificate of Registration" onLoad={onLoaded}
+    onError={() => setError('The CR image could not be displayed.')} className="max-h-[65vh] w-full object-contain" />;
+}
+
+function CrReviewPanel({ row, onSaved }: { row: VehicleAuthorizationRow; onSaved: (message: string) => void }) {
   const [inspected, setInspected] = useState(false);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  useEffect(() => {
-    const controller = new AbortController();
-    let objectUrl = '';
-    apiBlob(`/api/vehicles/${row.vehicle_id}/documents/cr`).then(blob => {
-      if (!controller.signal.aborted) {
-        objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
-      }
-    }).catch(err => { if (!controller.signal.aborted) setError(String(err.message ?? err)); });
-    return () => {
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [row.vehicle_id]);
 
   async function decide(decision: 'approve' | 'return') {
     if (busy || (decision === 'approve' ? !inspected : !reason.trim())) return;
@@ -269,7 +283,7 @@ function CrReviewPanel({ row, onSaved }: { row: VehicleAuthorizationRow; onSaved
   return <div className="space-y-3">
     <p className="text-sm font-medium">{[row.plate_number, row.vehicle_type, row.make, row.model, row.color, row.year_model].filter(Boolean).join(' · ')}</p>
     {row.remarks && <p className="text-sm text-slate-600">{row.remarks}</p>}
-    {url && <img src={url} alt="Submitted Certificate of Registration" onLoad={() => setInspected(true)} onError={() => setError('The CR image could not be displayed.')} className="max-h-[55vh] w-full object-contain" />}
+    <CrDocumentPreview key={row.vehicle_id} vehicleId={row.vehicle_id} onLoaded={() => setInspected(true)} />
     <p className="text-sm text-slate-600">Approve only after checking the CR against these details and confirming that any printed validity date is current.</p>
     <Input label="Reason for returning" value={reason} onChange={event => setReason(event.target.value)} maxLength={255} disabled={busy} />
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
@@ -302,6 +316,7 @@ export default function VehicleManagement() {
   const [showRegister, setShowRegister] = useState(false);
   const [correctingVehicle, setCorrectingVehicle] = useState<VehicleRow | null>(null);
   const [crReview, setCrReview] = useState<VehicleAuthorizationRow | null>(null);
+  const [crPreview, setCrPreview] = useState<{ vehicleId: number; plate: string } | null>(null);
   const [photoVehicleId, setPhotoVehicleId] = useState<number | null>(null);
   const [crFile, setCrFile] = useState<File | null>(null);
   // What was read from each document; null when no photo is selected.
@@ -790,7 +805,10 @@ export default function VehicleManagement() {
                     ? <span className="whitespace-nowrap">{formatDate(r.valid_from)} – {formatDate(r.valid_until)}</span>
                     : '—'
                 )},
-                { key: 'photo', label: 'Photo', render: (r: VehicleAuthorizationRow) => <Button size="sm" variant="outline" onClick={() => setPhotoVehicleId(r.vehicle_id)}>View photo</Button> },
+                { key: 'documents', label: 'Documents', render: (r: VehicleAuthorizationRow) => <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setCrPreview({ vehicleId: r.vehicle_id, plate: r.plate_number })}>View CR</Button>
+                  <button type="button" className="text-xs text-blue-700 underline" onClick={() => setPhotoVehicleId(r.vehicle_id)}>Vehicle photo</button>
+                </div> },
                 { key: 'actions', label: 'Actions', render: (r: VehicleAuthorizationRow) => {
                   if (r.authorization_status === 'pending') {
                     if (r.document_check_status === 'pending_review') {
@@ -966,6 +984,13 @@ export default function VehicleManagement() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal open={crPreview !== null} onClose={() => setCrPreview(null)} title="Certificate of Registration" size="lg">
+        {crPreview && <div className="space-y-3">
+          <p className="text-sm font-semibold">{crPreview.plate}</p>
+          <CrDocumentPreview key={crPreview.vehicleId} vehicleId={crPreview.vehicleId} />
+        </div>}
       </Modal>
 
       <Modal open={photoVehicleId !== null} onClose={() => setPhotoVehicleId(null)} title="Vehicle photo">
