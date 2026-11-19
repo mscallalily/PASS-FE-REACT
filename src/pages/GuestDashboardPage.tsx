@@ -1,3 +1,4 @@
+import { appendVisitorPhotos } from '../lib/visitorPhotos';
 import '../styles/guest-portal.css';
 import ParkingAvailabilityMap from '../components/ParkingAvailabilityMap';
 import VisitorDocuments from '../components/VisitorDocuments';
@@ -382,7 +383,7 @@ function RequestForm({ vehicles, onAddVehicle, onSubmitted }: { vehicles: Vehicl
     try {
       const body = new FormData();
       Object.entries(form).forEach(([key, value]) => body.append(key, key === 'driver_is_requester' ? (value === 'true' ? '1' : '0') : value));
-      body.append('driver_license_photo', licensePhoto!); body.append('vehicle_photo', vehiclePhoto!);
+      await appendVisitorPhotos(body, licensePhoto!, vehiclePhoto!);
       const result = await apiRequest<{ message: string }>('/api/guest/requests', { method: 'POST', body });
       setForm(empty); setLicensePhoto(null); setVehiclePhoto(null); setStep(0); onSubmitted(result.message);
     } catch (err) {
@@ -390,7 +391,7 @@ function RequestForm({ vehicles, onAddVehicle, onSubmitted }: { vehicles: Vehicl
         setErrors(err.fieldErrors); setError(err.message);
         const errorStep = groups.findIndex(group => group.some(key => err.fieldErrors[key]));
         if (errorStep >= 0) setStep(errorStep);
-      } else setError('Your request could not be submitted. Please try again.');
+      } else setError(err instanceof Error ? err.message : 'Your request could not be submitted. Please try again.');
     } finally { setBusy(false); }
   };
   const field = (key: keyof typeof empty, label: string, props: React.InputHTMLAttributes<HTMLInputElement> = {}) => <label className="guest-field"><span>{label}</span><input {...props} value={form[key]} onChange={set(key)} disabled={busy} aria-invalid={!!errors[key]} aria-describedby={errors[key] ? `error-${key}` : undefined} className={inputClass(errors[key])} /><span id={`error-${key}`}><FieldError message={errors[key]} /></span></label>;
@@ -399,7 +400,7 @@ function RequestForm({ vehicles, onAddVehicle, onSubmitted }: { vehicles: Vehicl
   return <div ref={formTop} className="guest-request-layout">
     <form onSubmit={submit} className="min-w-0" noValidate>
       <Card>
-        <div className="guest-section-heading"><span className="guest-eyebrow">PLAN YOUR CAMPUS VISIT</span><h2>Visitor parking request</h2><p>A few details now. A smoother arrival later.</p></div>
+        <div className="guest-section-heading"><h2>Request a visit</h2></div>
         <ol className="guest-stepper" aria-label="Request progress">{['Visit details', 'Driver', 'Photos & review'].map((title, index) => <li key={title} aria-current={step === index ? 'step' : undefined} className={index === step ? 'is-current' : index < step ? 'is-complete' : ''}><span>{index < step ? <CheckCircle2 size={17}/> : index + 1}</span><strong>{title}</strong></li>)}</ol>
         {step === 0 && <fieldset disabled={busy} className="guest-fieldset"><legend>Your visit</legend>
           <div className="guest-form-grid">
@@ -420,18 +421,18 @@ function RequestForm({ vehicles, onAddVehicle, onSubmitted }: { vehicles: Vehicl
             {field('passenger_count', 'Passengers, excluding driver *', { type: 'number', min: 0, max: 99, inputMode: 'numeric' })}
           </div><p className="guest-inline-note"><Shield size={16}/> The driver must bring the same physical license on the visit.</p>
         </fieldset>}
-        {step === 2 && <fieldset disabled={busy} className="guest-fieldset"><legend>Photos for advance review</legend>
-          <p className="guest-muted">PASS staff will compare these photos with your request before issuing a QR pass.</p>
-          <div className="guest-form-grid"><PhotoUpload label="Driver’s license (front)" hint="Clear photo. Name, photo, number and expiry must be readable." file={licensePhoto} onChange={setLicensePhoto} error={errors.driver_license_photo} disabled={busy}/><PhotoUpload label="Vehicle with visible plate" hint="Show the vehicle and its plate together in one clear photo." file={vehiclePhoto} onChange={setVehiclePhoto} error={errors.vehicle_photo} disabled={busy}/></div>
-          <div className="guest-review-summary"><h3>Check your visit details</h3><dl><div><dt>Vehicle</dt><dd>{chosenVehicle?.plate_number} · {chosenVehicle?.type_name}</dd></div><div><dt>Date / time</dt><dd>{form.visit_date} · {form.arrival_time}–{form.departure_time}</dd></div><div><dt>Driver</dt><dd>{form.driver_is_requester === 'true' ? user?.name : form.driver_name}</dd></div><div><dt>Passengers</dt><dd>{form.passenger_count}, excluding driver</dd></div><div><dt>Destination</dt><dd>{form.visiting}</dd></div><div><dt>Purpose</dt><dd>{form.purpose}</dd></div></dl></div>
-          <p className="guest-inline-note"><Shield size={16}/> Photos are private to you and authorized PASS staff. Approval is for your visit; parking remains first-come, first-served.</p>
+        {step === 2 && <fieldset disabled={busy} className="guest-fieldset"><legend>Upload photos</legend>
+
+          <div className="guest-form-grid"><PhotoUpload label="Driver’s license (front)" hint="Keep the name, number and expiry readable." file={licensePhoto} onChange={setLicensePhoto} error={errors.driver_license_photo} disabled={busy}/><PhotoUpload label="Vehicle with visible plate" hint="Include the whole vehicle and its plate." file={vehiclePhoto} onChange={setVehiclePhoto} error={errors.vehicle_photo} disabled={busy}/></div>
+          <div className="guest-review-summary"><h3>Review your visit</h3><dl><div><dt>Vehicle</dt><dd>{chosenVehicle?.plate_number} · {chosenVehicle?.type_name}</dd></div><div><dt>Date / time</dt><dd>{form.visit_date} · {form.arrival_time}–{form.departure_time}</dd></div><div><dt>Driver</dt><dd>{form.driver_is_requester === 'true' ? user?.name : form.driver_name}</dd></div><div><dt>Passengers</dt><dd>{form.passenger_count}, excluding driver</dd></div><div><dt>Destination</dt><dd>{form.visiting}</dd></div><div><dt>Purpose</dt><dd>{form.purpose}</dd></div></dl></div>
+          <p className="guest-inline-note"><Shield size={16}/> Only you and PASS staff can view these photos. Parking is subject to availability.</p>
         </fieldset>}
         {error && <p role="alert" className="guest-error">{error}</p>}
         {Object.keys(errors).length > 0 && <p role="alert" className="guest-error">Please check the highlighted fields before continuing.</p>}
-        <div className="guest-form-actions"><span className="guest-muted">Step {step + 1} of 3</span><div>{step > 0 && <button type="button" className="guest-secondary" disabled={busy} onClick={() => changeStep(step - 1)}>Back</button>}<button type="submit" className="guest-primary" disabled={busy}>{busy ? 'Uploading & submitting…' : step < 2 ? 'Continue' : 'Submit for review'}{!busy && <ArrowRight size={17}/>}</button></div></div>
+        <div className="guest-form-actions"><span className="guest-muted">Step {step + 1} of 3</span><div>{step > 0 && <button type="button" className="guest-secondary" disabled={busy} onClick={() => changeStep(step - 1)}>Back</button>}<button type="submit" className="guest-primary" disabled={busy}>{busy ? 'Submitting…' : step < 2 ? 'Continue' : 'Submit request'}{!busy && <ArrowRight size={17}/>}</button></div></div>
       </Card>
     </form>
-    <aside className="guest-guide"><span className="guest-eyebrow">BEFORE YOU ARRIVE</span><h3>A little preparation,<br/>a smoother visit.</h3><ol><li><span>1</span><div><strong>Submit ahead</strong><p>Choose tomorrow or a later date and upload clear photos.</p></div></li><li><span>2</span><div><strong>Wait for approval</strong><p>Your QR pass appears after staff review. Watch your notifications.</p></div></li><li><span>3</span><div><strong>Bring your QR & license</strong><p>Staff match your driver and plate at the gate. Availability is checked on arrival.</p></div></li></ol><p className="guest-guide-footer">DR. YANGA’S COLLEGES, INC.<br/>Marciano Campus · Visitor parking</p></aside>
+    <aside className="guest-guide"><h3>Before your visit</h3><ol><li><span>1</span><div><strong>Submit your request</strong><p>Choose tomorrow or a later date.</p></div></li><li><span>2</span><div><strong>Wait for approval</strong><p>Check My QR Passes for your pass.</p></div></li><li><span>3</span><div><strong>Bring your QR pass and license</strong><p>Show both at the gate.</p></div></li></ol></aside>
   </div>;
 }
 

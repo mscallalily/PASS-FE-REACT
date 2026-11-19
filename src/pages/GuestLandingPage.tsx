@@ -2,24 +2,12 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { BrandLockup, CampusPhoto, DyciLogo, GoldRule } from '../components/Brand';
 import { BRAND } from '../config/branding';
-import { Shield, MapPin, Clock, QrCode, Info, LogIn, UserPlus, Car, ChevronRight, CreditCard, Lock, MapPin as Pin, Globe } from 'lucide-react';
-
-const AVAILABLE = [
-  { icon: <MapPin size={24} />, title: 'Visitor Parking Request', desc: 'Submit your visit purpose, schedule, and required vehicle details for review.' },
-  { icon: <QrCode size={24} />, title: 'Visitor QR Pass After Approval', desc: 'A temporary QR pass is available only after your request is approved.' },
-  { icon: <Clock size={24} />, title: 'Request Status', desc: 'Check whether your visitor request is pending, approved, or rejected.' },
-];
-
-const NOT_INCLUDED = [
-  { icon: <Car size={20} />, title: 'Vehicle Registration', desc: 'Permanent vehicle registration is for students, faculty and employees.' },
-  { icon: <CreditCard size={20} />, title: 'RFID Access', desc: 'Persistent RFID access and campus vehicle privileges.' },
-  { icon: <Lock size={20} />, title: 'Reserved Parking', desc: 'Reserved or designated parking zones.' },
-];
+import { Shield, Info, LogIn, UserPlus, ChevronRight, MapPin as Pin, Globe } from 'lucide-react';
 
 const STEPS = [
-  { step: '01', title: 'Register as Guest', desc: 'Create a guest account with your name and contact info. No institutional ID required.' },
-  { step: '02', title: 'Submit Parking Request', desc: 'Provide your reason for visiting, visit schedule, and required vehicle details.' },
-  { step: '03', title: 'Wait for Approval', desc: 'After approval, a temporary visitor QR pass may be issued for the approved visit.' },
+  { step: '01', title: 'Register as Guest', desc: 'Create your guest account.' },
+  { step: '02', title: 'Submit Parking Request', desc: 'Add your visit, vehicle and driver details.' },
+  { step: '03', title: 'Wait for Approval', desc: 'Your QR pass appears after approval. Bring it with your license.' },
 ];
 
 export default function GuestLandingPage() {
@@ -46,7 +34,7 @@ export default function GuestLandingPage() {
             </div>
             <h1 className="text-4xl lg:text-5xl font-bold leading-tight mb-5">Visiting the DYCI campus?</h1>
             <p className="text-blue-100 text-lg leading-relaxed mb-8">
-              Register as a guest and submit a visitor parking request. A temporary QR pass is issued only after your request is approved.
+              Create an account, request a visit, and get your QR pass after approval.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link to="/register/guest" className="flex items-center gap-2 px-6 py-3 bg-[#96D1F2] text-[#080677] font-bold rounded-lg hover:bg-[#b4def6] transition-colors">
@@ -64,49 +52,10 @@ export default function GuestLandingPage() {
         </div>
       </CampusPhoto>
 
-      {/* What guests can do */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold text-[#080677] mb-3">What Guest Access Includes</h2>
-            <p className="text-slate-500 max-w-xl mx-auto">Guest accounts are for short, approved campus visits.</p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {AVAILABLE.map(f => (
-              <div key={f.title} className="p-6 bg-[#F4F7FB] rounded-2xl border border-blue-100 hover:border-[#2563EB] hover:shadow-md transition-all">
-                <div className="w-12 h-12 bg-[#2563EB]/10 text-[#2563EB] rounded-xl flex items-center justify-center mb-4">{f.icon}</div>
-                <h3 className="font-semibold text-[#080677] mb-2">{f.title}</h3>
-                <p className="text-sm text-slate-500 leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Notice + not included */}
-      <section className="py-20 bg-[#F4F7FB]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 grid lg:grid-cols-2 gap-12 items-start">
-          <div className="bg-[#080677] rounded-3xl p-8 text-white">
-            <Shield size={40} className="text-[#38BDF8] mb-5" />
-            <h3 className="text-2xl font-bold mb-3">Guest Account Notice</h3>
-            <p className="text-blue-100 leading-relaxed">
-              Guests must create a PASS Guest account and submit a visitor parking request with the visit purpose, schedule, and required vehicle details. Creating an account does not automatically authorize parking entry.
-            </p>
-          </div>
-          <div>
-            <h3 className="text-2xl font-bold text-[#080677] mb-4">Not included for guests</h3>
-            <div className="space-y-4">
-              {NOT_INCLUDED.map(n => (
-                <div key={n.title} className="bg-white rounded-xl p-4 border border-blue-100 shadow-sm flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">{n.icon}</div>
-                  <div>
-                    <p className="font-semibold text-slate-700 text-sm">{n.title}</p>
-                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{n.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+      <section className="px-4 sm:px-6 py-8 bg-[#F4F7FB]">
+        <div className="max-w-4xl mx-auto flex items-start gap-3 text-sm text-slate-600">
+          <Shield size={22} className="shrink-0 text-[#080677]" />
+          <p>Wait for approval before visiting. Parking is subject to availability; guest passes do not include RFID access or reserved spaces.</p>
         </div>
       </section>
 

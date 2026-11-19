@@ -1,0 +1,17 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Visitor photo checks</title></head><body><h1>Visitor photo browser checks</h1><pre id="result">Running…</pre><script type="module">
+import { prepareVisitorPhoto, appendVisitorPhotos, VISITOR_PHOTO_BYTES } from '/src/lib/visitorPhotos.ts';
+const lines=[]; const assert=(ok,text)=>{ if(!ok) throw new Error(text);lines.push('PASS '+text); };
+try {
+ const canvas=document.createElement('canvas');canvas.width=2400;canvas.height=1600;const c=canvas.getContext('2d');
+ const pixels=c.createImageData(2400,1600);for(let i=0;i<pixels.data.length;i+=4){const v=(i*13+(i>>9)*71)%256;pixels.data[i]=v;pixels.data[i+1]=(v*7)%256;pixels.data[i+2]=(v*3)%256;pixels.data[i+3]=255;}c.putImageData(pixels,0,0);
+ c.fillStyle='white';c.fillRect(80,80,2150,250);c.fillStyle='black';c.font='80px sans-serif';c.fillText('SAMPLE LICENSE — TEST ONLY',100,200);
+ const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.99));const file=new File([blob],'sample.jpg',{type:'image/jpeg'});
+ assert(file.size>VISITOR_PHOTO_BYTES,'Original requires compression: '+file.size+' bytes');
+ const out=await prepareVisitorPhoto(file); assert(out.size<=VISITOR_PHOTO_BYTES,'Photo fits budget: '+out.size+' bytes'); assert(out.type==='image/jpeg','JPEG output');
+ const body=new FormData();await appendVisitorPhotos(body,file,file); assert([...body.values()].reduce((n,f)=>n+f.size,0)<=2*VISITOR_PHOTO_BYTES,'Pair fits below 1 MiB');
+ const smallCanvas=document.createElement('canvas');smallCanvas.width=400;smallCanvas.height=300;const smallBlob=await new Promise(r=>smallCanvas.toBlob(r,'image/png'));const small=new File([smallBlob],'small.png',{type:'image/png'});assert(await prepareVisitorPhoto(small)===small,'Small photos preserved');
+ try {await prepareVisitorPhoto(new File(['bad'],'bad.jpg',{type:'image/jpeg'}));throw new Error('Invalid image accepted');} catch(e){assert(/cannot be opened/.test(e.message),'Invalid image rejected');}
+ document.querySelector('#result').textContent=lines.join('\n');
+ const img=document.createElement('img');img.src=URL.createObjectURL(out);img.style.width='900px';document.body.append(img);
+} catch(e){document.querySelector('#result').textContent=lines.join('\n')+'\nFAIL '+e.message;}
+</script></body></html>

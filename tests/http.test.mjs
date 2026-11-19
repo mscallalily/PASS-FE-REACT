@@ -12,6 +12,7 @@ before(async () => {
     if (req.url === '/stall-headers') return;
     if (req.url === '/write') { writes++; res.writeHead(200, { 'Content-Type': 'application/json' }); res.write('{'); return; }
     if (req.url === '/stall-body') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.write('{'); return; }
+    if (req.url === '/oversized') { res.writeHead(413, { 'Content-Type': 'text/html' }); res.end('<h1>Request Entity Too Large</h1>'); return; }
     if (req.url === '/html') { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<html>proxy failure</html>'); return; }
     if (req.url === '/invalid') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{'); return; }
     if (req.url === '/limit') { res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '17' }); res.end(JSON.stringify({ message: 'Too Many Attempts.' })); return; }
@@ -31,3 +32,5 @@ test('reports offline/network failures', async () => assert.rejects(jsonRequest(
 test('honors caller cancellation', async () => { const c = new AbortController(); c.abort(); await assert.rejects(jsonRequest(base + '/ok', { signal: c.signal }), e => e.name === 'AbortError'); });
 test('preserves the server retry-after value', async () => assert.rejects(jsonRequest(base + '/limit'), e => e.status === 429 && e.retryAfterSeconds === 17));
 test('expired authorized responses identify which token expired', async () => { let expected; window.addEventListener('pass-session-expired', e => { expected = e.detail.token; }, { once: true }); const r = await jsonFetch(base + '/expired', { headers: { Authorization: 'Bearer test-token' } }); assert.equal(r.status, 401); assert.equal(expected, 'test-token'); });
+
+test('turns a proxy HTML 413 into an actionable upload message', async () => assert.rejects(jsonRequest(base + '/oversized', { method: 'POST' }), e => e.status === 413 && e.code === 'upload_too_large' && /smaller photos/.test(e.message)));

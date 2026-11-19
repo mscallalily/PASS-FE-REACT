@@ -161,8 +161,8 @@ function ReportCharts({
           </h2>
           <p className="text-xs text-slate-500 mt-1 mb-4">
             {category === "occupancy"
-              ? "Average concurrent vehicles per bucket · car and motorcycle areas"
-              : "All matching records across every page · Manila time"}
+              ? "Average vehicles parked during each period"
+              : "Records during the selected dates"}
           </p>
           {category === "occupancy" ? (
             <ResponsiveContainer width="100%" height={240}>
@@ -237,8 +237,8 @@ function ReportCharts({
           </h2>
           <p className="text-xs text-slate-500 mt-1 mb-4">
             {category === "occupancy"
-              ? "Campus-wide snapshot now · independent of historical filters"
-              : "The same filtered dataset as the table and exports"}
+              ? "Current parking availability"
+              : "Records by status"}
           </p>
           {category === "occupancy" ? (
             <div className="space-y-5">
@@ -601,7 +601,7 @@ export default function Reports() {
     <div className="min-w-0 space-y-5 animate-fadein">
       <PageHeader
         title="Reports & Analytics"
-        subtitle="Parking operations, access and accountability · DYCI"
+        subtitle="Parking activity and trends"
         action={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -618,7 +618,7 @@ export default function Reports() {
               disabled={!canExport}
               onClick={() => download("excel")}
             >
-              <Download size={15} /> Excel XML
+              <Download size={15} /> Excel
             </Button>
             <Button
               size="sm"
@@ -636,18 +636,17 @@ export default function Reports() {
         </p>
         <h2 className="text-lg font-semibold mt-1">{title}</h2>
         <p className="mt-1 text-xs leading-relaxed text-blue-100">
-          Choose a report from Reports & Analytics in the sidebar. All dates and
-          times use Manila time.
+          All dates and times use Manila time.
         </p>
       </div>
       {snapshot && (
-        <section aria-label="Current campus snapshot">
+        <section aria-label="Parking now">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <h2 className="text-sm font-semibold text-slate-700">
-              Current campus snapshot
+              Parking now
             </h2>
             <p className="text-xs text-slate-500">
-              Campus-wide now · independent of report filters ·{" "}
+              Live parking status ·{" "}
               {snapshot.status}
             </p>
           </div>
@@ -718,16 +717,16 @@ export default function Reports() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
             <Input
-              label="Date from (Manila)"
-              aria-label="Date from (Manila)"
+              label="Start date"
+              aria-label="Start date"
               type="date"
               required
               value={draft.date_from}
               onChange={(e) => change("date_from", e.target.value)}
             />
             <Input
-              label="Date to (Manila)"
-              aria-label="Date to (Manila)"
+              label="End date"
+              aria-label="End date"
               type="date"
               required
               value={draft.date_to}
@@ -869,7 +868,7 @@ export default function Reports() {
               <Input
                 label="Search records"
                 aria-label="Search records"
-                placeholder="Plate, record ID, account, credential or action…"
+                placeholder="Search by plate, name or record…"
                 maxLength={100}
                 value={draft.search}
                 onChange={(e) => change("search", e.target.value)}
@@ -940,7 +939,6 @@ export default function Reports() {
               Generated {formatCampusDateTime(report.meta.generated_at)} · by{" "}
               {report.meta.generated_by}
             </p>
-            <p className="leading-relaxed">{report.meta.date_basis}</p>
           </div>
           <section
             aria-label="Filtered report summary"
@@ -1038,11 +1036,12 @@ export default function Reports() {
               Data definitions & coverage
             </summary>
             <ul className="mt-3 space-y-2 list-disc pl-4 leading-relaxed">
+              <li>{report.meta.date_basis}</li>
               {report.meta.notes.map((note) => (
                 <li key={note}>{note}</li>
               ))}
               <li>
-                CSV and Excel XML export all matching rows (up to 50,000; larger
+                CSV and Excel export all matching rows (up to 50,000; larger
                 requests must be narrowed). Print / PDF opens the same report
                 for printing or saving as PDF.
               </li>

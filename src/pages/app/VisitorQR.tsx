@@ -1,3 +1,4 @@
+import { appendVisitorPhotos } from '../../lib/visitorPhotos';
 import { staffBarrier, type GateTicket } from '../../lib/staffBarrier'; // PASS_STAFF_BARRIER_V1
 import { PAGE_SECTIONS, selectedSection, sectionPath } from '../../lib/pageSections';
 import VisitorDocuments from '../../components/VisitorDocuments';
@@ -171,11 +172,11 @@ function RequestForm({ open, onClose, onSaved }: { open: boolean; onClose: () =>
       if (visitorId) { body.visitor_id = Number(visitorId); ['first_name', 'last_name', 'contact_number', 'email', 'affiliation'].forEach(k => delete body[k]); }
       const upload = new FormData();
       Object.entries(body).forEach(([key, value]) => { if (value !== null) upload.append(key, String(value)); });
-      upload.append('driver_license_photo', licensePhoto); upload.append('vehicle_photo', vehiclePhoto);
+      await appendVisitorPhotos(upload, licensePhoto, vehiclePhoto);
       const r = await apiRequest<{ message: string }>('/api/visitors/requests', { method: 'POST', body: upload });
       onSaved(r.message);
     } catch (err) {
-      if (err instanceof ApiError) { setErrors(err.fieldErrors); setError(err.message); } else setError('The request could not be saved.');
+      if (err instanceof ApiError) { setErrors(err.fieldErrors); setError(err.message); } else setError(err instanceof Error ? err.message : 'The request could not be saved.');
     } finally {
       setBusy(false);
     }

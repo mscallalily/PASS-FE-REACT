@@ -33,6 +33,7 @@ export async function jsonFetch(url: string, options: RequestInit = {}, timeoutM
   return response;
 }
 export async function responseError(response: Response): Promise<ApiError> {
+  if (response.status === 413) return new ApiError('The photos exceed the server upload limit. Crop or choose smaller photos, then submit again.', 413, {}, 0, 'upload_too_large');
   const data = await response.json().catch(() => ({})), fields: Record<string, string> = {};
   for (const [key, value] of Object.entries(data.errors ?? {})) fields[key] = Array.isArray(value) ? String(value[0]) : String(value);
   const header = response.headers.get('Retry-After');
